@@ -1,0 +1,508 @@
+import { useEffect, useMemo, useState } from 'react';
+import { BankState } from '../domain/bankState';
+import { BalanceSheetSide, ProductType } from '../domain/enums';
+import { BalanceSheetItem } from '../domain/balanceSheet';
+
+type StatementKey = 'assets' | 'liabilities' | 'income' | 'cashflow';
+
+interface Props {
+  state: BankState;
+  history: BankState[];
+}
+
+interface SeriesPoint {
+  step: number;
+  value: number;
+}
+
+interface StatementRow {
+  id: string;
+  label: string;
+  value: number;
+  changePct: number | null;
+  series: SeriesPoint[];
+  rate?: number;
+}
+
+const formatCurrency = (value: number): string => `£${(value / 1e9).toFixed(2)}bn`;
+const formatRate = (value: number | undefined): string => (value === undefined ? '—' : `${(value * 100).toFixed(2)}%`);
+const formatChange = (value: number | null): string => {
+  if (value === null || !Number.isFinite(value)) return '—';
+  const fixed = Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1);
+  return `${value > 0 ? '+' : ''}${fixed}%`;
+};
+
+const buildValueTicks = (min: number, max: number, desired: number = 4): number[] => {
+  let localMin = min;
+  let localMax = max;
+
+  if (localMin === localMax) {
+    const pad = Math.max(Math.abs(localMin) * 0.25, 1);
+    localMin -= pad;
+    localMax += pad;
+  }
+
+  const span = localMax - localMin;
+  const rawStep = span / Math.max(desired, 1);
+  if (!Number.isFinite(rawStep) || rawStep === 0) return [localMin, localMax];
+
+  const magnitude = 10 ** Math.floor(Math.log10(Math.abs(rawStep)));
+  const normalized = rawStep / magnitude;
+  let niceNormalized = 1;
+  if (normalized > 5) niceNormalized = 10;
+  else if (normalized > 2) niceNormalized = 5;
+  else if (normalized > 1) niceNormalized = 2;
+
+  const step = niceNormalized * magnitude;
+  const start = Math.floor(localMin / step) * step;
+  const end = Math.ceil(localMax / step) * step;
+
+  const ticks: number[] = [];
+  for (let v = start; v <= end + step / 2; v += step) {
+    const rounded = Number(v.toFixed(10));
+    if (!ticks.includes(rounded)) {
+      ticks.push(rounded);
+    }
+  }
+
+  if (ticks.length < 2) {
+    ticks.push(Number((start + step).toFixed(10)));
+  }
+
+  return ticks;
+};
+
+const formatAxisValue = (value: number, yLabel?: string): string => {
+  const label = yLabel?.toLowerCase() ?? '';
+  if (label.includes('%')) {
+    const pct = value * 100;
+    return `${pct.toFixed(Math.abs(pct) >= 10 ? 0 : 1)}%`;
+  }
+
+  const abs = Math.abs(value);
+  if (abs >= 1e9) return `£${(value / 1e9).toFixed(abs >= 1e10 ? 0 : 1)}bn`;
+  if (abs >= 1e6) return `£${(value / 1e6).toFixed(abs >= 1e8 ? 0 : 1)}m`;
+  if (abs >= 1e3) return `${(value / 1e3).toFixed(abs >= 1e4 ? 0 : 1)}k`;
+  if (abs >= 1) return value.toFixed(abs >= 10 ? 0 : 1);
+  return value.toFixed(2);
+};
+
+const buildStepChange = (series: SeriesPoint[]): number | null => {
+  if (series.length < 2) return null;
+  const latest = series[series.length - 1];
+  const prior = [...series].reverse().find((p) => p.step < latest.step);
+  if (!prior || !Number.isFinite(prior.value) || prior.value === 0) return null;
+  return ((latest.value - prior.value) / Math.abs(prior.value)) * 100;
+};
+
+const balanceForProduct = (state: BankState, product: ProductType): number =>
+  state.balanceSheet.items.find((i) => i.productType === product)?.balance ?? 0;
+
+const seriesFromHistory = (history: BankState[], selector: (state: BankState) => number): SeriesPoint[] =>
+  history.map((s) => ({ step: s.time.step, value: selector(s) }));
+
+const sumSide = (state: BankState, side: BalanceSheetSide): number =>
+  state.balanceSheet.items.filter((i) => i.side === side).reduce((sum, item) => sum + item.balance, 0);
+
+const buildBalanceRow = (item: BalanceSheetItem, history: BankState[]): StatementRow => {
+  const series = seriesFromHistory(history, (s) => balanceForProduct(s, item.productType));
+  return {
+    id: item.productType,
+    label: item.label,
+    value: item.balance,
+    changePct: buildStepChange(series),
+    series,
+    rate: item.interestRate,
+  };
+};
+
+const buildAssetRows = (state: BankState, history: BankState[]): StatementRow[] => {
+  const assets = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const rows = assets.map((item) => buildBalanceRow(item, history));
+  const totalSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Asset));
+  rows.push({
+    id: 'total-assets',
+    label: 'Total assets',
+    value: sumSide(state, BalanceSheetSide.Asset),
+    changePct: buildStepChange(totalSeries),
+    series: totalSeries,
+  });
+  return rows;
+};
+
+const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRow[] => {
+  const liabilities = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
+  const rows = liabilities.map((item) => buildBalanceRow(item, history));
+
+  const cet1Series = seriesFromHistory(history, (s) => s.capital.cet1);
+  const at1Series = seriesFromHistory(history, (s) => s.capital.at1);
+  const equitySeries = seriesFromHistory(history, (s) => s.capital.cet1 + s.capital.at1);
+  const liabilitiesSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Liability));
+  const balanceSheetSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Liability) + s.capital.cet1 + s.capital.at1);
+
+  rows.push(
+    {
+      id: 'capital-cet1',
+      label: 'CET1 capital',
+      value: state.capital.cet1,
+      changePct: buildStepChange(cet1Series),
+      series: cet1Series,
+    },
+    {
+      id: 'capital-at1',
+      label: 'AT1 capital',
+      value: state.capital.at1,
+      changePct: buildStepChange(at1Series),
+      series: at1Series,
+    },
+    {
+      id: 'capital-total',
+      label: 'Total equity',
+      value: state.capital.cet1 + state.capital.at1,
+      changePct: buildStepChange(equitySeries),
+      series: equitySeries,
+    },
+    {
+      id: 'total-liabilities',
+      label: 'Total liabilities',
+      value: sumSide(state, BalanceSheetSide.Liability),
+      changePct: buildStepChange(liabilitiesSeries),
+      series: liabilitiesSeries,
+    },
+    {
+      id: 'liabilities-equity',
+      label: 'Liabilities + equity',
+      value: sumSide(state, BalanceSheetSide.Liability) + state.capital.cet1 + state.capital.at1,
+      changePct: buildStepChange(balanceSheetSeries),
+      series: balanceSheetSeries,
+    }
+  );
+
+  return rows;
+};
+
+const buildIncomeRows = (state: BankState, history: BankState[]): StatementRow[] => {
+  const fields: Array<{ id: string; label: string; selector: (s: BankState) => number }> = [
+    { id: 'interestIncome', label: 'Interest income', selector: (s) => s.incomeStatement.interestIncome },
+    { id: 'interestExpense', label: 'Interest expense', selector: (s) => s.incomeStatement.interestExpense },
+    { id: 'netInterestIncome', label: 'Net interest income', selector: (s) => s.incomeStatement.netInterestIncome },
+    { id: 'feeIncome', label: 'Fee income', selector: (s) => s.incomeStatement.feeIncome },
+    { id: 'creditLosses', label: 'Credit losses', selector: (s) => s.incomeStatement.creditLosses },
+    { id: 'operatingExpenses', label: 'Operating expenses', selector: (s) => s.incomeStatement.operatingExpenses },
+    { id: 'preTaxProfit', label: 'Pre-tax profit', selector: (s) => s.incomeStatement.preTaxProfit },
+    { id: 'tax', label: 'Tax', selector: (s) => s.incomeStatement.tax },
+    { id: 'netIncome', label: 'Net income', selector: (s) => s.incomeStatement.netIncome },
+  ];
+
+  return fields.map((field) => {
+    const series = seriesFromHistory(history, field.selector);
+    return {
+      id: field.id,
+      label: field.label,
+      value: field.selector(state),
+      changePct: buildStepChange(series),
+      series,
+    };
+  });
+};
+
+const buildCashRows = (state: BankState, history: BankState[]): StatementRow[] => {
+  const fields: Array<{ id: string; label: string; selector: (s: BankState) => number }> = [
+    { id: 'cashStart', label: 'Cash at start', selector: (s) => s.cashFlowStatement.cashStart },
+    { id: 'operatingCashFlow', label: 'Operating cash flow', selector: (s) => s.cashFlowStatement.operatingCashFlow },
+    { id: 'investingCashFlow', label: 'Investing cash flow', selector: (s) => s.cashFlowStatement.investingCashFlow },
+    { id: 'financingCashFlow', label: 'Financing cash flow', selector: (s) => s.cashFlowStatement.financingCashFlow },
+    { id: 'netChange', label: 'Net change in cash', selector: (s) => s.cashFlowStatement.netChange },
+    { id: 'cashEnd', label: 'Cash at end', selector: (s) => s.cashFlowStatement.cashEnd },
+  ];
+
+  return fields.map((field) => {
+    const series = seriesFromHistory(history, field.selector);
+    return {
+      id: field.id,
+      label: field.label,
+      value: field.selector(state),
+      changePct: buildStepChange(series),
+      series,
+    };
+  });
+};
+
+const TimeSeriesChart = ({
+  data,
+  xLabel = 'Simulation step',
+  yLabel = 'Amount',
+  xTickInterval = 12,
+}: {
+  data: SeriesPoint[];
+  xLabel?: string;
+  yLabel?: string;
+  xTickInterval?: number;
+}) => {
+  if (!data.length) {
+    return (
+      <div className="series-chart empty">
+        <div className="muted">No history yet — run the simulation to build a trend.</div>
+      </div>
+    );
+  }
+
+  const values = data.map((d) => d.value);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const yTicks = buildValueTicks(min, max, 5);
+  const scaleMin = yTicks.length ? Math.min(min, ...yTicks) : min;
+  const scaleMax = yTicks.length ? Math.max(max, ...yTicks) : max;
+  const rawRange = scaleMax - scaleMin;
+  const range = rawRange === 0 ? Math.max(Math.abs(scaleMax), 1) : rawRange;
+  const zeroWithinRange = scaleMin < 0 && scaleMax > 0;
+  const zeroY = 100 - ((0 - scaleMin) / range) * 100;
+
+  const steps = data.map((d) => d.step);
+  const minStep = Math.min(...steps);
+  const maxStep = Math.max(...steps);
+  const stepRange = Math.max(1, maxStep - minStep);
+
+  const points = data.map((point) => {
+    const x = ((point.step - minStep) / stepRange) * 100;
+    const y = 100 - ((point.value - scaleMin) / range) * 100;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  });
+  const areaPoints = `${points.join(' ')} 100,100 0,100`;
+
+  const ticks: number[] = [];
+  const interval = Math.max(1, xTickInterval);
+  ticks.push(minStep);
+  for (let s = Math.ceil(minStep / interval) * interval; s < maxStep; s += interval) {
+    if (s > minStep && s < maxStep) ticks.push(s);
+  }
+  if (maxStep !== minStep) ticks.push(maxStep);
+
+  return (
+    <div className="series-chart">
+      <div className="series-plot">
+        <div className="axis-label y-axis-label">{yLabel}</div>
+        <div className="axis-ticks y-axis-ticks">
+          {yTicks.map((tick) => {
+            const bottom = ((tick - scaleMin) / range) * 100;
+            return (
+              <span key={tick} style={{ bottom: `${bottom}%` }}>
+                {formatAxisValue(tick, yLabel)}
+              </span>
+            );
+          })}
+        </div>
+        <div className="plot-body">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Time series">
+            <defs>
+              <linearGradient id="series-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
+                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {zeroWithinRange && <line x1="0" y1={zeroY} x2="100" y2={zeroY} className="series-zero" />}
+            <polygon className="series-area" points={areaPoints} fill="url(#series-fill)" />
+            <polyline className="series-line" points={points.join(' ')} fill="none" stroke="var(--accent)" strokeWidth="2" />
+          </svg>
+          <div className="axis-ticks x-axis-ticks">
+            {ticks.map((tick) => {
+              const left = ((tick - minStep) / stepRange) * 100;
+              return (
+                <span key={tick} style={{ left: `${left}%` }}>
+                  {tick}
+                </span>
+              );
+            })}
+          </div>
+          <div className="axis-label x-axis-label">{xLabel}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatementSection = ({
+  title,
+  subtitle,
+  rows,
+  selectedId,
+  onSelect,
+  isOpen,
+  onToggle,
+  yLabelForRow,
+}: {
+  title: string;
+  subtitle: string;
+  rows: StatementRow[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  yLabelForRow?: (row: StatementRow | undefined) => string;
+}) => {
+  const hasRateColumn = rows.some((r) => r.rate !== undefined);
+  const activeRow = rows.find((r) => r.id === selectedId) ?? rows[0];
+  const changeClass = (value: number | null) =>
+    value === null ? 'muted' : value > 0 ? 'positive' : value < 0 ? 'negative' : 'muted';
+  const yLabel = yLabelForRow ? yLabelForRow(activeRow) : 'Amount';
+
+  return (
+    <div className="card statement-card">
+      <div className="statement-header">
+        <div>
+          <div className="eyebrow">{subtitle}</div>
+          <h3>{title}</h3>
+        </div>
+        <div className="statement-header-actions">
+          <button className="button ghost small" type="button" onClick={onToggle}>
+            {isOpen ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="statement-body">
+          <div className="statement-table">
+            <table className="data-table clickable">
+              <thead>
+                <tr>
+                  <th>Line item</th>
+                  <th className="numeric">Amount</th>
+                  <th className="numeric">MoM</th>
+                  {hasRateColumn && <th className="numeric">Rate</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={row.id === activeRow?.id ? 'active' : ''}
+                    onClick={() => onSelect(row.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td>{row.label}</td>
+                    <td className="numeric">{formatCurrency(row.value)}</td>
+                    <td className={`numeric ${changeClass(row.changePct)}`}>{formatChange(row.changePct)}</td>
+                    {hasRateColumn && <td className="numeric muted">{formatRate(row.rate)}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="statement-chart">
+            {activeRow ? (
+              <>
+                <div className="chart-meta">
+                  <div>
+                    <div className="eyebrow">Time series</div>
+                    <div className="chart-title">{activeRow.label}</div>
+                  </div>
+                  <div className="chart-pills">
+                    <span className="pill">Now {formatCurrency(activeRow.value)}</span>
+                    <span className={`pill ${changeClass(activeRow.changePct)}`}>MoM {formatChange(activeRow.changePct)}</span>
+                  </div>
+                </div>
+                <TimeSeriesChart data={activeRow.series} yLabel={yLabel} xTickInterval={12} />
+              </>
+            ) : (
+              <div className="muted">Select a line item to plot.</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ensureSelection = (
+  rows: StatementRow[],
+  selectedId: string | undefined,
+  setSelected: (id: string) => void
+) => {
+  if (!rows.length) return;
+  const exists = rows.some((r) => r.id === selectedId);
+  if (!selectedId || !exists) {
+    setSelected(rows[0].id);
+  }
+};
+
+const AccountsPanel = ({ state, history }: Props) => {
+  const assetRows = useMemo(() => buildAssetRows(state, history), [state, history]);
+  const liabilityRows = useMemo(() => buildLiabilityRows(state, history), [state, history]);
+  const incomeRows = useMemo(() => buildIncomeRows(state, history), [state, history]);
+  const cashRows = useMemo(() => buildCashRows(state, history), [state, history]);
+
+  const [selected, setSelected] = useState<Partial<Record<StatementKey, string>>>({});
+  const [open, setOpen] = useState<Record<StatementKey, boolean>>({
+    assets: true,
+    liabilities: true,
+    income: true,
+    cashflow: true,
+  });
+
+  useEffect(() => {
+    ensureSelection(assetRows, selected.assets, (id) => setSelected((prev) => ({ ...prev, assets: id })));
+  }, [assetRows, selected.assets]);
+
+  useEffect(() => {
+    ensureSelection(liabilityRows, selected.liabilities, (id) =>
+      setSelected((prev) => ({ ...prev, liabilities: id }))
+    );
+  }, [liabilityRows, selected.liabilities]);
+
+  useEffect(() => {
+    ensureSelection(incomeRows, selected.income, (id) => setSelected((prev) => ({ ...prev, income: id })));
+  }, [incomeRows, selected.income]);
+
+  useEffect(() => {
+    ensureSelection(cashRows, selected.cashflow, (id) => setSelected((prev) => ({ ...prev, cashflow: id })));
+  }, [cashRows, selected.cashflow]);
+
+  return (
+    <div className="stack">
+      <StatementSection
+        title="Assets"
+        subtitle="Balance sheet — assets"
+        rows={assetRows}
+        selectedId={selected.assets}
+        onSelect={(id) => setSelected((prev) => ({ ...prev, assets: id }))}
+        isOpen={open.assets}
+        onToggle={() => setOpen((prev) => ({ ...prev, assets: !prev.assets }))}
+        yLabelForRow={() => '£ (bn)'}
+      />
+      <StatementSection
+        title="Liabilities & equity"
+        subtitle="Balance sheet — funding"
+        rows={liabilityRows}
+        selectedId={selected.liabilities}
+        onSelect={(id) => setSelected((prev) => ({ ...prev, liabilities: id }))}
+        isOpen={open.liabilities}
+        onToggle={() => setOpen((prev) => ({ ...prev, liabilities: !prev.liabilities }))}
+        yLabelForRow={() => '£ (bn)'}
+      />
+      <StatementSection
+        title="Income statement"
+        subtitle="P&L (monthly run rate)"
+        rows={incomeRows}
+        selectedId={selected.income}
+        onSelect={(id) => setSelected((prev) => ({ ...prev, income: id }))}
+        isOpen={open.income}
+        onToggle={() => setOpen((prev) => ({ ...prev, income: !prev.income }))}
+        yLabelForRow={() => '£ (bn)'}
+      />
+      <StatementSection
+        title="Cash flow statement"
+        subtitle="Cash movement (monthly)"
+        rows={cashRows}
+        selectedId={selected.cashflow}
+        onSelect={(id) => setSelected((prev) => ({ ...prev, cashflow: id }))}
+        isOpen={open.cashflow}
+        onToggle={() => setOpen((prev) => ({ ...prev, cashflow: !prev.cashflow }))}
+        yLabelForRow={() => '£ (bn)'}
+      />
+    </div>
+  );
+};
+
+export default AccountsPanel;
