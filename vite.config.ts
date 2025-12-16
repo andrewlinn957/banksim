@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/banksim/' : '/',
   plugins: [react()],
   test: {
     globals: true,
@@ -9,4 +10,4 @@ export default defineConfig({
     setupFiles: [],
     includeSource: ['src/engine/simulationTestSuite.ts'],
   },
-});
+}));
