@@ -411,11 +411,24 @@ const normaliseWeights = (weights: number[]): number[] => {
   return weights.map((w) => w / sum);
 };
 
-const baselineSeasoningCurve = (productType: ProductType, ageMonths: number): number => {
-  // Smooth "hump" curve: (k+1) * exp(-k/decay)
-  const k = Math.max(0, ageMonths);
-  const decay = productType === AssetProductType.Mortgages ? 140 : 36;
-  return (k + 1) * Math.exp(-k / decay);
+const outstandingFactorAtAgeMonths = (annualInterestRate: number, termMonths: number, ageMonths: number): number => {
+  const n = Math.max(1, Math.floor(termMonths));
+  const k = clamp(Math.floor(ageMonths), 0, n);
+  if (k >= n) return 0;
+
+  const annualRate = Math.max(0, annualInterestRate);
+  const r = annualRate / MONTHS_IN_YEAR;
+  if (Math.abs(r) < 1e-12) {
+    return clamp((n - k) / n, 0, 1);
+  }
+
+  const powN = Math.pow(1 + r, n);
+  const powK = Math.pow(1 + r, k);
+  const denom = powN - 1;
+  if (!Number.isFinite(powN) || !Number.isFinite(powK) || !Number.isFinite(denom) || Math.abs(denom) < 1e-12) {
+    return clamp((n - k) / n, 0, 1);
+  }
+  return clamp((powN - powK) / denom, 0, 1);
 };
 
 const sampleTermMonths = (args: {
@@ -478,14 +491,16 @@ export const generateSeasonedLoanCohorts = (args: {
   }
 
   const maxTermMonths = getMaxTermMonths(args.config, args.productType);
-  const buckets = maxTermMonths;
-  if (buckets <= 1) throw new Error('maxTermMonths too small for seasoning');
+  const defaultTermMonths = clamp(getDefaultTermMonths(args.config, args.productType), 1, maxTermMonths);
+  const buckets = defaultTermMonths;
+  if (buckets <= 1) throw new Error('defaultTermMonths too small for seasoning');
 
   const rng = createSeededRng(args.seed);
-  const noiseSd = 0.35;
+  const noiseSd = 0.12;
+  const baseCoupon = clamp(args.baseAnnualInterestRate, 0.0001, 0.25);
 
   let weights = Array.from({ length: buckets }, (_, k) => {
-    const base = baselineSeasoningCurve(args.productType, k);
+    const base = outstandingFactorAtAgeMonths(baseCoupon, buckets, k);
     const noise = Math.exp(rng.normal() * noiseSd);
     return Math.max(0, base * noise);
   });
@@ -532,9 +547,7 @@ export const generateSeasonedLoanCohorts = (args: {
 
   renormWeights.forEach((w, ageMonths) => {
     const outstanding = args.targetOutstanding * w;
-
-    const termMonths = sampleTermMonths({ productType: args.productType, ageMonths, maxTermMonths, rng });
-    if (ageMonths >= termMonths) return;
+    const termMonths = buckets;
 
     const coupon = clamp(args.baseAnnualInterestRate + rng.normal() * couponSd, 0.0001, 0.25);
     const pdMult = clamp(pdRange.min + (pdRange.max - pdRange.min) * rng.uniform(), 0, 10);

@@ -27,7 +27,7 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     riskWeight: 0.35,
     baseDefaultRate: 0.004,
     lossGivenDefault: 0.25,
-    volumeElasticityToRate: -4.0,
+    volumeElasticityToRate: -0.4,
     loan: {
       defaultTermMonths: 360,
       maxTermMonths: 420,
@@ -43,7 +43,7 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     riskWeight: 1.0,
     baseDefaultRate: 0.015,
     lossGivenDefault: 0.45,
-    volumeElasticityToRate: -3.0,
+    volumeElasticityToRate: -0.3,
     loan: {
       defaultTermMonths: 60,
       maxTermMonths: 420,
@@ -66,14 +66,14 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
-    volumeElasticityToRate: 5.0,
+    volumeElasticityToRate: 0.5,
   },
   [LiabilityProductType.CorporateDeposits]: {
     productType: LiabilityProductType.CorporateDeposits,
     riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
-    volumeElasticityToRate: 8.0,
+    volumeElasticityToRate: 0.8,
   },
   [LiabilityProductType.WholesaleFundingST]: {
     productType: LiabilityProductType.WholesaleFundingST,
