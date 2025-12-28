@@ -78,19 +78,26 @@ export interface MetricsInput {
 }
 
 export const calculateRiskMetrics = ({ state, config, lcrOutflowMultiplier = 1 }: MetricsInput): RiskMetrics => {
-  const assets = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
   const rwa = assets.reduce((sum, a) => {
     const params = config.productParameters[a.productType];
     return sum + a.balance * (params?.riskWeight ?? 0);
   }, 0);
   const leverageExposure = totalAssets;
-  const cet1Ratio = rwa > 0 ? state.capital.cet1 / rwa : Infinity;
-  const leverageRatio = leverageExposure > 0 ? (state.capital.cet1 + state.capital.at1) / leverageExposure : Infinity;
+  const cet1Ratio = rwa > 0 ? state.financial.capital.cet1 / rwa : Infinity;
+  const leverageRatio =
+    leverageExposure > 0
+      ? (state.financial.capital.cet1 + state.financial.capital.at1) / leverageExposure
+      : Infinity;
 
   const hqla = computeHqla(assets);
-  const { lcr } = computeLcr(state.balanceSheet.items, hqla, lcrOutflowMultiplier);
-  const { asf, rsf, nsfr } = computeNsfr(state.balanceSheet.items, state.capital.cet1, state.capital.at1);
+  const { lcr } = computeLcr(state.financial.balanceSheet.items, hqla, lcrOutflowMultiplier);
+  const { asf, rsf, nsfr } = computeNsfr(
+    state.financial.balanceSheet.items,
+    state.financial.capital.cet1,
+    state.financial.capital.at1
+  );
 
   return {
     rwa,

@@ -1,4 +1,4 @@
-import { BankState, BehaviouralState } from '../domain/bankState';
+import { BankState, BehaviouralState, LoanCohortsMap } from '../domain/bankState';
 import { BalanceSheet } from '../domain/balanceSheet';
 import { CashFlowStatement } from '../domain/cashflow';
 import { MarketState } from '../domain/market';
@@ -38,7 +38,7 @@ const cloneMarket = (m: MarketState): MarketState => ({
   },
 });
 
-const cloneLoanCohorts = (raw: BankState['loanCohorts']): BankState['loanCohorts'] => {
+const cloneLoanCohorts = (raw: LoanCohortsMap): LoanCohortsMap => {
   const out: Partial<Record<ProductType, LoanCohort[]>> = {};
   const entries = Object.entries(raw ?? {}) as Array<[ProductType, LoanCohort[]]>;
   entries.forEach(([productType, cohorts]) => {
@@ -59,13 +59,18 @@ export const cloneBankState = (state: BankState): BankState => ({
     ...state.time,
     date: cloneDate(state.time.date),
   },
-  balanceSheet: cloneBalanceSheet(state.balanceSheet),
-  capital: { ...state.capital },
-  incomeStatement: cloneIncomeStatement(state.incomeStatement),
-  cashFlowStatement: cloneCashFlowStatement(state.cashFlowStatement),
-  riskMetrics: cloneRiskMetrics(state.riskMetrics),
-  compliance: cloneCompliance(state.compliance),
+  financial: {
+    balanceSheet: cloneBalanceSheet(state.financial.balanceSheet),
+    capital: { ...state.financial.capital },
+    incomeStatement: cloneIncomeStatement(state.financial.incomeStatement),
+    cashFlowStatement: cloneCashFlowStatement(state.financial.cashFlowStatement),
+  },
+  risk: {
+    riskMetrics: cloneRiskMetrics(state.risk.riskMetrics),
+    compliance: cloneCompliance(state.risk.compliance),
+  },
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),
   loanCohorts: cloneLoanCohorts(state.loanCohorts),
+  status: { ...state.status },
 });

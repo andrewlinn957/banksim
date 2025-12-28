@@ -20,8 +20,8 @@ describe('Loan cohort engine', () => {
     expect(Math.abs(mortSum - 250e9)).toBeLessThan(1e6);
     expect(Math.abs(corpSum - 160e9)).toBeLessThan(1e6);
 
-    const mortItem = initialState.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
-    const corpItem = initialState.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans);
+    const mortItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const corpItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans);
     expect(mortItem).toBeTruthy();
     expect(corpItem).toBeTruthy();
     expect(Math.abs((mortItem?.balance ?? 0) - mortSum)).toBeLessThan(1e-3);
@@ -39,7 +39,7 @@ describe('Loan cohort engine', () => {
 
   it('seasoning generation is deterministic for a fixed seed', () => {
     const seed = baseConfig.global.initialPortfolioSeed ?? initialState.market.macroModel.rngSeed;
-    const mort = initialState.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const mort = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
     if (!mort) throw new Error('Missing mortgage line item');
 
     const params = baseConfig.productParameters[AssetProductType.Mortgages];
@@ -70,13 +70,13 @@ describe('Loan cohort engine', () => {
 
   it('amortises a cohort by one month with correct cashflow and interest split', () => {
     const state = cloneBankState(initialState);
-    state.balanceSheet.items.forEach((i) => {
+    state.financial.balanceSheet.items.forEach((i) => {
       i.balance = 0;
       i.interestRate = 0;
     });
 
-    const cash = state.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
-    const mortgages = state.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const cash = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
+    const mortgages = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
     if (!cash || !mortgages) throw new Error('Missing required line items for amortisation test');
     cash.balance = 0;
 
@@ -124,13 +124,13 @@ describe('Loan cohort engine', () => {
 
   it('removes cohorts at maturity', () => {
     const state = cloneBankState(initialState);
-    state.balanceSheet.items.forEach((i) => {
+    state.financial.balanceSheet.items.forEach((i) => {
       i.balance = 0;
       i.interestRate = 0;
     });
 
-    const cash = state.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
-    const mortgages = state.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const cash = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
+    const mortgages = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
     if (!cash || !mortgages) throw new Error('Missing required line items for maturity test');
     cash.balance = 0;
 
@@ -176,13 +176,13 @@ describe('Loan cohort engine', () => {
     };
 
     const state = cloneBankState(initialState);
-    state.balanceSheet.items.forEach((i) => {
+    state.financial.balanceSheet.items.forEach((i) => {
       i.balance = 0;
       i.interestRate = 0;
     });
 
-    const cash = state.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
-    const mortgages = state.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const cash = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
+    const mortgages = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
     if (!cash || !mortgages) throw new Error('Missing required line items for cash/P&L test');
     cash.balance = 0;
 
@@ -222,7 +222,7 @@ describe('Loan cohort engine', () => {
     const cashBeforeClose = cash.balance;
     const capitalClose = closeCapital(state, config, 1, dtYears, accruals, losses, cohortRes.loanInterestIncome, []);
 
-    expect(state.incomeStatement.interestIncome).toBeCloseTo(cohortRes.loanInterestIncome, 12);
+    expect(state.financial.incomeStatement.interestIncome).toBeCloseTo(cohortRes.loanInterestIncome, 12);
     expect(capitalClose.operatingCashDeltaApplied).toBeCloseTo(
       capitalClose.operatingCashDelta - capitalClose.loanInterestIncome,
       12
@@ -236,4 +236,3 @@ describe('Loan cohort engine', () => {
     expect(cashAfterClose - cashAfterLoanCashflows).toBeCloseTo(feeIncome, 12);
   });
 });
-

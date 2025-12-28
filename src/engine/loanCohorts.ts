@@ -1,3 +1,19 @@
+/**
+ * Loan cohort "engine" logic.
+ *
+ * This module contains the runtime functions that manage loan cohorts inside a
+ * `BankState` during the simulation:
+ * - originating new loans (funded from cash)
+ * - stepping cohorts forward in time (payments, interest, defaults, write-downs)
+ * - generating an initial "seasoned" portfolio (already part-way through term)
+ *
+ * TypeScript note: many functions take a single `args: { ... }` object parameter.
+ * This makes call sites clearer (named fields) and supports optional fields like
+ * `termMonths?: number`.
+ *
+ * Side effects: many functions mutate the passed-in `BankState` (loan cohort
+ * arrays, cash balance, and balance-sheet item balances). No file/network I/O.
+ */
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
@@ -5,45 +21,138 @@ import { AssetProductType, ProductType } from '../domain/enums';
 import { LoanCohort } from '../domain/loanCohorts';
 import { PRODUCT_META } from '../domain/productMeta';
 
+// Used to convert annual rates/PDs into monthly equivalents.
 const MONTHS_IN_YEAR = 12;
+// Safety cap: prevents unrealistic/buggy terms from creating extreme math.
 const MAX_TERM_MONTHS_CAP = 420;
 
+/**
+ * Clamp a number into the inclusive range `[min, max]`.
+ *
+ * Parameters:
+ * - `value: number` - the input number we want to limit.
+ * - `min: number` - lowest allowed value.
+ * - `max: number` - highest allowed value.
+ *
+ * Returns: `number` within the range.
+ * Side effects: none.
+ * Thrown errors: none.
+ */
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
+/**
+ * Find a balance-sheet line item for a given `productType`.
+ *
+ * Parameters:
+ * - `state: BankState`
+ * - `productType: ProductType`
+ *
+ * Returns: `BalanceSheetItem | undefined` (a union type) because `.find(...)`
+ * might not find anything.
+ * Side effects: none.
+ * Thrown errors: none.
+ */
 const findItem = (state: BankState, productType: ProductType): BalanceSheetItem | undefined =>
-  state.balanceSheet.items.find((i) => i.productType === productType);
+  state.financial.balanceSheet.items.find((i) => i.productType === productType);
 
+/**
+ * Convenience helper to get the cash reserves line item.
+ *
+ * Parameters:
+ * - `state: BankState`
+ *
+ * Returns: `BalanceSheetItem | undefined` (cash might be missing in malformed states).
+ * Side effects: none.
+ * Thrown errors: none.
+ */
 const getCashItem = (state: BankState): BalanceSheetItem | undefined =>
-  state.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
+  state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
 
+/**
+ * Check whether a `ProductType` is treated as a loan in our product metadata.
+ *
+ * Parameters:
+ * - `productType: ProductType`
+ *
+ * Returns: `boolean`.
+ * Side effects: none.
+ * Thrown errors: none.
+ *
+ * TypeScript note: optional chaining (`?.`) prevents a crash if any intermediate
+ * value is `undefined` (e.g. missing metadata for a product type).
+ */
 const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCT_META[productType]?.behaviour?.isLoan);
 
+/**
+ * Result returned by `stepLoanCohorts(...)` for one simulation step.
+ *
+ * Parameters: none (this is a data shape).
+ * Return type: none.
+ * Side effects: none.
+ * Thrown errors: none.
+ *
+ * TypeScript note: `Partial<Record<ProductType, number>>` means:
+ * - `Record<K, V>`: "a map from keys K to values V"
+ * - `Partial<T>`: "all properties are optional"
+ *
+ * So `recognizedLoanLosses` can contain only the product types that actually had
+ * losses this step (missing keys are treated as 0).
+ */
 export interface LoanCohortStepResult {
   loanInterestIncome: number;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
 }
 
+/**
+ * A tiny seeded random number generator (RNG) interface.
+ *
+ * Parameters: none (data + functions).
+ * Return type: none.
+ * Side effects: calling `uniform()` / `normal()` advances internal RNG state.
+ * Thrown errors: none.
+ */
 export interface SeededRng {
   seed: number;
   uniform: () => number;
   normal: () => number;
 }
 
+/**
+ * Create a deterministic (seeded) RNG used for repeatable simulations.
+ *
+ * Parameters:
+ * - `seed: number` - initial seed value. Any number is accepted; internally we
+ *   coerce it into a 32-bit integer for the RNG algorithm.
+ *
+ * Returns: `SeededRng` (an object with `uniform()` and `normal()` methods).
+ * Side effects: the returned object stores mutable internal RNG state in a closure.
+ * Thrown errors: none.
+ *
+ * Optional TODO: This RNG is for simulation/replay, not security (do not use it
+ * for cryptography).
+ */
 export const createSeededRng = (seed: number): SeededRng => {
+  // `| 0` is a common JavaScript trick to coerce a number into a signed 32-bit int.
   let s = seed | 0;
+  // Xorshift needs a non-zero state; pick a default constant if we were given 0.
   if (s === 0) s = 0x6d2b79f5;
 
   const nextUint32 = (): number => {
+    // Xorshift32: cheap PRNG using bitwise XOR + shifts on a 32-bit state.
     s ^= s << 13;
     s ^= s >>> 17;
     s ^= s << 5;
+    // `>>> 0` converts the signed 32-bit int into an unsigned 32-bit int in JS.
     return s >>> 0;
   };
 
+  // Uniform random in [0, 1) by dividing by 2^32.
   const uniform = (): number => nextUint32() / 0x1_0000_0000;
 
   const normal = (): number => {
+    // Box–Muller transform: turn two uniforms into one standard normal (mean 0, sd 1).
     let u1 = 0;
+    // Avoid `log(0)` which would be `-Infinity`.
     while (u1 <= 0) u1 = uniform();
     const u2 = uniform();
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
@@ -51,9 +160,11 @@ export const createSeededRng = (seed: number): SeededRng => {
 
   return {
     get seed() {
+      // Expose the internal state as an unsigned 32-bit number.
       return s >>> 0;
     },
     set seed(v: number) {
+      // Keep the same invariants if the caller replaces the seed.
       s = v | 0;
       if (s === 0) s = 0x6d2b79f5;
     },
@@ -62,29 +173,55 @@ export const createSeededRng = (seed: number): SeededRng => {
   };
 };
 
+/**
+ * Infer the original principal (starting balance) from a current outstanding balance.
+ *
+ * We assume a standard fixed-rate, fully-amortising loan where the borrower pays
+ * the same amount each month. Given the loan's age, term, and rate, we can
+ * "reverse" the amortisation math to estimate what the original balance was.
+ *
+ * Parameters:
+ * - `outstandingPrincipal: number` - current unpaid balance (>= 0).
+ * - `annualInterestRate: number` - annual rate as a decimal (e.g. 0.06 means 6%).
+ * - `termMonths: number` - total term in months (positive integer).
+ * - `ageMonths: number` - months since origination (integer in [0, termMonths)).
+ *
+ * Returns: `number` (estimated original principal).
+ * Side effects: none.
+ * Thrown errors: if inputs are invalid (non-finite, inconsistent) or if the
+ * amortisation factors become numerically invalid.
+ *
+ * Optional TODO: The function allows negative `annualInterestRate` values. Most
+ * other code paths clamp rates to >= 0; confirm whether negative rates are intended.
+ */
 export const inferOriginalPrincipalFromOutstanding = (
   outstandingPrincipal: number,
   annualInterestRate: number,
   termMonths: number,
   ageMonths: number
 ): number => {
+  // If there's nothing outstanding, the inferred original is also 0.
   if (outstandingPrincipal <= 0) return 0;
+  // Validate inputs early so later math isn't working with NaN/Infinity.
   if (!Number.isFinite(outstandingPrincipal)) throw new Error('Outstanding principal must be finite');
   if (!Number.isFinite(annualInterestRate)) throw new Error('Interest rate must be finite');
   if (!Number.isFinite(termMonths) || termMonths <= 0) throw new Error('termMonths must be a positive integer');
   if (!Number.isFinite(ageMonths) || ageMonths < 0) throw new Error('ageMonths must be a non-negative integer');
   if (ageMonths >= termMonths) throw new Error(`Cannot infer original principal when ageMonths (${ageMonths}) >= termMonths (${termMonths})`);
 
+  // Convert annual to monthly rate. (E.g. 12% annual -> 1% per month, roughly.)
   const r = annualInterestRate / MONTHS_IN_YEAR;
   const n = termMonths;
   const k = ageMonths;
 
   if (Math.abs(r) < 1e-12) {
+    // Near-zero interest: use the simple linear relationship for equal principal repayment.
     const remaining = n - k;
     if (remaining <= 0) throw new Error(`Invalid remaining months (${remaining})`);
     return (outstandingPrincipal * n) / remaining;
   }
 
+  // With interest, use amortisation factors. `powN` and `powK` are (1+r)^n and (1+r)^k.
   const powN = Math.pow(1 + r, n);
   const powK = Math.pow(1 + r, k);
   const denom = powN - powK;
@@ -92,9 +229,21 @@ export const inferOriginalPrincipalFromOutstanding = (
     throw new Error('Failed to infer original principal (invalid amortisation factors)');
   }
 
+  // Derivation comes from the closed-form outstanding balance of an amortising loan.
   return outstandingPrincipal * ((powN - 1) / denom);
 };
 
+/**
+ * Get (or lazily create) the loan cohort array for a specific product type.
+ *
+ * Parameters:
+ * - `state: BankState` - the bank state we mutate/store cohorts in.
+ * - `productType: ProductType` - which product's cohort list to return.
+ *
+ * Returns: `LoanCohort[]` (a mutable array stored inside `state`).
+ * Side effects: may create/mutate `state.loanCohorts` and `state.loanCohorts[productType]`.
+ * Thrown errors: none.
+ */
 const getLoanCohortsArray = (state: BankState, productType: ProductType): LoanCohort[] => {
   if (!state.loanCohorts) {
     state.loanCohorts = {};
@@ -106,10 +255,43 @@ const getLoanCohortsArray = (state: BankState, productType: ProductType): LoanCo
   return created;
 };
 
+/**
+ * Sum outstanding principal across cohorts.
+ *
+ * Parameters:
+ * - `cohorts: readonly LoanCohort[] | undefined`
+ *   - `readonly ...[]` means callers can't reassign array elements or push/splice
+ *     through this reference (but the objects inside could still be mutable).
+ *   - `| undefined` is a union type allowing "no cohorts".
+ *
+ * Returns: `number`.
+ * Side effects: none.
+ * Thrown errors: none.
+ *
+ * TypeScript note: nullish coalescing (`??`) falls back only when the left side
+ * is `null`/`undefined` (unlike `||`, which also treats 0 as "falsey").
+ *
+ * Optional TODO: `LoanCohort.outstandingPrincipal` is not optional in the interface,
+ * but the code still uses `?? 0` when summing; confirm whether partial/legacy cohort
+ * objects can exist at runtime.
+ */
 export const sumLoanOutstanding = (cohorts: readonly LoanCohort[] | undefined): number =>
   (cohorts ?? []).reduce((sum, c) => sum + (c.outstandingPrincipal ?? 0), 0);
 
+/**
+ * Update balance-sheet loan item balances so they match the cohort totals.
+ *
+ * Parameters:
+ * - `state: BankState`
+ *
+ * Returns: `void`.
+ * Side effects: mutates `state.financial.balanceSheet.items[*].balance`.
+ * Thrown errors: none.
+ */
 export const syncLoanBalancesFromCohorts = (state: BankState): void => {
+  // `Object.entries(...)` is typed as `[string, unknown][]` in TS, so we assert
+  // the tuple type we expect at runtime.
+  // Optional TODO: Consider validating that the keys are valid `ProductType` values.
   const entries = Object.entries(state.loanCohorts ?? {}) as Array<[ProductType, LoanCohort[]]>;
   entries.forEach(([productType, cohorts]) => {
     if (!isLoanProduct(productType)) return;
@@ -119,8 +301,20 @@ export const syncLoanBalancesFromCohorts = (state: BankState): void => {
   });
 };
 
+/**
+ * Remove cohorts that are effectively finished.
+ *
+ * Parameters:
+ * - `cohorts: LoanCohort[]` - the mutable cohort array to clean.
+ *
+ * Returns: `void`.
+ * Side effects: mutates the input array in-place (removes elements).
+ * Thrown errors: none.
+ */
 const cleanCohorts = (cohorts: LoanCohort[]): void => {
+  // Small epsilon to avoid keeping "dust" balances caused by floating point math.
   const EPS = 1e-2;
+  // Iterate backwards so `splice(i, 1)` doesn't shift the remaining indices we still need to visit.
   for (let i = cohorts.length - 1; i >= 0; i--) {
     const c = cohorts[i];
     if (c.outstandingPrincipal <= EPS || c.ageMonths >= c.termMonths) {
@@ -129,6 +323,17 @@ const cleanCohorts = (cohorts: LoanCohort[]): void => {
   }
 };
 
+/**
+ * Validate a cohort's numeric fields and basic invariants.
+ *
+ * Parameters:
+ * - `cohort: LoanCohort` - the cohort to check.
+ * - `maxTermMonths: number` - product/config-specific maximum allowed term.
+ *
+ * Returns: `void`.
+ * Side effects: none (but it can throw).
+ * Thrown errors: throws `Error` with a descriptive message if a check fails.
+ */
 const validateCohort = (cohort: LoanCohort, maxTermMonths: number): void => {
   if (!Number.isFinite(cohort.outstandingPrincipal) || cohort.outstandingPrincipal < 0) {
     throw new Error(`Invalid outstandingPrincipal for cohort ${cohort.productType}/${cohort.cohortId}`);

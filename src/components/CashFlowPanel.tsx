@@ -1,10 +1,9 @@
 import { CashFlowStatement } from '../domain/cashflow';
+import { formatCurrency } from '../utils/formatters';
 
 interface Props {
   cashFlow: CashFlowStatement;
 }
-
-const formatCurrency = (v: number) => `£${(v / 1e9).toFixed(2)}bn`;
 
 const CashFlowPanel = ({ cashFlow }: Props) => {
   return (

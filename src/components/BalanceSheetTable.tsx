@@ -1,11 +1,11 @@
 import { BalanceSheetItem } from '../domain/balanceSheet';
+import { formatCurrency, formatPct } from '../utils/formatters';
 
 interface Props {
   items: BalanceSheetItem[];
 }
 
-const formatCurrency = (v: number) => `£${(v / 1e9).toFixed(2)}bn`;
-const formatRate = (v: number) => `${(v * 100).toFixed(2)}%`;
+const formatRate = (v: number) => formatPct(v, 2, '—');
 
 const BalanceSheetTable = ({ items }: Props) => {
   const assets = items.filter((i) => i.side === 'Asset');

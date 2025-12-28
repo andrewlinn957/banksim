@@ -5,7 +5,7 @@ import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { createSimulationEngine } from './simulation';
 
 const getBalance = (state: typeof initialState, productType: AssetProductType | LiabilityProductType): number => {
-  return state.balanceSheet.items.find((i) => i.productType === productType)?.balance ?? 0;
+  return state.financial.balanceSheet.items.find((i) => i.productType === productType)?.balance ?? 0;
 };
 
 const pctChange = (before: number, after: number): number => {

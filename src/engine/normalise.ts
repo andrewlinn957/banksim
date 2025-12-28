@@ -22,6 +22,39 @@ export const normaliseState = (raw: AnyBankState): BankState => {
     ...initialState,
     ...raw,
     version: raw.version ?? CURRENT_STATE_VERSION,
+    financial: {
+      ...initialState.financial,
+      ...(raw.financial ?? {}),
+      balanceSheet: raw.financial?.balanceSheet ?? initialState.financial.balanceSheet,
+      capital: {
+        ...initialState.financial.capital,
+        ...(raw.financial?.capital ?? {}),
+      },
+      incomeStatement: {
+        ...initialState.financial.incomeStatement,
+        ...(raw.financial?.incomeStatement ?? {}),
+      },
+      cashFlowStatement: {
+        ...initialState.financial.cashFlowStatement,
+        ...(raw.financial?.cashFlowStatement ?? {}),
+      },
+    },
+    risk: {
+      ...initialState.risk,
+      ...(raw.risk ?? {}),
+      riskMetrics: {
+        ...initialState.risk.riskMetrics,
+        ...(raw.risk?.riskMetrics ?? {}),
+      },
+      compliance: {
+        ...initialState.risk.compliance,
+        ...(raw.risk?.compliance ?? {}),
+      },
+    },
+    status: {
+      ...initialState.status,
+      ...(raw.status ?? {}),
+    },
     market: {
       ...initialState.market,
       ...(raw.market ?? {}),

@@ -1,10 +1,9 @@
 import { IncomeStatement } from '../domain/pnl';
+import { formatCurrency } from '../utils/formatters';
 
 interface Props {
   income: IncomeStatement;
 }
-
-const formatCurrency = (v: number) => `£${(v / 1e9).toFixed(2)}bn`;
 
 const CostsPanel = ({ income }: Props) => {
   return (

@@ -30,10 +30,36 @@ export interface GlobalSimulationParameters {
   initialPortfolioSeed?: number;
 }
 
+export interface BehaviourParameters {
+  depositBaselineGrowthMonthly: number;
+  loanBaselineGrowthMonthly: number;
+  minDepositGrowthPerStep: number;
+  minLoanGrowthPerStep: number;
+  loanFeeRateMonthly: number;
+}
+
+export interface IdiosyncraticRunParameters {
+  baseRunOffRate: number;
+  incrementalRate: number;
+  maxRunOffRate: number;
+}
+
+export interface ShockParameters {
+  idiosyncraticRun: IdiosyncraticRunParameters;
+}
+
+export interface ToleranceParameters {
+  cashFlowRoundingTolerance: number;
+  cashFlowBreachThreshold: number;
+}
+
 export interface SimulationConfig {
   version: string;
   productParameters: Record<ProductType, ProductRiskParameters>;
   liquidityTags: Record<ProductType, LiquidityTag>;
   global: GlobalSimulationParameters;
   riskLimits: RiskLimits;
+  behaviour: BehaviourParameters;
+  shockParameters: ShockParameters;
+  tolerances: ToleranceParameters;
 }

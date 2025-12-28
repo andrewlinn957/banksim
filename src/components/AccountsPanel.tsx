@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetSide, ProductType } from '../domain/enums';
 import { BalanceSheetItem } from '../domain/balanceSheet';
+import { formatCurrency, formatRate, formatChange, buildValueTicks, formatAxisValue } from '../utils/formatters';
+import { SeriesPoint, StatementRow } from '../types/statements';
 
 type StatementKey = 'assets' | 'liabilities' | 'income' | 'cashflow';
 
@@ -9,83 +11,6 @@ interface Props {
   state: BankState;
   history: BankState[];
 }
-
-interface SeriesPoint {
-  step: number;
-  value: number;
-}
-
-interface StatementRow {
-  id: string;
-  label: string;
-  value: number;
-  changePct: number | null;
-  series: SeriesPoint[];
-  rate?: number;
-}
-
-const formatCurrency = (value: number): string => `£${(value / 1e9).toFixed(2)}bn`;
-const formatRate = (value: number | undefined): string => (value === undefined ? '—' : `${(value * 100).toFixed(2)}%`);
-const formatChange = (value: number | null): string => {
-  if (value === null || !Number.isFinite(value)) return '—';
-  const fixed = Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1);
-  return `${value > 0 ? '+' : ''}${fixed}%`;
-};
-
-const buildValueTicks = (min: number, max: number, desired: number = 4): number[] => {
-  let localMin = min;
-  let localMax = max;
-
-  if (localMin === localMax) {
-    const pad = Math.max(Math.abs(localMin) * 0.25, 1);
-    localMin -= pad;
-    localMax += pad;
-  }
-
-  const span = localMax - localMin;
-  const rawStep = span / Math.max(desired, 1);
-  if (!Number.isFinite(rawStep) || rawStep === 0) return [localMin, localMax];
-
-  const magnitude = 10 ** Math.floor(Math.log10(Math.abs(rawStep)));
-  const normalized = rawStep / magnitude;
-  let niceNormalized = 1;
-  if (normalized > 5) niceNormalized = 10;
-  else if (normalized > 2) niceNormalized = 5;
-  else if (normalized > 1) niceNormalized = 2;
-
-  const step = niceNormalized * magnitude;
-  const start = Math.floor(localMin / step) * step;
-  const end = Math.ceil(localMax / step) * step;
-
-  const ticks: number[] = [];
-  for (let v = start; v <= end + step / 2; v += step) {
-    const rounded = Number(v.toFixed(10));
-    if (!ticks.includes(rounded)) {
-      ticks.push(rounded);
-    }
-  }
-
-  if (ticks.length < 2) {
-    ticks.push(Number((start + step).toFixed(10)));
-  }
-
-  return ticks;
-};
-
-const formatAxisValue = (value: number, yLabel?: string): string => {
-  const label = yLabel?.toLowerCase() ?? '';
-  if (label.includes('%')) {
-    const pct = value * 100;
-    return `${pct.toFixed(Math.abs(pct) >= 10 ? 0 : 1)}%`;
-  }
-
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return `£${(value / 1e9).toFixed(abs >= 1e10 ? 0 : 1)}bn`;
-  if (abs >= 1e6) return `£${(value / 1e6).toFixed(abs >= 1e8 ? 0 : 1)}m`;
-  if (abs >= 1e3) return `${(value / 1e3).toFixed(abs >= 1e4 ? 0 : 1)}k`;
-  if (abs >= 1) return value.toFixed(abs >= 10 ? 0 : 1);
-  return value.toFixed(2);
-};
 
 const buildStepChange = (series: SeriesPoint[]): number | null => {
   if (series.length < 2) return null;
@@ -96,13 +21,13 @@ const buildStepChange = (series: SeriesPoint[]): number | null => {
 };
 
 const balanceForProduct = (state: BankState, product: ProductType): number =>
-  state.balanceSheet.items.find((i) => i.productType === product)?.balance ?? 0;
+  state.financial.balanceSheet.items.find((i) => i.productType === product)?.balance ?? 0;
 
 const seriesFromHistory = (history: BankState[], selector: (state: BankState) => number): SeriesPoint[] =>
   history.map((s) => ({ step: s.time.step, value: selector(s) }));
 
 const sumSide = (state: BankState, side: BalanceSheetSide): number =>
-  state.balanceSheet.items.filter((i) => i.side === side).reduce((sum, item) => sum + item.balance, 0);
+  state.financial.balanceSheet.items.filter((i) => i.side === side).reduce((sum, item) => sum + item.balance, 0);
 
 const buildBalanceRow = (item: BalanceSheetItem, history: BankState[]): StatementRow => {
   const series = seriesFromHistory(history, (s) => balanceForProduct(s, item.productType));
@@ -117,7 +42,7 @@ const buildBalanceRow = (item: BalanceSheetItem, history: BankState[]): Statemen
 };
 
 const buildAssetRows = (state: BankState, history: BankState[]): StatementRow[] => {
-  const assets = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   const rows = assets.map((item) => buildBalanceRow(item, history));
   const totalSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Asset));
   rows.push({
@@ -131,34 +56,37 @@ const buildAssetRows = (state: BankState, history: BankState[]): StatementRow[] 
 };
 
 const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRow[] => {
-  const liabilities = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
+  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
   const rows = liabilities.map((item) => buildBalanceRow(item, history));
 
-  const cet1Series = seriesFromHistory(history, (s) => s.capital.cet1);
-  const at1Series = seriesFromHistory(history, (s) => s.capital.at1);
-  const equitySeries = seriesFromHistory(history, (s) => s.capital.cet1 + s.capital.at1);
+  const cet1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1);
+  const at1Series = seriesFromHistory(history, (s) => s.financial.capital.at1);
+  const equitySeries = seriesFromHistory(history, (s) => s.financial.capital.cet1 + s.financial.capital.at1);
   const liabilitiesSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Liability));
-  const balanceSheetSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Liability) + s.capital.cet1 + s.capital.at1);
+  const balanceSheetSeries = seriesFromHistory(
+    history,
+    (s) => sumSide(s, BalanceSheetSide.Liability) + s.financial.capital.cet1 + s.financial.capital.at1
+  );
 
   rows.push(
     {
       id: 'capital-cet1',
       label: 'CET1 capital',
-      value: state.capital.cet1,
+      value: state.financial.capital.cet1,
       changePct: buildStepChange(cet1Series),
       series: cet1Series,
     },
     {
       id: 'capital-at1',
       label: 'AT1 capital',
-      value: state.capital.at1,
+      value: state.financial.capital.at1,
       changePct: buildStepChange(at1Series),
       series: at1Series,
     },
     {
       id: 'capital-total',
       label: 'Total equity',
-      value: state.capital.cet1 + state.capital.at1,
+      value: state.financial.capital.cet1 + state.financial.capital.at1,
       changePct: buildStepChange(equitySeries),
       series: equitySeries,
     },
@@ -172,7 +100,10 @@ const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'liabilities-equity',
       label: 'Liabilities + equity',
-      value: sumSide(state, BalanceSheetSide.Liability) + state.capital.cet1 + state.capital.at1,
+      value:
+        sumSide(state, BalanceSheetSide.Liability) +
+        state.financial.capital.cet1 +
+        state.financial.capital.at1,
       changePct: buildStepChange(balanceSheetSeries),
       series: balanceSheetSeries,
     }
@@ -183,15 +114,15 @@ const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRo
 
 const buildIncomeRows = (state: BankState, history: BankState[]): StatementRow[] => {
   const fields: Array<{ id: string; label: string; selector: (s: BankState) => number }> = [
-    { id: 'interestIncome', label: 'Interest income', selector: (s) => s.incomeStatement.interestIncome },
-    { id: 'interestExpense', label: 'Interest expense', selector: (s) => s.incomeStatement.interestExpense },
-    { id: 'netInterestIncome', label: 'Net interest income', selector: (s) => s.incomeStatement.netInterestIncome },
-    { id: 'feeIncome', label: 'Fee income', selector: (s) => s.incomeStatement.feeIncome },
-    { id: 'creditLosses', label: 'Credit losses', selector: (s) => s.incomeStatement.creditLosses },
-    { id: 'operatingExpenses', label: 'Operating expenses', selector: (s) => s.incomeStatement.operatingExpenses },
-    { id: 'preTaxProfit', label: 'Pre-tax profit', selector: (s) => s.incomeStatement.preTaxProfit },
-    { id: 'tax', label: 'Tax', selector: (s) => s.incomeStatement.tax },
-    { id: 'netIncome', label: 'Net income', selector: (s) => s.incomeStatement.netIncome },
+    { id: 'interestIncome', label: 'Interest income', selector: (s) => s.financial.incomeStatement.interestIncome },
+    { id: 'interestExpense', label: 'Interest expense', selector: (s) => s.financial.incomeStatement.interestExpense },
+    { id: 'netInterestIncome', label: 'Net interest income', selector: (s) => s.financial.incomeStatement.netInterestIncome },
+    { id: 'feeIncome', label: 'Fee income', selector: (s) => s.financial.incomeStatement.feeIncome },
+    { id: 'creditLosses', label: 'Credit losses', selector: (s) => s.financial.incomeStatement.creditLosses },
+    { id: 'operatingExpenses', label: 'Operating expenses', selector: (s) => s.financial.incomeStatement.operatingExpenses },
+    { id: 'preTaxProfit', label: 'Pre-tax profit', selector: (s) => s.financial.incomeStatement.preTaxProfit },
+    { id: 'tax', label: 'Tax', selector: (s) => s.financial.incomeStatement.tax },
+    { id: 'netIncome', label: 'Net income', selector: (s) => s.financial.incomeStatement.netIncome },
   ];
 
   return fields.map((field) => {
@@ -208,12 +139,12 @@ const buildIncomeRows = (state: BankState, history: BankState[]): StatementRow[]
 
 const buildCashRows = (state: BankState, history: BankState[]): StatementRow[] => {
   const fields: Array<{ id: string; label: string; selector: (s: BankState) => number }> = [
-    { id: 'cashStart', label: 'Cash at start', selector: (s) => s.cashFlowStatement.cashStart },
-    { id: 'operatingCashFlow', label: 'Operating cash flow', selector: (s) => s.cashFlowStatement.operatingCashFlow },
-    { id: 'investingCashFlow', label: 'Investing cash flow', selector: (s) => s.cashFlowStatement.investingCashFlow },
-    { id: 'financingCashFlow', label: 'Financing cash flow', selector: (s) => s.cashFlowStatement.financingCashFlow },
-    { id: 'netChange', label: 'Net change in cash', selector: (s) => s.cashFlowStatement.netChange },
-    { id: 'cashEnd', label: 'Cash at end', selector: (s) => s.cashFlowStatement.cashEnd },
+    { id: 'cashStart', label: 'Cash at start', selector: (s) => s.financial.cashFlowStatement.cashStart },
+    { id: 'operatingCashFlow', label: 'Operating cash flow', selector: (s) => s.financial.cashFlowStatement.operatingCashFlow },
+    { id: 'investingCashFlow', label: 'Investing cash flow', selector: (s) => s.financial.cashFlowStatement.investingCashFlow },
+    { id: 'financingCashFlow', label: 'Financing cash flow', selector: (s) => s.financial.cashFlowStatement.financingCashFlow },
+    { id: 'netChange', label: 'Net change in cash', selector: (s) => s.financial.cashFlowStatement.netChange },
+    { id: 'cashEnd', label: 'Cash at end', selector: (s) => s.financial.cashFlowStatement.cashEnd },
   ];
 
   return fields.map((field) => {

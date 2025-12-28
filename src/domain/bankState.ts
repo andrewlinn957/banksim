@@ -6,6 +6,8 @@ import { CashFlowStatement } from './cashflow';
 import { LoanCohort } from './loanCohorts';
 import { ProductType } from './enums';
 
+export type LoanCohortsMap = Partial<Record<ProductType, LoanCohort[]>>;
+
 export interface SimulationTime {
   step: number;
   date: Date;
@@ -18,18 +20,30 @@ export interface BehaviouralState {
   ratingNotchOffset: number;
 }
 
-export interface BankState {
-  version: string;
-  time: SimulationTime;
+export interface FinancialState {
   balanceSheet: BalanceSheet;
   capital: CapitalState;
   incomeStatement: IncomeStatement;
   cashFlowStatement: CashFlowStatement;
+}
+
+export interface RiskState {
   riskMetrics: RiskMetrics;
   compliance: ComplianceStatus;
-  market: MarketState;
-  behaviour: BehaviouralState;
-  loanCohorts: Partial<Record<ProductType, LoanCohort[]>>;
+}
+
+export interface SimulationStatus {
   isInResolution: boolean;
   hasFailed: boolean;
+}
+
+export interface BankState {
+  version: string;
+  time: SimulationTime;
+  financial: FinancialState;
+  risk: RiskState;
+  market: MarketState;
+  behaviour: BehaviouralState;
+  loanCohorts: LoanCohortsMap;
+  status: SimulationStatus;
 }

@@ -12,8 +12,8 @@ const EventLog = ({ events }: Props) => {
         <div className="muted">No events yet.</div>
       ) : (
         <ul className="event-log">
-          {events.map((e, idx) => (
-            <li key={idx} className={`event ${e.severity}`}>
+          {events.map((e) => (
+            <li key={e.id} className={`event ${e.severity}`}>
               [{e.severity.toUpperCase()}] {e.message}
             </li>
           ))}

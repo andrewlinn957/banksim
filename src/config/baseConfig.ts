@@ -4,7 +4,14 @@ import {
   LiabilityProductType,
   ProductType,
 } from '../domain/enums';
-import { SimulationConfig, ProductRiskParameters, GlobalSimulationParameters } from '../domain/config';
+import {
+  SimulationConfig,
+  ProductRiskParameters,
+  GlobalSimulationParameters,
+  BehaviourParameters,
+  ShockParameters,
+  ToleranceParameters,
+} from '../domain/config';
 import { LiquidityTag } from '../domain/liquidity';
 
 const productParameters: Record<ProductType, ProductRiskParameters> = {
@@ -177,10 +184,34 @@ const riskLimits = {
   minNsfr: 1.0,
 };
 
+const behaviour: BehaviourParameters = {
+  depositBaselineGrowthMonthly: 0.002,
+  loanBaselineGrowthMonthly: 0,
+  minDepositGrowthPerStep: -0.1,
+  minLoanGrowthPerStep: -0.02,
+  loanFeeRateMonthly: 0.001,
+};
+
+const shockParameters: ShockParameters = {
+  idiosyncraticRun: {
+    baseRunOffRate: 0.1,
+    incrementalRate: 0.1,
+    maxRunOffRate: 0.5,
+  },
+};
+
+const tolerances: ToleranceParameters = {
+  cashFlowRoundingTolerance: 1e-2,
+  cashFlowBreachThreshold: 1,
+};
+
 export const baseConfig: SimulationConfig = {
   version: 'v1',
   productParameters,
   liquidityTags,
   global,
   riskLimits,
+  behaviour,
+  shockParameters,
+  tolerances,
 };

@@ -1,4 +1,5 @@
 import { RiskMetrics } from '../domain/risks';
+import { formatPct, formatCurrency } from '../utils/formatters';
 
 interface Props {
   riskMetrics: RiskMetrics;
@@ -7,8 +8,6 @@ interface Props {
   roe: number;
   nim: number;
 }
-
-const formatPct = (v: number) => (Number.isFinite(v) ? `${(v * 100).toFixed(2)}%` : 'N/A');
 
 const TopMetricsPanel = ({ riskMetrics, equity, assets, roe, nim }: Props) => {
   return (

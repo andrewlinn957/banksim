@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { BankState } from '../domain/bankState';
 import { runSimulationTestSuite, SimulationTestResult, simulationTestCases } from '../engine/simulationTestSuite';
+import { formatCurrency } from '../utils/formatters';
 
 interface ReconciliationResult {
   name: string;
@@ -8,19 +9,17 @@ interface ReconciliationResult {
   detail: string;
 }
 
-const formatCurrency = (v: number) => `£${(v / 1e9).toFixed(2)}bn`;
-
 const ReconciliationPanel = ({ state }: { state: BankState }) => {
   const reconciliationResults = useMemo<ReconciliationResult[]>(() => {
     const results: ReconciliationResult[] = [];
 
-    const totalAssets = state.balanceSheet.items
+    const totalAssets = state.financial.balanceSheet.items
       .filter((i) => i.side === 'Asset')
       .reduce((sum, i) => sum + i.balance, 0);
-    const totalLiabs = state.balanceSheet.items
+    const totalLiabs = state.financial.balanceSheet.items
       .filter((i) => i.side === 'Liability')
       .reduce((sum, i) => sum + i.balance, 0);
-    const totalCapital = state.capital.cet1 + state.capital.at1;
+    const totalCapital = state.financial.capital.cet1 + state.financial.capital.at1;
     const balanceGap = totalAssets - (totalLiabs + totalCapital);
     results.push({
       name: 'Balance sheet balances',
@@ -30,7 +29,7 @@ const ReconciliationPanel = ({ state }: { state: BankState }) => {
       )} (gap ${balanceGap.toFixed(2)})`,
     });
 
-    const cf = state.cashFlowStatement;
+    const cf = state.financial.cashFlowStatement;
     const cfRollPassed = Math.abs(cf.cashStart + cf.netChange - cf.cashEnd) < 1;
     results.push({
       name: 'Cash rollforward',

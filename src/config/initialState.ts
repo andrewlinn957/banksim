@@ -7,7 +7,14 @@ import {
   ProductType,
 } from '../domain/enums';
 import { BalanceSheet, BalanceSheetItem } from '../domain/balanceSheet';
-import { BankState, BehaviouralState, SimulationTime } from '../domain/bankState';
+import {
+  BankState,
+  BehaviouralState,
+  FinancialState,
+  RiskState,
+  SimulationStatus,
+  SimulationTime,
+} from '../domain/bankState';
 import { CapitalState, ComplianceStatus, RiskMetrics } from '../domain/risks';
 import { IncomeStatement } from '../domain/pnl';
 import { baseConfig } from './baseConfig';
@@ -235,6 +242,23 @@ const behaviour: BehaviouralState = {
   ratingNotchOffset: 0,
 };
 
+const financial: FinancialState = {
+  balanceSheet,
+  capital,
+  incomeStatement,
+  cashFlowStatement,
+};
+
+const risk: RiskState = {
+  riskMetrics: placeholderRiskMetrics,
+  compliance: placeholderCompliance,
+};
+
+const status: SimulationStatus = {
+  isInResolution: false,
+  hasFailed: false,
+};
+
 const time: SimulationTime = {
   step: 0,
   date: new Date('2024-01-01T00:00:00Z'),
@@ -244,23 +268,18 @@ const time: SimulationTime = {
 const seedState: BankState = {
   version: 'v1',
   time,
-  balanceSheet,
-  capital,
-  incomeStatement,
-  cashFlowStatement,
-  riskMetrics: placeholderRiskMetrics,
-  compliance: placeholderCompliance,
+  financial,
+  risk,
   market,
   behaviour,
   loanCohorts: {},
-  isInResolution: false,
-  hasFailed: false,
+  status,
 };
 
 const initialPortfolioSeed = baseConfig.global.initialPortfolioSeed ?? seedState.market.macroModel.rngSeed;
 
 const seedLoanCohorts = (productType: AssetProductType): void => {
-  const item = seedState.balanceSheet.items.find((i) => i.productType === productType);
+  const item = seedState.financial.balanceSheet.items.find((i) => i.productType === productType);
   if (!item) {
     throw new Error(`Missing balance sheet item for ${productType} while seeding loan cohorts`);
   }
@@ -288,6 +307,9 @@ const compliance = evaluateCompliance(riskMetrics, baseConfig.riskLimits);
 
 export const initialState: BankState = {
   ...seedState,
-  riskMetrics,
-  compliance,
+  risk: {
+    ...seedState.risk,
+    riskMetrics,
+    compliance,
+  },
 };

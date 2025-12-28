@@ -20,8 +20,10 @@ export interface Scenario {
   name: string;
   description: string;
   initialStateOverride?: Partial<BankState> & {
-    balanceSheet?: {
-      items?: Array<Partial<BalanceSheetItem> & { productType: ProductType }>;
+    financial?: {
+      balanceSheet?: {
+        items?: Array<Partial<BalanceSheetItem> & { productType: ProductType }>;
+      };
     };
   };
   scheduledShocks: ScheduledShock[];
@@ -31,17 +33,22 @@ export interface Scenario {
 const cloneBankState = (state: BankState): BankState => ({
   ...state,
   time: { ...state.time, date: new Date(state.time.date.getTime()) },
-  balanceSheet: {
-    items: state.balanceSheet.items.map((i) => ({
-      ...i,
-      encumbrance: i.encumbrance ? { ...i.encumbrance } : { encumberedAmount: 0 },
-      liquidityTag: i.liquidityTag ? { ...i.liquidityTag } : undefined,
-    })),
+  financial: {
+    balanceSheet: {
+      items: state.financial.balanceSheet.items.map((i) => ({
+        ...i,
+        encumbrance: i.encumbrance ? { ...i.encumbrance } : { encumberedAmount: 0 },
+        liquidityTag: i.liquidityTag ? { ...i.liquidityTag } : undefined,
+      })),
+    },
+    capital: { ...state.financial.capital },
+    incomeStatement: { ...state.financial.incomeStatement },
+    cashFlowStatement: { ...state.financial.cashFlowStatement },
   },
-  capital: { ...state.capital },
-  incomeStatement: { ...state.incomeStatement },
-  riskMetrics: { ...state.riskMetrics },
-  compliance: { ...state.compliance },
+  risk: {
+    riskMetrics: { ...state.risk.riskMetrics },
+    compliance: { ...state.risk.compliance },
+  },
   market: {
     ...state.market,
     giltCurve: {
@@ -55,6 +62,7 @@ const cloneBankState = (state: BankState): BankState => ({
     },
   },
   behaviour: { ...state.behaviour },
+  status: { ...state.status },
   loanCohorts: Object.fromEntries(
     Object.entries(state.loanCohorts ?? {}).map(([productType, cohorts]) => [
       productType,
@@ -68,9 +76,9 @@ const applyInitialOverride = (
   config: SimulationConfig
 ): BankState => {
   const state = cloneBankState(baseInitialState);
-  if (override?.balanceSheet?.items) {
-    state.balanceSheet.items = state.balanceSheet.items.map((item) => {
-      const ov = override.balanceSheet?.items?.find((o) => o.productType === item.productType);
+  if (override?.financial?.balanceSheet?.items) {
+    state.financial.balanceSheet.items = state.financial.balanceSheet.items.map((item) => {
+      const ov = override.financial?.balanceSheet?.items?.find((o) => o.productType === item.productType);
       if (!ov) return item;
       return {
         ...item,
@@ -79,8 +87,20 @@ const applyInitialOverride = (
       };
     });
   }
-  if (override?.capital) {
-    state.capital = { ...state.capital, ...override.capital };
+  if (override?.financial?.capital) {
+    state.financial.capital = { ...state.financial.capital, ...override.financial.capital };
+  }
+  if (override?.financial?.incomeStatement) {
+    state.financial.incomeStatement = {
+      ...state.financial.incomeStatement,
+      ...override.financial.incomeStatement,
+    };
+  }
+  if (override?.financial?.cashFlowStatement) {
+    state.financial.cashFlowStatement = {
+      ...state.financial.cashFlowStatement,
+      ...override.financial.cashFlowStatement,
+    };
   }
   if (override?.market) {
     state.market = { ...state.market, ...override.market };
@@ -88,11 +108,14 @@ const applyInitialOverride = (
   if (override?.behaviour) {
     state.behaviour = { ...state.behaviour, ...override.behaviour };
   }
+  if (override?.status) {
+    state.status = { ...state.status, ...override.status };
+  }
 
   const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
   const loanProducts = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;
   loanProducts.forEach((productType, idx) => {
-    const item = state.balanceSheet.items.find((i) => i.productType === productType);
+    const item = state.financial.balanceSheet.items.find((i) => i.productType === productType);
     if (!item) return;
     if (item.balance <= 0) {
       state.loanCohorts[productType] = [];
@@ -126,8 +149,8 @@ const applyInitialOverride = (
     item.balance = sumLoanOutstanding(seeded);
   });
 
-  state.riskMetrics = calculateRiskMetrics({ state, config });
-  state.compliance = evaluateCompliance(state.riskMetrics, config.riskLimits);
+  state.risk.riskMetrics = calculateRiskMetrics({ state, config });
+  state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
   return state;
 };
 
@@ -138,11 +161,13 @@ export const scenarios: Scenario[] = [
     description:
       'Bank leans on short-term wholesale funding with weaker deposits. Early market spread shock and liquidity run stress funding resilience.',
     initialStateOverride: {
-      balanceSheet: {
-        items: [
-          { productType: LiabilityProductType.WholesaleFundingST, balance: 80e9 },
-          { productType: LiabilityProductType.RetailDeposits, balance: 200e9 },
-        ],
+      financial: {
+        balanceSheet: {
+          items: [
+            { productType: LiabilityProductType.WholesaleFundingST, balance: 80e9 },
+            { productType: LiabilityProductType.RetailDeposits, balance: 200e9 },
+          ],
+        },
       },
     },
     scheduledShocks: [
@@ -170,11 +195,13 @@ export const scenarios: Scenario[] = [
     description:
       'Aggressive growth in corporate lending sets the stage for a downturn that hits PD/LGD hard.',
     initialStateOverride: {
-      balanceSheet: {
-        items: [
-          { productType: AssetProductType.CorporateLoans, balance: 240e9 },
-          { productType: AssetProductType.Mortgages, balance: 170e9 },
-        ],
+      financial: {
+        balanceSheet: {
+          items: [
+            { productType: AssetProductType.CorporateLoans, balance: 240e9 },
+            { productType: AssetProductType.Mortgages, balance: 170e9 },
+          ],
+        },
       },
     },
     scheduledShocks: [

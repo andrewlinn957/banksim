@@ -3,6 +3,8 @@ import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide, LiabilityProductType, ProductType } from '../domain/enums';
+import { formatCurrency, formatPct, formatChange, buildValueTicks, formatAxisValue } from '../utils/formatters';
+import { SeriesPoint, StatementRow } from '../types/statements';
 
 type MetricKey = 'rwa' | 'leverage' | 'nsfr' | 'lcr' | 'capital';
 
@@ -10,21 +12,6 @@ interface Props {
   state: BankState;
   history: BankState[];
   config: SimulationConfig;
-}
-
-interface SeriesPoint {
-  step: number;
-  value: number;
-}
-
-interface StatementRow {
-  id: string;
-  label: string;
-  value: number;
-  changePct: number | null;
-  series: SeriesPoint[];
-  display?: 'currency' | 'percent';
-  meta?: Record<string, string | number | undefined>;
 }
 
 interface ColumnDef {
@@ -41,70 +28,8 @@ const HQLA_FACTORS: Record<string, number> = {
   None: 0,
 };
 
-const formatCurrency = (value: number): string => (Number.isFinite(value) ? `£${(value / 1e9).toFixed(2)}bn` : 'N/A');
-const formatPercent = (value: number): string => (Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : 'N/A');
 const formatFactor = (value: number | undefined): string =>
   value === undefined || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(0)}%`;
-const formatChange = (value: number | null): string => {
-  if (value === null || !Number.isFinite(value)) return '—';
-  const fixed = Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(1);
-  return `${value > 0 ? '+' : ''}${fixed}%`;
-};
-
-const buildValueTicks = (min: number, max: number, desired: number = 4): number[] => {
-  let localMin = min;
-  let localMax = max;
-
-  if (localMin === localMax) {
-    const pad = Math.max(Math.abs(localMin) * 0.25, 1);
-    localMin -= pad;
-    localMax += pad;
-  }
-
-  const span = localMax - localMin;
-  const rawStep = span / Math.max(desired, 1);
-  if (!Number.isFinite(rawStep) || rawStep === 0) return [localMin, localMax];
-
-  const magnitude = 10 ** Math.floor(Math.log10(Math.abs(rawStep)));
-  const normalized = rawStep / magnitude;
-  let niceNormalized = 1;
-  if (normalized > 5) niceNormalized = 10;
-  else if (normalized > 2) niceNormalized = 5;
-  else if (normalized > 1) niceNormalized = 2;
-
-  const step = niceNormalized * magnitude;
-  const start = Math.floor(localMin / step) * step;
-  const end = Math.ceil(localMax / step) * step;
-
-  const ticks: number[] = [];
-  for (let v = start; v <= end + step / 2; v += step) {
-    const rounded = Number(v.toFixed(10));
-    if (!ticks.includes(rounded)) {
-      ticks.push(rounded);
-    }
-  }
-
-  if (ticks.length < 2) {
-    ticks.push(Number((start + step).toFixed(10)));
-  }
-
-  return ticks;
-};
-
-const formatAxisValue = (value: number, yLabel?: string): string => {
-  const label = yLabel?.toLowerCase() ?? '';
-  if (label.includes('%')) {
-    const pct = value * 100;
-    return `${pct.toFixed(Math.abs(pct) >= 10 ? 0 : 1)}%`;
-  }
-
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return `£${(value / 1e9).toFixed(abs >= 1e10 ? 0 : 1)}bn`;
-  if (abs >= 1e6) return `£${(value / 1e6).toFixed(abs >= 1e8 ? 0 : 1)}m`;
-  if (abs >= 1e3) return `${(value / 1e3).toFixed(abs >= 1e4 ? 0 : 1)}k`;
-  if (abs >= 1) return value.toFixed(abs >= 10 ? 0 : 1);
-  return value.toFixed(2);
-};
 
 const seriesFromHistory = (history: BankState[], selector: (s: BankState) => number): SeriesPoint[] =>
   history.map((s) => ({ step: s.time.step, value: selector(s) }));
@@ -120,13 +45,13 @@ const buildMonthChange = (series: SeriesPoint[]): number | null => {
 };
 
 const findItem = (state: BankState, productType: ProductType): BalanceSheetItem | undefined =>
-  state.balanceSheet.items.find((i) => i.productType === productType);
+  state.financial.balanceSheet.items.find((i) => i.productType === productType);
 
 const isStressDepositOutflow = (productType: ProductType): boolean =>
   productType === LiabilityProductType.RetailDeposits || productType === LiabilityProductType.CorporateDeposits;
 
 const computeRwaRows = (state: BankState, history: BankState[], config: SimulationConfig): StatementRow[] => {
-  const assetItems = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const assetItems = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
 
   const rows = assetItems.map((item) => {
     const rw = config.productParameters[item.productType]?.riskWeight ?? 0;
@@ -144,11 +69,11 @@ const computeRwaRows = (state: BankState, history: BankState[], config: Simulati
     };
   });
 
-  const totalSeries = seriesFromHistory(history, (s) => s.riskMetrics.rwa);
+  const totalSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.rwa);
   rows.push({
     id: 'rwa-total',
     label: 'Total RWA',
-    value: state.riskMetrics.rwa,
+    value: state.risk.riskMetrics.rwa,
     changePct: buildMonthChange(totalSeries),
     series: totalSeries,
     meta: { exposure: assetItems.reduce((sum, a) => sum + a.balance, 0) },
@@ -158,7 +83,7 @@ const computeRwaRows = (state: BankState, history: BankState[], config: Simulati
 };
 
 const computeLeverageRows = (state: BankState, history: BankState[]): StatementRow[] => {
-  const assets = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
 
   const rows: StatementRow[] = assets.map((item) => {
     const series = seriesFromHistory(history, (s) => findItem(s, item.productType)?.balance ?? 0);
@@ -172,31 +97,31 @@ const computeLeverageRows = (state: BankState, history: BankState[]): StatementR
     };
   });
 
-  const exposureSeries = seriesFromHistory(history, (s) => s.riskMetrics.leverageExposure);
+  const exposureSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.leverageExposure);
   rows.push({
     id: 'lev-total-exposure',
     label: 'Total exposure',
-    value: state.riskMetrics.leverageExposure,
+    value: state.risk.riskMetrics.leverageExposure,
     changePct: buildMonthChange(exposureSeries),
     series: exposureSeries,
     meta: { category: 'Exposure' },
   });
 
-  const tier1Series = seriesFromHistory(history, (s) => s.capital.cet1 + s.capital.at1);
+  const tier1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1 + s.financial.capital.at1);
   rows.push({
     id: 'lev-tier1',
     label: 'Tier 1 capital',
-    value: state.capital.cet1 + state.capital.at1,
+    value: state.financial.capital.cet1 + state.financial.capital.at1,
     changePct: buildMonthChange(tier1Series),
     series: tier1Series,
     meta: { category: 'Capital' },
   });
 
-  const ratioSeries = seriesFromHistory(history, (s) => s.riskMetrics.leverageRatio);
+  const ratioSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.leverageRatio);
   rows.push({
     id: 'lev-ratio',
     label: 'Leverage ratio',
-    value: state.riskMetrics.leverageRatio,
+    value: state.risk.riskMetrics.leverageRatio,
     changePct: buildMonthChange(ratioSeries),
     series: ratioSeries,
     display: 'percent',
@@ -209,7 +134,7 @@ const computeLeverageRows = (state: BankState, history: BankState[]): StatementR
 const computeNsfrRows = (state: BankState, history: BankState[], config: SimulationConfig): StatementRow[] => {
   const rows: StatementRow[] = [];
 
-  const assets = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
+  const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   assets.forEach((item) => {
     const factor = item.liquidityTag?.nsfrRsfFactor ?? config.liquidityTags[item.productType]?.nsfrRsfFactor ?? 0;
     const series = seriesFromHistory(history, (s) => {
@@ -226,7 +151,7 @@ const computeNsfrRows = (state: BankState, history: BankState[], config: Simulat
     });
   });
 
-  const liabilities = state.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
+  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
   liabilities.forEach((item) => {
     const factor = item.liquidityTag?.nsfrAsfFactor ?? config.liquidityTags[item.productType]?.nsfrAsfFactor ?? 0;
     const series = seriesFromHistory(history, (s) => {
@@ -244,11 +169,13 @@ const computeNsfrRows = (state: BankState, history: BankState[], config: Simulat
   });
 
   const capitalLegs: Array<{ id: string; label: string; base: number }> = [
-    { id: 'cet1', label: 'CET1 capital', base: state.capital.cet1 },
-    { id: 'at1', label: 'AT1 capital', base: state.capital.at1 },
+    { id: 'cet1', label: 'CET1 capital', base: state.financial.capital.cet1 },
+    { id: 'at1', label: 'AT1 capital', base: state.financial.capital.at1 },
   ];
   capitalLegs.forEach((cap) => {
-    const series = seriesFromHistory(history, (s) => (cap.id === 'cet1' ? s.capital.cet1 : s.capital.at1));
+    const series = seriesFromHistory(history, (s) =>
+      cap.id === 'cet1' ? s.financial.capital.cet1 : s.financial.capital.at1
+    );
     rows.push({
       id: `nsfr-asf-${cap.id}`,
       label: cap.label,
@@ -259,15 +186,15 @@ const computeNsfrRows = (state: BankState, history: BankState[], config: Simulat
     });
   });
 
-  const asfSeries = seriesFromHistory(history, (s) => s.riskMetrics.asf);
-  const rsfSeries = seriesFromHistory(history, (s) => s.riskMetrics.rsf);
-  const nsfrSeries = seriesFromHistory(history, (s) => s.riskMetrics.nsfr);
+  const asfSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.asf);
+  const rsfSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.rsf);
+  const nsfrSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.nsfr);
 
   rows.push(
     {
       id: 'nsfr-total-asf',
       label: 'Total ASF',
-      value: state.riskMetrics.asf,
+      value: state.risk.riskMetrics.asf,
       changePct: buildMonthChange(asfSeries),
       series: asfSeries,
       meta: { leg: 'ASF total', factor: undefined, base: undefined },
@@ -275,7 +202,7 @@ const computeNsfrRows = (state: BankState, history: BankState[], config: Simulat
     {
       id: 'nsfr-total-rsf',
       label: 'Total RSF',
-      value: state.riskMetrics.rsf,
+      value: state.risk.riskMetrics.rsf,
       changePct: buildMonthChange(rsfSeries),
       series: rsfSeries,
       meta: { leg: 'RSF total', factor: undefined, base: undefined },
@@ -283,7 +210,7 @@ const computeNsfrRows = (state: BankState, history: BankState[], config: Simulat
     {
       id: 'nsfr-ratio',
       label: 'NSFR',
-      value: state.riskMetrics.nsfr,
+      value: state.risk.riskMetrics.nsfr,
       changePct: buildMonthChange(nsfrSeries),
       series: nsfrSeries,
       display: 'percent',
@@ -298,9 +225,9 @@ const computeLcrComponents = (state: BankState) => {
   let outflows = 0;
   let inflows = 0;
   let hqla = 0;
-  const outflowMultiplier = state.riskMetrics.lcrOutflowMultiplier ?? 1;
+  const outflowMultiplier = state.risk.riskMetrics.lcrOutflowMultiplier ?? 1;
 
-  state.balanceSheet.items.forEach((item) => {
+  state.financial.balanceSheet.items.forEach((item) => {
     const tag = item.liquidityTag;
     const encumbered = item.encumbrance?.encumberedAmount ?? 0;
     const unencumbered = Math.max(0, item.balance - encumbered);
@@ -329,7 +256,7 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
   const rows: StatementRow[] = [];
 
   // HQLA rows
-  state.balanceSheet.items.forEach((item) => {
+  state.financial.balanceSheet.items.forEach((item) => {
     const tag = item.liquidityTag;
     const factor = HQLA_FACTORS[tag?.hqlaLevel ?? 'None'] ?? 0;
     if (factor <= 0) return;
@@ -352,14 +279,14 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
   });
 
   // Outflows
-  state.balanceSheet.items.forEach((item) => {
+  state.financial.balanceSheet.items.forEach((item) => {
     const rate = item.liquidityTag?.lcrOutflowRate;
     if (rate === undefined) return;
     const effectiveRate = isStressDepositOutflow(item.productType)
-      ? rate * (state.riskMetrics.lcrOutflowMultiplier ?? 1)
+      ? rate * (state.risk.riskMetrics.lcrOutflowMultiplier ?? 1)
       : rate;
     const series = seriesFromHistory(history, (s) => {
-      const mult = s.riskMetrics.lcrOutflowMultiplier ?? 1;
+      const mult = s.risk.riskMetrics.lcrOutflowMultiplier ?? 1;
       const perStateRate = isStressDepositOutflow(item.productType) ? rate * mult : rate;
       return (findItem(s, item.productType)?.balance ?? 0) * perStateRate;
     });
@@ -374,7 +301,7 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
   });
 
   // Inflows
-  state.balanceSheet.items.forEach((item) => {
+  state.financial.balanceSheet.items.forEach((item) => {
     const rate = item.liquidityTag?.lcrInflowRate;
     if (rate === undefined) return;
     const series = seriesFromHistory(history, (s) => (findItem(s, item.productType)?.balance ?? 0) * rate);
@@ -394,7 +321,7 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
   const inflowCapSeries = seriesFromHistory(history, (s) => computeLcrComponents(s).inflowsCapped);
   const netOutflowSeries = seriesFromHistory(history, (s) => computeLcrComponents(s).netOutflows);
   const hqlaSeries = seriesFromHistory(history, (s) => computeLcrComponents(s).hqla);
-  const lcrSeries = seriesFromHistory(history, (s) => s.riskMetrics.lcr);
+  const lcrSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.lcr);
 
   rows.push(
     {
@@ -440,7 +367,7 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
     {
       id: 'lcr-ratio',
       label: 'LCR',
-      value: state.riskMetrics.lcr,
+      value: state.risk.riskMetrics.lcr,
       changePct: buildMonthChange(lcrSeries),
       series: lcrSeries,
       display: 'percent',
@@ -452,18 +379,18 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
 };
 
 const computeCapitalRows = (state: BankState, history: BankState[]): StatementRow[] => {
-  const cet1Series = seriesFromHistory(history, (s) => s.capital.cet1);
-  const at1Series = seriesFromHistory(history, (s) => s.capital.at1);
-  const tier1Series = seriesFromHistory(history, (s) => s.capital.cet1 + s.capital.at1);
-  const rwaSeries = seriesFromHistory(history, (s) => s.riskMetrics.rwa);
-  const cet1RatioSeries = seriesFromHistory(history, (s) => s.riskMetrics.cet1Ratio);
-  const levRatioSeries = seriesFromHistory(history, (s) => s.riskMetrics.leverageRatio);
+  const cet1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1);
+  const at1Series = seriesFromHistory(history, (s) => s.financial.capital.at1);
+  const tier1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1 + s.financial.capital.at1);
+  const rwaSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.rwa);
+  const cet1RatioSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.cet1Ratio);
+  const levRatioSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.leverageRatio);
 
   return [
     {
       id: 'cap-cet1',
       label: 'CET1 capital',
-      value: state.capital.cet1,
+      value: state.financial.capital.cet1,
       changePct: buildMonthChange(cet1Series),
       series: cet1Series,
       meta: { type: 'Capital' },
@@ -471,7 +398,7 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'cap-at1',
       label: 'AT1 capital',
-      value: state.capital.at1,
+      value: state.financial.capital.at1,
       changePct: buildMonthChange(at1Series),
       series: at1Series,
       meta: { type: 'Capital' },
@@ -479,7 +406,7 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'cap-tier1',
       label: 'Tier 1 capital',
-      value: state.capital.cet1 + state.capital.at1,
+      value: state.financial.capital.cet1 + state.financial.capital.at1,
       changePct: buildMonthChange(tier1Series),
       series: tier1Series,
       meta: { type: 'Capital' },
@@ -487,7 +414,7 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'cap-rwa',
       label: 'Risk weighted assets',
-      value: state.riskMetrics.rwa,
+      value: state.risk.riskMetrics.rwa,
       changePct: buildMonthChange(rwaSeries),
       series: rwaSeries,
       meta: { type: 'Buffer' },
@@ -495,7 +422,7 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'cap-cet1-ratio',
       label: 'CET1 ratio',
-      value: state.riskMetrics.cet1Ratio,
+      value: state.risk.riskMetrics.cet1Ratio,
       changePct: buildMonthChange(cet1RatioSeries),
       series: cet1RatioSeries,
       display: 'percent',
@@ -504,7 +431,7 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
     {
       id: 'cap-lev-ratio',
       label: 'Leverage ratio',
-      value: state.riskMetrics.leverageRatio,
+      value: state.risk.riskMetrics.leverageRatio,
       changePct: buildMonthChange(levRatioSeries),
       series: levRatioSeries,
       display: 'percent',
@@ -640,7 +567,7 @@ const StatementSection = ({
 
   const renderValue = (row: StatementRow) => {
     if (valueFormatter) return valueFormatter(row);
-    if (row.display === 'percent') return formatPercent(row.value);
+    if (row.display === 'percent') return formatPct(row.value);
     return formatCurrency(row.value);
   };
 
@@ -785,7 +712,7 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         rows={rwaRows}
         columns={[
           { id: 'exposure', label: 'Exposure', align: 'right', render: (row) => formatCurrency(Number(row.meta?.exposure ?? 0)) },
-          { id: 'rw', label: 'RW', align: 'right', render: (row) => formatPercent(Number(row.meta?.riskWeight ?? 0)) },
+          { id: 'rw', label: 'RW', align: 'right', render: (row) => formatPct(Number(row.meta?.riskWeight ?? 0)) },
         ]}
         valueHeader="RWA"
         selectedId={selected.rwa}
@@ -803,7 +730,7 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
           { id: 'category', label: 'Category', align: 'left', render: (row) => row.meta?.category ?? '—' },
         ]}
         valueHeader="Value"
-        valueFormatter={(row) => (row.display === 'percent' ? formatPercent(row.value) : formatCurrency(row.value))}
+        valueFormatter={(row) => (row.display === 'percent' ? formatPct(row.value) : formatCurrency(row.value))}
         selectedId={selected.leverage}
         onSelect={(id) => setSelected((prev) => ({ ...prev, leverage: id }))}
         isOpen={open.leverage}
@@ -821,7 +748,7 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
           { id: 'factor', label: 'Factor', align: 'right', render: (row) => formatFactor(Number(row.meta?.factor)) },
         ]}
         valueHeader="Required / available"
-        valueFormatter={(row) => (row.display === 'percent' ? formatPercent(row.value) : formatCurrency(row.value))}
+        valueFormatter={(row) => (row.display === 'percent' ? formatPct(row.value) : formatCurrency(row.value))}
         selectedId={selected.nsfr}
         onSelect={(id) => setSelected((prev) => ({ ...prev, nsfr: id }))}
         isOpen={open.nsfr}
@@ -839,7 +766,7 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
           { id: 'factor', label: 'Factor', align: 'right', render: (row) => formatFactor(Number(row.meta?.factor)) },
         ]}
         valueHeader="Amount"
-        valueFormatter={(row) => (row.display === 'percent' ? formatPercent(row.value) : formatCurrency(row.value))}
+        valueFormatter={(row) => (row.display === 'percent' ? formatPct(row.value) : formatCurrency(row.value))}
         selectedId={selected.lcr}
         onSelect={(id) => setSelected((prev) => ({ ...prev, lcr: id }))}
         isOpen={open.lcr}
@@ -853,7 +780,7 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         rows={capitalRows}
         columns={[{ id: 'type', label: 'Type', render: (row) => row.meta?.type ?? '—' }]}
         valueHeader="Value"
-        valueFormatter={(row) => (row.display === 'percent' ? formatPercent(row.value) : formatCurrency(row.value))}
+        valueFormatter={(row) => (row.display === 'percent' ? formatPct(row.value) : formatCurrency(row.value))}
         selectedId={selected.capital}
         onSelect={(id) => setSelected((prev) => ({ ...prev, capital: id }))}
         isOpen={open.capital}

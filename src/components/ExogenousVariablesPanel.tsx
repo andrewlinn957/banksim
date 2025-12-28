@@ -1,33 +1,22 @@
 import { MarketState } from '../domain/market';
 import { SimulationConfig } from '../domain/config';
+import { formatPct, formatSignedPct, formatNumber, formatMultiple, formatCurrency } from '../utils/formatters';
 
 interface Props {
   market: MarketState;
   config: SimulationConfig;
 }
 
-const formatPct = (value: number, digits: number = 2): string =>
-  Number.isFinite(value) ? `${(value * 100).toFixed(digits)}%` : 'N/A';
-
-const formatSignedPct = (value: number, digits: number = 2): string => {
-  if (!Number.isFinite(value)) return 'N/A';
-  const pct = (value * 100).toFixed(digits);
-  return `${value > 0 ? '+' : ''}${pct}%`;
+type MetricItem = {
+  label: string;
+  value: string;
+  helper?: string;
 };
 
-const formatNumber = (value: number, digits: number = 2): string =>
-  Number.isFinite(value) ? value.toFixed(digits) : 'N/A';
-
-const formatCurrency = (value: number): string => {
-  if (!Number.isFinite(value)) return 'N/A';
-  const abs = Math.abs(value);
-  if (abs >= 1e9) return `Aœ${(value / 1e9).toFixed(abs >= 1e10 ? 0 : 2)}bn`;
-  if (abs >= 1e6) return `Aœ${(value / 1e6).toFixed(abs >= 1e8 ? 0 : 1)}m`;
-  return `Aœ${value.toFixed(0)}`;
+type RowItem = {
+  label: string;
+  value: string;
 };
-
-const formatMultiple = (value: number, digits: number = 2): string =>
-  Number.isFinite(value) ? `${value.toFixed(digits)}x` : 'N/A';
 
 const Metric = ({ label, value, helper }: { label: string; value: string; helper?: string }) => (
   <div className="metric-card">
@@ -49,10 +38,88 @@ const Row = ({ label, value }: { label: string; value: string }) => (
 const maybeRate = (value: number | undefined, digits: number = 2): string =>
   value === undefined ? 'N/A' : formatPct(value, digits);
 
+const selectMacroMetrics = (market: MarketState): MetricItem[] => {
+  const { gdpGrowthMoM, inflationRate, unemploymentRate, baseRate, creditSpread, macroModel } = market;
+  const { gdpRegime, rngSeed, factors } = macroModel;
+
+  return [
+    { label: 'Regime', value: gdpRegime, helper: 'Can be either normal or recession.' },
+    { label: 'GDP (MoM)', value: formatSignedPct(gdpGrowthMoM), helper: 'Monthly GDP growth.' },
+    { label: 'Inflation (YoY)', value: formatPct(inflationRate), helper: 'Sticky CPI-like process.' },
+    { label: 'Unemployment', value: formatPct(unemploymentRate) },
+    { label: 'Bank Rate', value: formatPct(baseRate), helper: 'Policy rule with inertia.' },
+    { label: 'Macro Credit Spread', value: formatPct(creditSpread), helper: 'Wider in financial stress / weak labour.' },
+    { label: 'Demand', value: formatNumber(factors.D), helper: '(+) means positive demand shock' },
+    { label: 'Supply)', value: formatNumber(factors.S), helper: '(+) means positive supply shock' },
+    { label: 'Financial Conditions', value: formatNumber(factors.F), helper: '(+) means tighter conditions' },
+    { label: 'R* (Neutral real)', value: formatNumber(factors.R) },
+    { label: 'RNG Seed', value: `${rngSeed}`, helper: 'Deterministic path for reproducibility.' },
+  ];
+};
+
+const selectGiltRows = (market: MarketState): RowItem[] => {
+  const { yields } = market.giltCurve;
+
+  return [
+    { label: '1Y', value: formatPct(yields.y1) },
+    { label: '2Y', value: formatPct(yields.y2) },
+    { label: '3Y', value: formatPct(yields.y3) },
+    { label: '5Y', value: formatPct(yields.y5) },
+    { label: '10Y', value: formatPct(yields.y10) },
+    { label: '20Y', value: formatPct(yields.y20) },
+    { label: '30Y', value: formatPct(yields.y30) },
+  ];
+};
+
+const selectFundingRows = (market: MarketState): RowItem[] => {
+  const {
+    competitorMortgageRate,
+    competitorRetailDepositRate,
+    competitorCorporateDepositRate,
+    wholesaleFundingSpread,
+    seniorDebtSpread,
+    giltRepoHaircut,
+    corpBondRepoHaircut,
+    riskFreeLong,
+    corporateLoanSpread,
+  } = market;
+
+  return [
+    { label: 'Competitor Mortgage Rate', value: formatPct(competitorMortgageRate) },
+    {
+      label: 'Competitor Corporate Loan Rate',
+      value: formatPct(riskFreeLong + corporateLoanSpread),
+    },
+    { label: 'Competitor retail deposit rate', value: formatPct(competitorRetailDepositRate) },
+    { label: 'Competitor corporate deposit rate', value: maybeRate(competitorCorporateDepositRate) },
+    { label: 'ST Wholesale funding spread (over 1y gilt)', value: formatPct(wholesaleFundingSpread) },
+    { label: 'LT wholesale funding spread (over 30y gilt)', value: formatPct(seniorDebtSpread) },
+    { label: 'Gilt repo haircut', value: formatPct(giltRepoHaircut) },
+    { label: 'Corp bond repo haircut', value: formatPct(corpBondRepoHaircut) },
+  ];
+};
+
+const selectSimulationRows = (config: SimulationConfig): RowItem[] => {
+  const { global, riskLimits } = config;
+
+  return [
+    { label: 'Tax rate', value: formatPct(global.taxRate) },
+    { label: 'Operating cost ratio (annual)', value: formatPct(global.operatingCostRatio) },
+    { label: 'Fixed operating cost (monthly)', value: formatCurrency(global.fixedOperatingCostPerMonth ?? 0) },
+    { label: 'Max deposit growth (per step)', value: formatPct(global.maxDepositGrowthPerStep) },
+    { label: 'Max loan growth (per step)', value: formatPct(global.maxLoanGrowthPerStep) },
+    { label: 'Min CET1 ratio', value: formatPct(riskLimits.minCet1Ratio) },
+    { label: 'Min leverage ratio', value: formatPct(riskLimits.minLeverageRatio) },
+    { label: 'Min LCR', value: formatMultiple(riskLimits.minLcr) },
+    { label: 'Min NSFR', value: formatMultiple(riskLimits.minNsfr) },
+  ];
+};
+
 const ExogenousVariablesPanel = ({ market, config }: Props) => {
-  const yields = market.giltCurve.yields;
-  const ns = market.giltCurve.nelsonSiegel;
-  const factors = market.macroModel.factors;
+  const macroMetrics = selectMacroMetrics(market);
+  const giltRows = selectGiltRows(market);
+  const fundingRows = selectFundingRows(market);
+  const simulationRows = selectSimulationRows(config);
 
   return (
     <div className="grid-two">
@@ -66,17 +133,9 @@ const ExogenousVariablesPanel = ({ market, config }: Props) => {
         </div>
 
         <div className="grid-metrics">
-          <Metric label="Regime" value={market.macroModel.gdpRegime} helper="Can be either normal or recession." />
-          <Metric label="GDP (MoM)" value={formatSignedPct(market.gdpGrowthMoM)} helper="Monthly GDP growth." />
-          <Metric label="Inflation (YoY)" value={formatPct(market.inflationRate)} helper="Sticky CPI-like process." />
-          <Metric label="Unemployment" value={formatPct(market.unemploymentRate)} />
-          <Metric label="Bank Rate" value={formatPct(market.baseRate)} helper="Policy rule with inertia." />
-          <Metric label="Macro Credit Spread" value={formatPct(market.creditSpread)} helper="Wider in financial stress / weak labour." />
-          <Metric label="Demand" value={formatNumber(factors.D)} helper="(+) means positive demand shock" />
-          <Metric label="Supply)" value={formatNumber(factors.S)} helper="(+) means positive supply shock"/>
-          <Metric label="Financial Conditions" value={formatNumber(factors.F)} helper="(+) means tighter conditions"/>
-          <Metric label="R* (Neutral real)" value={formatNumber(factors.R)} />
-          <Metric label="RNG Seed" value={`${market.macroModel.rngSeed}`} helper="Deterministic path for reproducibility." />
+          {macroMetrics.map((metric) => (
+            <Metric key={metric.label} {...metric} />
+          ))}
         </div>
       </div>
 
@@ -97,16 +156,11 @@ const ExogenousVariablesPanel = ({ market, config }: Props) => {
             </tr>
           </thead>
           <tbody>
-            <Row label="1Y" value={formatPct(yields.y1)} />
-            <Row label="2Y" value={formatPct(yields.y2)} />
-            <Row label="3Y" value={formatPct(yields.y3)} />
-            <Row label="5Y" value={formatPct(yields.y5)} />
-            <Row label="10Y" value={formatPct(yields.y10)} />
-            <Row label="20Y" value={formatPct(yields.y20)} />
-            <Row label="30Y" value={formatPct(yields.y30)} />
+            {giltRows.map((row) => (
+              <Row key={row.label} {...row} />
+            ))}
           </tbody>
         </table>
-
 
       </div>
 
@@ -118,14 +172,9 @@ const ExogenousVariablesPanel = ({ market, config }: Props) => {
 
         <table className="data-table">
           <tbody>
-            <Row label="Competitor Mortgage Rate" value={formatPct(market.competitorMortgageRate)} />
-            <Row label="Competitor Corporate Loan Rate" value={formatPct(market.riskFreeLong + market.corporateLoanSpread)} />
-            <Row label="Competitor retail deposit rate" value={formatPct(market.competitorRetailDepositRate)} />
-            <Row label="Competitor corporate deposit rate" value={maybeRate(market.competitorCorporateDepositRate)} />
-            <Row label="ST Wholesale funding spread (over 1y gilt)" value={formatPct(market.wholesaleFundingSpread)} />
-            <Row label="LT wholesale funding spread (over 30y gilt)" value={formatPct(market.seniorDebtSpread)} />
-            <Row label="Gilt repo haircut" value={formatPct(market.giltRepoHaircut)} />
-            <Row label="Corp bond repo haircut" value={formatPct(market.corpBondRepoHaircut)} />
+            {fundingRows.map((row) => (
+              <Row key={row.label} {...row} />
+            ))}
           </tbody>
         </table>
       </div>
@@ -138,15 +187,9 @@ const ExogenousVariablesPanel = ({ market, config }: Props) => {
 
         <table className="data-table">
           <tbody>
-            <Row label="Tax rate" value={formatPct(config.global.taxRate)} />
-            <Row label="Operating cost ratio (annual)" value={formatPct(config.global.operatingCostRatio)} />
-            <Row label="Fixed operating cost (monthly)" value={formatCurrency(config.global.fixedOperatingCostPerMonth ?? 0)} />
-            <Row label="Max deposit growth (per step)" value={formatPct(config.global.maxDepositGrowthPerStep)} />
-            <Row label="Max loan growth (per step)" value={formatPct(config.global.maxLoanGrowthPerStep)} />
-            <Row label="Min CET1 ratio" value={formatPct(config.riskLimits.minCet1Ratio)} />
-            <Row label="Min leverage ratio" value={formatPct(config.riskLimits.minLeverageRatio)} />
-            <Row label="Min LCR" value={formatMultiple(config.riskLimits.minLcr)} />
-            <Row label="Min NSFR" value={formatMultiple(config.riskLimits.minNsfr)} />
+            {simulationRows.map((row) => (
+              <Row key={row.label} {...row} />
+            ))}
           </tbody>
         </table>
       </div>

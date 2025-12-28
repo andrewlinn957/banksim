@@ -35,10 +35,18 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>({
-    retailDepositRate: bankState.balanceSheet.items.find((i) => i.productType === LiabilityProductType.RetailDeposits)?.interestRate.toString() ?? '',
-    corporateDepositRate: bankState.balanceSheet.items.find((i) => i.productType === LiabilityProductType.CorporateDeposits)?.interestRate.toString() ?? '',
-    mortgageRate: bankState.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)?.interestRate.toString() ?? '',
-    corporateLoanRate: bankState.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)?.interestRate.toString() ?? '',
+    retailDepositRate:
+      bankState.financial.balanceSheet.items.find((i) => i.productType === LiabilityProductType.RetailDeposits)
+        ?.interestRate.toString() ?? '',
+    corporateDepositRate:
+      bankState.financial.balanceSheet.items.find((i) => i.productType === LiabilityProductType.CorporateDeposits)
+        ?.interestRate.toString() ?? '',
+    mortgageRate:
+      bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
+        ?.interestRate.toString() ?? '',
+    corporateLoanRate:
+      bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
+        ?.interestRate.toString() ?? '',
     issueLTDebtAmount: '',
     issueEquityAmount: '',
   });
@@ -49,19 +57,22 @@ const App = () => {
   const actionsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const actionsDrawerContentRef = useRef<HTMLDivElement | null>(null);
 
-  const totalEquity = useMemo(() => bankState.capital.cet1 + bankState.capital.at1, [bankState.capital]);
+  const totalEquity = useMemo(
+    () => bankState.financial.capital.cet1 + bankState.financial.capital.at1,
+    [bankState.financial.capital]
+  );
   const totalAssets = useMemo(
     () =>
-      bankState.balanceSheet.items
+      bankState.financial.balanceSheet.items
         .filter((i) => i.side === BalanceSheetSide.Asset)
         .reduce((sum, i) => sum + i.balance, 0),
-    [bankState.balanceSheet]
+    [bankState.financial.balanceSheet]
   );
 
-  const roe = totalEquity > 0 ? (bankState.incomeStatement.netIncome * 12) / totalEquity : 0;
-  const nim = totalAssets > 0 ? (bankState.incomeStatement.netInterestIncome * 12) / totalAssets : 0;
+  const roe = totalEquity > 0 ? (bankState.financial.incomeStatement.netIncome * 12) / totalEquity : 0;
+  const nim = totalAssets > 0 ? (bankState.financial.incomeStatement.netInterestIncome * 12) / totalAssets : 0;
 
-  const failureSummary = buildFailureSummary(bankState.compliance, bankState.riskMetrics);
+  const failureSummary = buildFailureSummary(bankState.risk.compliance, bankState.risk.riskMetrics);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -186,8 +197,8 @@ const App = () => {
     const scenarioConfig = applyScenarioConfig(baseConfig, selectedScenarioId);
     const scenarioState = getScenarioInitialState(selectedScenarioId, scenarioConfig);
     const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
-    scenarioState.riskMetrics = metrics;
-    scenarioState.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
+    scenarioState.risk.riskMetrics = metrics;
+    scenarioState.risk.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
     controller.setConfig(scenarioConfig);
     setSimConfig(scenarioConfig);
     setBankState(scenarioState);
@@ -196,13 +207,17 @@ const App = () => {
     setActiveScenarioId(selectedScenarioId);
     setActionForm({
       retailDepositRate:
-        scenarioState.balanceSheet.items.find((i) => i.productType === LiabilityProductType.RetailDeposits)?.interestRate.toString() ?? '',
+        scenarioState.financial.balanceSheet.items.find((i) => i.productType === LiabilityProductType.RetailDeposits)
+          ?.interestRate.toString() ?? '',
       corporateDepositRate:
-        scenarioState.balanceSheet.items.find((i) => i.productType === LiabilityProductType.CorporateDeposits)?.interestRate.toString() ?? '',
+        scenarioState.financial.balanceSheet.items.find((i) => i.productType === LiabilityProductType.CorporateDeposits)
+          ?.interestRate.toString() ?? '',
       mortgageRate:
-        scenarioState.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)?.interestRate.toString() ?? '',
+        scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
+          ?.interestRate.toString() ?? '',
       corporateLoanRate:
-        scenarioState.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)?.interestRate.toString() ?? '',
+        scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
+          ?.interestRate.toString() ?? '',
       issueLTDebtAmount: '',
       issueEquityAmount: '',
     });
@@ -224,12 +239,12 @@ const App = () => {
               className="button primary small"
               type="button"
               onClick={handleRunNextMonth}
-              disabled={bankState.hasFailed}
+              disabled={bankState.status.hasFailed}
             >
               Run next month
             </button>
-            <span className={`pill ${bankState.hasFailed ? 'danger' : 'success'}`}>
-              {bankState.hasFailed ? 'Resolution mode' : 'Going concern'}
+            <span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>
+              {bankState.status.hasFailed ? 'Resolution mode' : 'Going concern'}
             </span>
             <span className="pill warning">{activeScenarioId ? `Scenario: ${activeScenarioId}` : 'Sandbox mode'}</span>
           </div>
@@ -257,18 +272,18 @@ const App = () => {
         </div>
       </header>
 
-      {bankState.hasFailed && (
+      {bankState.status.hasFailed && (
         <div className="alert danger">
           <div style={{ fontWeight: 700 }}>Bank failed or regulatory breach occurred.</div>
           <div className="muted" style={{ marginTop: 6 }}>{failureSummary}</div>
           <div className="muted" style={{ marginTop: 8 }}>
-            <strong>Final metrics:</strong> CET1 {formatRatio(bankState.riskMetrics.cet1Ratio)}, Leverage {formatRatio(bankState.riskMetrics.leverageRatio)}, LCR {formatRatio(bankState.riskMetrics.lcr)}, NSFR {formatRatio(bankState.riskMetrics.nsfr)}.
+            <strong>Final metrics:</strong> CET1 {formatRatio(bankState.risk.riskMetrics.cet1Ratio)}, Leverage {formatRatio(bankState.risk.riskMetrics.leverageRatio)}, LCR {formatRatio(bankState.risk.riskMetrics.lcr)}, NSFR {formatRatio(bankState.risk.riskMetrics.nsfr)}.
           </div>
           <div className="muted" style={{ marginTop: 8 }}>
             <strong>Recent events:</strong>
             <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
-              {eventLog.slice(-5).map((e, idx) => (
-                <li key={idx}>[{e.severity.toUpperCase()}] {e.message}</li>
+              {eventLog.slice(-5).map((e) => (
+                <li key={e.id}>[{e.severity.toUpperCase()}] {e.message}</li>
               ))}
             </ul>
           </div>
@@ -291,7 +306,7 @@ const App = () => {
         <div className="section-grid">
           <div className="card">
             <TopMetricsPanel
-              riskMetrics={bankState.riskMetrics}
+              riskMetrics={bankState.risk.riskMetrics}
               equity={totalEquity}
               assets={totalAssets}
               roe={roe}
@@ -348,14 +363,14 @@ const App = () => {
       {activeTab === 'Loans' && (
         <section className="stack">
           <h2>Loans</h2>
-          <LoansPanel items={bankState.balanceSheet.items} loanCohorts={bankState.loanCohorts} />
+          <LoansPanel items={bankState.financial.balanceSheet.items} loanCohorts={bankState.loanCohorts} />
         </section>
       )}
 
       {activeTab === 'Costs' && (
         <section className="stack">
           <h2>Costs</h2>
-          <CostsPanel income={bankState.incomeStatement} />
+          <CostsPanel income={bankState.financial.incomeStatement} />
         </section>
       )}
 
@@ -425,7 +440,7 @@ const App = () => {
               state={actionForm}
               onChange={setActionForm}
               onSubmit={handleRunNextMonth}
-              disabled={bankState.hasFailed}
+              disabled={bankState.status.hasFailed}
             />
           </div>
         </div>

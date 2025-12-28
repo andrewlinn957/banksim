@@ -47,7 +47,7 @@ const formatBn = (value: number) => `${(value / 1e9).toFixed(2)}bn`;
 const formatPct = (value: number) => `${(value * 100).toFixed(2)}%`;
 
 const getItem = (state: BankState, productType: ProductType) => {
-  const item = state.balanceSheet.items.find((i) => i.productType === productType);
+  const item = state.financial.balanceSheet.items.find((i) => i.productType === productType);
   if (!item) {
     throw new Error(`Missing balance sheet line for ${productType}`);
   }
@@ -75,7 +75,7 @@ const assertAccountingOk = (state: BankState, label: string): void => {
     throw new Error(`Invariant violations (${label}): ${errs.join('; ')}`);
   }
   const CF_TOLERANCE = 1e-3;
-  const cf = state.cashFlowStatement;
+  const cf = state.financial.cashFlowStatement;
   const rollMismatch = cf.cashStart + cf.netChange - cf.cashEnd;
   if (Math.abs(rollMismatch) > CF_TOLERANCE) {
     throw new Error(
@@ -154,25 +154,25 @@ export const simulationTestCases: SimulationTestCase[] = [
         throw new Error(`Cash did not rise after selling gilts (${formatBn(saleCash)} <= ${formatBn(baseCash)})`);
       }
 
-      const hqlaDiff = Math.abs(afterSale.riskMetrics.hqla - base.riskMetrics.hqla);
-      const lcrDiff = Math.abs(afterSale.riskMetrics.lcr - base.riskMetrics.lcr);
-      const hqlaTol = Math.max(base.riskMetrics.hqla * 0.001, 1e6); // 0.1% or >= 1m tolerance for rounding
+      const hqlaDiff = Math.abs(afterSale.risk.riskMetrics.hqla - base.risk.riskMetrics.hqla);
+      const lcrDiff = Math.abs(afterSale.risk.riskMetrics.lcr - base.risk.riskMetrics.lcr);
+      const hqlaTol = Math.max(base.risk.riskMetrics.hqla * 0.001, 1e6); // 0.1% or >= 1m tolerance for rounding
       const lcrTol = 1e-4;
 
       if (hqlaDiff > hqlaTol) {
         throw new Error(
-          `HQLA changed after selling gilts (${formatBn(afterSale.riskMetrics.hqla)} vs ${formatBn(base.riskMetrics.hqla)})`
+          `HQLA changed after selling gilts (${formatBn(afterSale.risk.riskMetrics.hqla)} vs ${formatBn(base.risk.riskMetrics.hqla)})`
         );
       }
       if (lcrDiff > lcrTol) {
         throw new Error(
-          `LCR moved after selling gilts (${formatPct(afterSale.riskMetrics.lcr)} vs ${formatPct(base.riskMetrics.lcr)})`
+          `LCR moved after selling gilts (${formatPct(afterSale.risk.riskMetrics.lcr)} vs ${formatPct(base.risk.riskMetrics.lcr)})`
         );
       }
 
       return `Cash ${formatBn(baseCash)} -> ${formatBn(saleCash)}, HQLA unchanged ${formatBn(
-        base.riskMetrics.hqla
-      )}, LCR ${formatPct(base.riskMetrics.lcr)}`;
+        base.risk.riskMetrics.hqla
+      )}, LCR ${formatPct(base.risk.riskMetrics.lcr)}`;
     },
   },
   {
@@ -197,24 +197,24 @@ export const simulationTestCases: SimulationTestCase[] = [
       );
       assertAccountingOk(stressed, 'stressed');
 
-      if (stressed.capital.cet1 >= baseline.capital.cet1) {
+      if (stressed.financial.capital.cet1 >= baseline.financial.capital.cet1) {
         throw new Error(
-          `CET1 did not fall under downturn (${formatBn(stressed.capital.cet1)} >= ${formatBn(
-            baseline.capital.cet1
+          `CET1 did not fall under downturn (${formatBn(stressed.financial.capital.cet1)} >= ${formatBn(
+            baseline.financial.capital.cet1
           )})`
         );
       }
-      if (stressed.riskMetrics.cet1Ratio >= baseline.riskMetrics.cet1Ratio) {
+      if (stressed.risk.riskMetrics.cet1Ratio >= baseline.risk.riskMetrics.cet1Ratio) {
         throw new Error(
-          `CET1 ratio did not fall (${formatPct(stressed.riskMetrics.cet1Ratio)} >= ${formatPct(
-            baseline.riskMetrics.cet1Ratio
+          `CET1 ratio did not fall (${formatPct(stressed.risk.riskMetrics.cet1Ratio)} >= ${formatPct(
+            baseline.risk.riskMetrics.cet1Ratio
           )})`
         );
       }
 
-      return `CET1 ${formatBn(baseline.capital.cet1)} -> ${formatBn(
-        stressed.capital.cet1
-      )}, ratio ${formatPct(baseline.riskMetrics.cet1Ratio)} -> ${formatPct(stressed.riskMetrics.cet1Ratio)}`;
+      return `CET1 ${formatBn(baseline.financial.capital.cet1)} -> ${formatBn(
+        stressed.financial.capital.cet1
+      )}, ratio ${formatPct(baseline.risk.riskMetrics.cet1Ratio)} -> ${formatPct(stressed.risk.riskMetrics.cet1Ratio)}`;
     },
   },
   {
@@ -269,17 +269,20 @@ export const simulationTestCases: SimulationTestCase[] = [
       ]);
       assertAccountingOk(stressed, 'stressed');
 
-      if (stressed.riskMetrics.lcr >= baseline.riskMetrics.lcr || stressed.riskMetrics.nsfr >= baseline.riskMetrics.nsfr) {
+      if (
+        stressed.risk.riskMetrics.lcr >= baseline.risk.riskMetrics.lcr ||
+        stressed.risk.riskMetrics.nsfr >= baseline.risk.riskMetrics.nsfr
+      ) {
         throw new Error(
-          `Liquidity ratios not lower (LCR ${formatPct(stressed.riskMetrics.lcr)} vs ${formatPct(
-            baseline.riskMetrics.lcr
-          )}, NSFR ${formatPct(stressed.riskMetrics.nsfr)} vs ${formatPct(baseline.riskMetrics.nsfr)})`
+          `Liquidity ratios not lower (LCR ${formatPct(stressed.risk.riskMetrics.lcr)} vs ${formatPct(
+            baseline.risk.riskMetrics.lcr
+          )}, NSFR ${formatPct(stressed.risk.riskMetrics.nsfr)} vs ${formatPct(baseline.risk.riskMetrics.nsfr)})`
         );
       }
 
-      return `LCR ${formatPct(baseline.riskMetrics.lcr)} -> ${formatPct(
-        stressed.riskMetrics.lcr
-      )}, NSFR ${formatPct(baseline.riskMetrics.nsfr)} -> ${formatPct(stressed.riskMetrics.nsfr)}`;
+      return `LCR ${formatPct(baseline.risk.riskMetrics.lcr)} -> ${formatPct(
+        stressed.risk.riskMetrics.lcr
+      )}, NSFR ${formatPct(baseline.risk.riskMetrics.nsfr)} -> ${formatPct(stressed.risk.riskMetrics.nsfr)}`;
     },
   },
   {
@@ -349,16 +352,18 @@ export const simulationTestCases: SimulationTestCase[] = [
           )}, corporate ${formatBn(runCorp)} vs ${formatBn(baseCorp)})`
         );
       }
-      if (runState.riskMetrics.lcr >= baseline.riskMetrics.lcr) {
+      if (runState.risk.riskMetrics.lcr >= baseline.risk.riskMetrics.lcr) {
         throw new Error(
-          `LCR did not worsen (${formatPct(runState.riskMetrics.lcr)} >= ${formatPct(baseline.riskMetrics.lcr)})`
+          `LCR did not worsen (${formatPct(runState.risk.riskMetrics.lcr)} >= ${formatPct(
+            baseline.risk.riskMetrics.lcr
+          )})`
         );
       }
 
       return `Retail ${formatBn(baseRetail)} -> ${formatBn(runRetail)}, Corporate ${formatBn(
         baseCorp
-      )} -> ${formatBn(runCorp)}, LCR ${formatPct(baseline.riskMetrics.lcr)} -> ${formatPct(
-        runState.riskMetrics.lcr
+      )} -> ${formatBn(runCorp)}, LCR ${formatPct(baseline.risk.riskMetrics.lcr)} -> ${formatPct(
+        runState.risk.riskMetrics.lcr
       )}`;
     },
   },
@@ -369,7 +374,7 @@ export const simulationTestCases: SimulationTestCase[] = [
     run: (ctx) => {
       const state = ctx.createState();
       const repoAmount = 5e9;
-      const gilts = state.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
+      const gilts = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
       if (!gilts) {
         throw new Error('Missing gilts line for repo test');
       }
@@ -392,10 +397,10 @@ export const simulationTestCases: SimulationTestCase[] = [
 
       const cashBefore = getBalance(state, AssetProductType.CashReserves);
       const cashAfter = getBalance(nextState, AssetProductType.CashReserves);
-      const repoLine = nextState.balanceSheet.items.find(
+      const repoLine = nextState.financial.balanceSheet.items.find(
         (i) => i.productType === LiabilityProductType.RepurchaseAgreements
       );
-      const giltsAfter = nextState.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
+      const giltsAfter = nextState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
       if (!repoLine) {
         throw new Error('Repo liability line missing after trade');
       }

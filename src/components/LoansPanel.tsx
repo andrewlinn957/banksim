@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, ProductType } from '../domain/enums';
 import { LoanCohort } from '../domain/loanCohorts';
+import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 
 interface Props {
   items: BalanceSheetItem[];
@@ -21,10 +22,6 @@ const PD_THRESHOLDS = { greenMax: 0.005, amberMax: 0.02 };
 const LGD_THRESHOLDS = { greenMax: 0.25, amberMax: 0.45 };
 const PDXLGD_THRESHOLDS = { greenMax: 0.002, amberMax: 0.008 };
 const REMAINING_TERM_THRESHOLDS = { greenMax: 120, amberMax: 300 };
-
-const formatCurrency = (v: number) => (Number.isFinite(v) ? `£${(v / 1e9).toFixed(2)}bn` : '—');
-const formatRate = (v: number) => (Number.isFinite(v) ? `${(v * 100).toFixed(2)}%` : '—');
-const formatInt = (v: number) => (Number.isFinite(v) ? `${Math.round(v)}` : '—');
 
 type RagTone = 'rag-green' | 'rag-amber' | 'rag-red';
 const ragClass = (value: number, thresholds: { greenMax: number; amberMax: number }): RagTone => {
