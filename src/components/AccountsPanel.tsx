@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetSide, ProductType } from '../domain/enums';
 import { BalanceSheetItem } from '../domain/balanceSheet';
-import { formatCurrency, formatRate, formatChange, buildValueTicks, formatAxisValue } from '../utils/formatters';
+import { formatCurrency, formatRate, formatChange } from '../utils/formatters';
 import { SeriesPoint, StatementRow } from '../types/statements';
+import TimeSeriesChart from './TimeSeriesChart';
 
 type StatementKey = 'assets' | 'liabilities' | 'income' | 'cashflow';
 
@@ -157,99 +158,6 @@ const buildCashRows = (state: BankState, history: BankState[]): StatementRow[] =
       series,
     };
   });
-};
-
-const TimeSeriesChart = ({
-  data,
-  xLabel = 'Simulation step',
-  yLabel = 'Amount',
-  xTickInterval = 12,
-}: {
-  data: SeriesPoint[];
-  xLabel?: string;
-  yLabel?: string;
-  xTickInterval?: number;
-}) => {
-  if (!data.length) {
-    return (
-      <div className="series-chart empty">
-        <div className="muted">No history yet — run the simulation to build a trend.</div>
-      </div>
-    );
-  }
-
-  const values = data.map((d) => d.value);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const yTicks = buildValueTicks(min, max, 5);
-  const scaleMin = yTicks.length ? Math.min(min, ...yTicks) : min;
-  const scaleMax = yTicks.length ? Math.max(max, ...yTicks) : max;
-  const rawRange = scaleMax - scaleMin;
-  const range = rawRange === 0 ? Math.max(Math.abs(scaleMax), 1) : rawRange;
-  const zeroWithinRange = scaleMin < 0 && scaleMax > 0;
-  const zeroY = 100 - ((0 - scaleMin) / range) * 100;
-
-  const steps = data.map((d) => d.step);
-  const minStep = Math.min(...steps);
-  const maxStep = Math.max(...steps);
-  const stepRange = Math.max(1, maxStep - minStep);
-
-  const points = data.map((point) => {
-    const x = ((point.step - minStep) / stepRange) * 100;
-    const y = 100 - ((point.value - scaleMin) / range) * 100;
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  });
-  const areaPoints = `${points.join(' ')} 100,100 0,100`;
-
-  const ticks: number[] = [];
-  const interval = Math.max(1, xTickInterval);
-  ticks.push(minStep);
-  for (let s = Math.ceil(minStep / interval) * interval; s < maxStep; s += interval) {
-    if (s > minStep && s < maxStep) ticks.push(s);
-  }
-  if (maxStep !== minStep) ticks.push(maxStep);
-
-  return (
-    <div className="series-chart">
-      <div className="series-plot">
-        <div className="axis-label y-axis-label">{yLabel}</div>
-        <div className="axis-ticks y-axis-ticks">
-          {yTicks.map((tick) => {
-            const bottom = ((tick - scaleMin) / range) * 100;
-            return (
-              <span key={tick} style={{ bottom: `${bottom}%` }}>
-                {formatAxisValue(tick, yLabel)}
-              </span>
-            );
-          })}
-        </div>
-        <div className="plot-body">
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Time series">
-            <defs>
-              <linearGradient id="series-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {zeroWithinRange && <line x1="0" y1={zeroY} x2="100" y2={zeroY} className="series-zero" />}
-            <polygon className="series-area" points={areaPoints} fill="url(#series-fill)" />
-            <polyline className="series-line" points={points.join(' ')} fill="none" stroke="var(--accent)" strokeWidth="2" />
-          </svg>
-          <div className="axis-ticks x-axis-ticks">
-            {ticks.map((tick) => {
-              const left = ((tick - minStep) / stepRange) * 100;
-              return (
-                <span key={tick} style={{ left: `${left}%` }}>
-                  {tick}
-                </span>
-              );
-            })}
-          </div>
-          <div className="axis-label x-axis-label">{xLabel}</div>
-        </div>
-      </div>
-    </div>
-  );
 };
 
 const StatementSection = ({
@@ -437,3 +345,4 @@ const AccountsPanel = ({ state, history }: Props) => {
 };
 
 export default AccountsPanel;
+

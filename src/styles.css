@@ -752,6 +752,16 @@ p {
   padding: 4px;
 }
 
+.series-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 160px;
+}
+
+.series-canvas canvas {
+  display: block;
+}
+
 .series-plot {
   display: flex;
   align-items: stretch;
