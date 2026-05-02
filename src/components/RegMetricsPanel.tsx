@@ -2,17 +2,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { SimulationConfig } from '../domain/config';
-import { BalanceSheetSide, LiabilityProductType, ProductType } from '../domain/enums';
-import { formatCurrency, formatPct, formatChange } from '../utils/formatters';
+import { BalanceSheetSide, ProductType } from '../domain/enums';
+import { PRODUCT_META } from '../domain/productMeta';
+import { formatCurrency, formatPct, formatChange, formatSignedPct } from '../utils/formatters';
 import { SeriesPoint, StatementRow } from '../types/statements';
 import TimeSeriesChart from './TimeSeriesChart';
+import { AttributionLineSelection, AttributionMetricKey, StepAttribution } from '../domain/attribution';
+import HelpLink from './HelpLink';
+import InfoTooltip from './InfoTooltip';
 
 type MetricKey = 'rwa' | 'leverage' | 'nsfr' | 'lcr' | 'capital';
+const ATTRIBUTION_METRIC_ORDER: AttributionMetricKey[] = ['cet1Ratio', 'lcr', 'nsfr', 'nim'];
 
 interface Props {
   state: BankState;
   history: BankState[];
   config: SimulationConfig;
+  attribution?: StepAttribution | null;
+  onAttributionLineSelect?: (selection: AttributionLineSelection) => void;
+  onNavigateHelp?: (sectionId: string) => void;
 }
 
 interface ColumnDef {
@@ -30,7 +38,7 @@ const HQLA_FACTORS: Record<string, number> = {
 };
 
 const formatFactor = (value: number | undefined): string =>
-  value === undefined || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(0)}%`;
+  value === undefined || !Number.isFinite(value) ? '--' : `${(value * 100).toFixed(0)}%`;
 
 const seriesFromHistory = (history: BankState[], selector: (s: BankState) => number): SeriesPoint[] =>
   history.map((s) => ({ step: s.time.step, value: selector(s) }));
@@ -49,7 +57,7 @@ const findItem = (state: BankState, productType: ProductType): BalanceSheetItem 
   state.financial.balanceSheet.items.find((i) => i.productType === productType);
 
 const isStressDepositOutflow = (productType: ProductType): boolean =>
-  productType === LiabilityProductType.RetailDeposits || productType === LiabilityProductType.CorporateDeposits;
+  Boolean(PRODUCT_META[productType]?.behaviour?.isCustomerDeposit);
 
 const computeRwaRows = (state: BankState, history: BankState[], config: SimulationConfig): StatementRow[] => {
   const assetItems = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
@@ -323,6 +331,7 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
   const netOutflowSeries = seriesFromHistory(history, (s) => computeLcrComponents(s).netOutflows);
   const hqlaSeries = seriesFromHistory(history, (s) => computeLcrComponents(s).hqla);
   const lcrSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.lcr);
+  const depositQualitySeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.depositQualityIndex);
 
   rows.push(
     {
@@ -373,6 +382,15 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
       series: lcrSeries,
       display: 'percent',
       meta: { leg: 'Ratio' },
+    },
+    {
+      id: 'lcr-deposit-quality',
+      label: 'Deposit quality index',
+      value: state.risk.riskMetrics.depositQualityIndex,
+      changePct: buildMonthChange(depositQualitySeries),
+      series: depositQualitySeries,
+      display: 'percent',
+      meta: { leg: 'Behavioural quality' },
     }
   );
 
@@ -382,9 +400,18 @@ const computeLcrRows = (state: BankState, history: BankState[]): StatementRow[] 
 const computeCapitalRows = (state: BankState, history: BankState[]): StatementRow[] => {
   const cet1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1);
   const at1Series = seriesFromHistory(history, (s) => s.financial.capital.at1);
-  const tier1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1 + s.financial.capital.at1);
+  const ociSeries = seriesFromHistory(history, (s) => s.financial.capital.accumulatedOCI);
+  const tier1Series = seriesFromHistory(
+    history,
+    (s) => s.financial.capital.cet1 + s.financial.capital.at1 + s.financial.capital.accumulatedOCI
+  );
   const rwaSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.rwa);
   const cet1RatioSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.cet1Ratio);
+  const requirementSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.cet1Requirement);
+  const internalTargetSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.internalCet1TargetRatio);
+  const headroomSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.cet1Headroom);
+  const internalHeadroomSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.internalCet1Headroom);
+  const payoutCapSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.maxPayoutRatio);
   const levRatioSeries = seriesFromHistory(history, (s) => s.risk.riskMetrics.leverageRatio);
 
   return [
@@ -405,9 +432,20 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
       meta: { type: 'Capital' },
     },
     {
+      id: 'cap-oci',
+      label: 'Accumulated OCI',
+      value: state.financial.capital.accumulatedOCI,
+      changePct: buildMonthChange(ociSeries),
+      series: ociSeries,
+      meta: { type: 'Capital' },
+    },
+    {
       id: 'cap-tier1',
-      label: 'Tier 1 capital',
-      value: state.financial.capital.cet1 + state.financial.capital.at1,
+      label: 'Total equity (incl OCI)',
+      value:
+        state.financial.capital.cet1 +
+        state.financial.capital.at1 +
+        state.financial.capital.accumulatedOCI,
       changePct: buildMonthChange(tier1Series),
       series: tier1Series,
       meta: { type: 'Capital' },
@@ -428,6 +466,57 @@ const computeCapitalRows = (state: BankState, history: BankState[]): StatementRo
       series: cet1RatioSeries,
       display: 'percent',
       meta: { type: 'Ratio' },
+    },
+    {
+      id: 'cap-cet1-requirement',
+      label: 'CET1 requirement (buffer stack)',
+      value: state.risk.riskMetrics.cet1Requirement,
+      changePct: buildMonthChange(requirementSeries),
+      series: requirementSeries,
+      display: 'percent',
+      meta: { type: 'Buffer' },
+    },
+    {
+      id: 'cap-cet1-headroom',
+      label: 'CET1 headroom',
+      value: state.risk.riskMetrics.cet1Headroom,
+      changePct: buildMonthChange(headroomSeries),
+      series: headroomSeries,
+      display: 'percent',
+      meta: { type: 'Buffer' },
+    },
+    {
+      id: 'cap-internal-target',
+      label: 'Internal CET1 target',
+      value: state.risk.riskMetrics.internalCet1TargetRatio,
+      changePct: buildMonthChange(internalTargetSeries),
+      series: internalTargetSeries,
+      display: 'percent',
+      meta: { type: 'Buffer' },
+    },
+    {
+      id: 'cap-internal-headroom',
+      label: 'Internal CET1 headroom',
+      value: state.risk.riskMetrics.internalCet1Headroom,
+      changePct: buildMonthChange(internalHeadroomSeries),
+      series: internalHeadroomSeries,
+      display: 'percent',
+      meta: { type: 'Buffer' },
+    },
+    {
+      id: 'cap-payout-cap',
+      label: 'Max payout ratio',
+      value: state.risk.riskMetrics.maxPayoutRatio,
+      changePct: buildMonthChange(payoutCapSeries),
+      series: payoutCapSeries,
+      display: 'percent',
+      meta: {
+        type: state.risk.riskMetrics.payoutBlockedByInternalTarget
+          ? 'Internal target active'
+          : state.risk.riskMetrics.mdaTriggered
+            ? 'MDA active'
+            : 'MDA inactive',
+      },
     },
     {
       id: 'cap-lev-ratio',
@@ -453,6 +542,9 @@ const StatementSection = ({
   valueHeader = 'Value',
   valueFormatter,
   yLabelForRow,
+  helpTooltip,
+  helpSectionId,
+  onNavigateHelp,
 }: {
   title: string;
   subtitle: string;
@@ -465,6 +557,9 @@ const StatementSection = ({
   valueHeader?: string;
   valueFormatter?: (row: StatementRow) => string;
   yLabelForRow?: (row: StatementRow | undefined) => string;
+  helpTooltip?: string;
+  helpSectionId?: string;
+  onNavigateHelp?: (sectionId: string) => void;
 }) => {
   const activeRow = rows.find((r) => r.id === selectedId) ?? rows[0];
   const changeClass = (value: number | null) =>
@@ -485,6 +580,10 @@ const StatementSection = ({
           <h3>{title}</h3>
         </div>
         <div className="statement-header-actions">
+          {helpTooltip ? <InfoTooltip label={`About ${title}`} content={<span>{helpTooltip}</span>} /> : null}
+          {helpSectionId && onNavigateHelp ? (
+            <HelpLink label="Open help" sectionId={helpSectionId} onNavigate={onNavigateHelp} />
+          ) : null}
           <button className="button ghost small" type="button" onClick={onToggle}>
             {isOpen ? 'Collapse' : 'Expand'}
           </button>
@@ -574,7 +673,14 @@ const ensureSelection = (
   }
 };
 
-const RegMetricsPanel = ({ state, history, config }: Props) => {
+const RegMetricsPanel = ({
+  state,
+  history,
+  config,
+  attribution,
+  onAttributionLineSelect,
+  onNavigateHelp,
+}: Props) => {
   const rwaRows = useMemo(() => computeRwaRows(state, history, config), [state, history, config]);
   const leverageRows = useMemo(() => computeLeverageRows(state, history), [state, history]);
   const nsfrRows = useMemo(() => computeNsfrRows(state, history, config), [state, history, config]);
@@ -589,6 +695,8 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
     lcr: true,
     capital: true,
   });
+  const [selectedAttributionMetric, setSelectedAttributionMetric] =
+    useState<AttributionMetricKey>('cet1Ratio');
 
   useEffect(() => {
     ensureSelection(rwaRows, selected.rwa, (id) => setSelected((prev) => ({ ...prev, rwa: id })));
@@ -610,8 +718,134 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
     ensureSelection(capitalRows, selected.capital, (id) => setSelected((prev) => ({ ...prev, capital: id })));
   }, [capitalRows, selected.capital]);
 
+  useEffect(() => {
+    if (!attribution) return;
+    if (attribution.metrics[selectedAttributionMetric]) return;
+    const fallback = ATTRIBUTION_METRIC_ORDER.find((key) => attribution.metrics[key]);
+    if (fallback) setSelectedAttributionMetric(fallback);
+  }, [attribution, selectedAttributionMetric]);
+
+  const activeAttribution = attribution ? attribution.metrics[selectedAttributionMetric] : undefined;
+  const maxAttributionEffect = activeAttribution
+    ? Math.max(...activeAttribution.lines.map((line) => Math.abs(line.effect)), 1e-9)
+    : 1e-9;
+  const activeTopPositive = activeAttribution?.lines.find(
+    (line) => line.id === activeAttribution.topPositiveDriverId
+  );
+  const activeTopNegative = activeAttribution?.lines.find(
+    (line) => line.id === activeAttribution.topNegativeDriverId
+  );
+
   return (
     <div className="stack">
+      {activeAttribution && (
+        <div className="card stack attribution-card">
+          <div className="statement-header">
+            <div>
+              <div className="eyebrow">Step attribution diagnostics</div>
+              <h3>Metric waterfall and event linkage</h3>
+            </div>
+            <div className="chart-pills">
+              <span className={`pill ${activeAttribution.delta > 0 ? 'positive' : activeAttribution.delta < 0 ? 'negative' : ''}`}>
+                Delta {formatSignedPct(activeAttribution.delta)}
+              </span>
+              <span className={`pill ${activeAttribution.residual > 0 ? 'positive' : activeAttribution.residual < 0 ? 'negative' : ''}`}>
+                Residual {formatSignedPct(activeAttribution.residual)}
+              </span>
+            </div>
+          </div>
+          <div className="metric-help-actions">
+            <InfoTooltip
+              label="About attribution waterfall"
+              content={
+                <span>
+                  Decomposes the last-step metric movement into modeled drivers and links each driver to event-log
+                  entries.
+                </span>
+              }
+            />
+            {onNavigateHelp ? (
+              <HelpLink
+                label="Open help"
+                sectionId="attribution-events-reconciliation"
+                onNavigate={onNavigateHelp}
+              />
+            ) : null}
+          </div>
+
+          <div className="attribution-metric-tabs">
+            {ATTRIBUTION_METRIC_ORDER.map((metricKey) => {
+              const metric = attribution?.metrics[metricKey];
+              if (!metric) return null;
+              return (
+                <button
+                  key={metricKey}
+                  type="button"
+                  className={`button small ${metricKey === selectedAttributionMetric ? 'primary' : 'ghost'}`}
+                  onClick={() => setSelectedAttributionMetric(metricKey)}
+                >
+                  {metric.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <table className="data-table attribution-table">
+            <thead>
+              <tr>
+                <th>Driver</th>
+                <th className="numeric">Impact</th>
+                <th>Magnitude</th>
+                <th className="numeric">Events</th>
+                <th className="numeric">Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeAttribution.lines.map((line) => {
+                const width = `${Math.max(2, (Math.abs(line.effect) / maxAttributionEffect) * 100)}%`;
+                const signClass = line.effect > 0 ? 'positive' : line.effect < 0 ? 'negative' : '';
+                return (
+                  <tr key={line.id}>
+                    <td>{line.label}</td>
+                    <td className={`numeric ${signClass}`}>{formatSignedPct(line.effect)}</td>
+                    <td>
+                      <div className="waterfall-track">
+                        <div className={`waterfall-bar ${signClass || 'neutral'}`} style={{ width }} />
+                      </div>
+                    </td>
+                    <td className="numeric">{line.eventIds.length}</td>
+                    <td className="numeric">
+                      <button
+                        type="button"
+                        className="button ghost small"
+                        disabled={line.eventIds.length === 0}
+                        onClick={() =>
+                          onAttributionLineSelect?.({
+                            metric: selectedAttributionMetric,
+                            metricLabel: activeAttribution.label,
+                            lineId: line.id,
+                            lineLabel: line.label,
+                            effect: line.effect,
+                            eventIds: line.eventIds,
+                          })
+                        }
+                      >
+                        Show
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="muted">
+            Reconciled change: {formatSignedPct(activeAttribution.reconciledDelta)}.
+            {activeTopPositive ? ` Top positive: ${activeTopPositive.label}.` : ''}
+            {activeTopNegative ? ` Top negative: ${activeTopNegative.label}.` : ''}
+          </div>
+        </div>
+      )}
+
       <StatementSection
         title="Risk-weighted assets"
         subtitle="RWA stack by product"
@@ -625,6 +859,9 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         onSelect={(id) => setSelected((prev) => ({ ...prev, rwa: id }))}
         isOpen={open.rwa}
         onToggle={() => setOpen((prev) => ({ ...prev, rwa: !prev.rwa }))}
+        helpTooltip="RWA is the sum of exposure multiplied by risk weights across assets. Higher RWA lowers CET1 ratio for fixed capital."
+        helpSectionId="risk-metrics-and-compliance"
+        onNavigateHelp={onNavigateHelp}
         yLabelForRow={(row) => (row?.display === 'percent' ? 'Ratio (%)' : '£ (bn)')}
       />
 
@@ -641,6 +878,9 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         onSelect={(id) => setSelected((prev) => ({ ...prev, leverage: id }))}
         isOpen={open.leverage}
         onToggle={() => setOpen((prev) => ({ ...prev, leverage: !prev.leverage }))}
+        helpTooltip={`Leverage ratio = Tier 1 / total exposure. Hard minimum is ${formatPct(config.riskLimits.minLeverageRatio)}.`}
+        helpSectionId="risk-metrics-and-compliance"
+        onNavigateHelp={onNavigateHelp}
         yLabelForRow={(row) => (row?.display === 'percent' ? 'Ratio (%)' : '£ (bn)')}
       />
 
@@ -659,6 +899,9 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         onSelect={(id) => setSelected((prev) => ({ ...prev, nsfr: id }))}
         isOpen={open.nsfr}
         onToggle={() => setOpen((prev) => ({ ...prev, nsfr: !prev.nsfr }))}
+        helpTooltip={`NSFR = ASF / RSF over one year. Hard minimum is ${formatPct(config.riskLimits.minNsfr)}.`}
+        helpSectionId="liquidity-ratios"
+        onNavigateHelp={onNavigateHelp}
         yLabelForRow={(row) => (row?.display === 'percent' ? 'Ratio (%)' : '£ (bn)')}
       />
 
@@ -677,6 +920,9 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         onSelect={(id) => setSelected((prev) => ({ ...prev, lcr: id }))}
         isOpen={open.lcr}
         onToggle={() => setOpen((prev) => ({ ...prev, lcr: !prev.lcr }))}
+        helpTooltip={`LCR = HQLA / net 30-day outflows, with inflows capped at 75% of outflows. Hard minimum is ${formatPct(config.riskLimits.minLcr)}.`}
+        helpSectionId="liquidity-ratios"
+        onNavigateHelp={onNavigateHelp}
         yLabelForRow={(row) => (row?.display === 'percent' ? 'Ratio (%)' : '£ (bn)')}
       />
 
@@ -691,6 +937,9 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
         onSelect={(id) => setSelected((prev) => ({ ...prev, capital: id }))}
         isOpen={open.capital}
         onToggle={() => setOpen((prev) => ({ ...prev, capital: !prev.capital }))}
+        helpTooltip={`Distributions are constrained by capital requirements, internal target, and payout cap. Current CET1 requirement is ${formatPct(state.risk.riskMetrics.cet1Requirement)}.`}
+        helpSectionId="capital-policy-and-distributions"
+        onNavigateHelp={onNavigateHelp}
         yLabelForRow={(row) => (row?.display === 'percent' ? 'Ratio (%)' : '£ (bn)')}
       />
     </div>
@@ -698,4 +947,5 @@ const RegMetricsPanel = ({ state, history, config }: Props) => {
 };
 
 export default RegMetricsPanel;
+
 

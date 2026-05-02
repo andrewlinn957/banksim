@@ -25,7 +25,7 @@ export interface IssueDebtAction {
   type: 'issueDebt';
   productType: WholesaleFundingProduct;
   amount: number;
-  rate: number;
+  rate?: number;
   maturityMonths?: number;
 }
 
@@ -44,9 +44,32 @@ export interface EnterRepoAction {
   maturityMonths?: number;
 }
 
+export interface SetUnderwritingAction {
+  type: 'setUnderwriting';
+  productType: AssetProductType.Mortgages | AssetProductType.CorporateLoans;
+  tightness: number; // 0 = loose baseline, 1 = very tight
+}
+
+export interface EnterHedgeAction {
+  type: 'enterHedge';
+  direction: 'payFixedReceiveFloat' | 'receiveFixedPayFloat';
+  notional: number;
+  fixedRate: number;
+  maturityMonths?: number;
+}
+
+export interface SetCapitalPolicyAction {
+  type: 'setCapitalPolicy';
+  dividendPayoutRatio: number; // 0..1 payout of positive net income
+  at1CouponMode?: 'auto' | 'pay' | 'skip';
+}
+
 export type PlayerAction =
   | AdjustRateAction
   | BuySellAssetAction
   | IssueDebtAction
   | IssueEquityAction
-  | EnterRepoAction;
+  | EnterRepoAction
+  | SetUnderwritingAction
+  | EnterHedgeAction
+  | SetCapitalPolicyAction;

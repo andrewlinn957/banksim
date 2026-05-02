@@ -7,18 +7,59 @@ import { LiabilityProductType, AssetProductType, ProductType } from '../domain/e
 import { SimulationConfig } from '../domain/config';
 import { baseConfig } from './baseConfig';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
-import { LoanCohort } from '../domain/loanCohorts';
+import { cloneBankState } from '../engine/clone';
 import { generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
+import { ScenarioGoals } from '../domain/scoring';
+import { PlayerAction } from '../domain/actions';
 
 export interface ScheduledShock {
   stepNumber: number;
   shock: Shock;
 }
 
+export interface ScenarioMetricTrigger {
+  metric: 'cet1Ratio' | 'leverageRatio' | 'lcr' | 'nsfr';
+  operator: '<' | '<=' | '>' | '>=';
+  value: number;
+}
+
+export interface ScenarioActionTrigger {
+  actionType: PlayerAction['type'];
+  minCount?: number;
+}
+
+export interface ScenarioArcTrigger {
+  allMetrics?: ScenarioMetricTrigger[];
+  anyMetrics?: ScenarioMetricTrigger[];
+  actionRequirements?: ScenarioActionTrigger[];
+}
+
+export interface ScenarioArcStage {
+  id: string;
+  stepNumber: number;
+  shocks: Shock[];
+  trigger?: ScenarioArcTrigger;
+  milestone?: string;
+  severity?: 'info' | 'warning' | 'error';
+}
+
+export interface ScenarioMilestone {
+  id: string;
+  stepNumber: number;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+}
+
+export interface ScenarioStepPayload {
+  shocks: Shock[];
+  milestones: ScenarioMilestone[];
+}
+
 export interface Scenario {
   id: string;
   name: string;
   description: string;
+  goals?: ScenarioGoals;
   initialStateOverride?: Partial<BankState> & {
     financial?: {
       balanceSheet?: {
@@ -27,49 +68,9 @@ export interface Scenario {
     };
   };
   scheduledShocks: ScheduledShock[];
+  arcStages?: ScenarioArcStage[];
   configOverrides?: Partial<SimulationConfig>;
 }
-
-const cloneBankState = (state: BankState): BankState => ({
-  ...state,
-  time: { ...state.time, date: new Date(state.time.date.getTime()) },
-  financial: {
-    balanceSheet: {
-      items: state.financial.balanceSheet.items.map((i) => ({
-        ...i,
-        encumbrance: i.encumbrance ? { ...i.encumbrance } : { encumberedAmount: 0 },
-        liquidityTag: i.liquidityTag ? { ...i.liquidityTag } : undefined,
-      })),
-    },
-    capital: { ...state.financial.capital },
-    incomeStatement: { ...state.financial.incomeStatement },
-    cashFlowStatement: { ...state.financial.cashFlowStatement },
-  },
-  risk: {
-    riskMetrics: { ...state.risk.riskMetrics },
-    compliance: { ...state.risk.compliance },
-  },
-  market: {
-    ...state.market,
-    giltCurve: {
-      ...state.market.giltCurve,
-      nelsonSiegel: { ...state.market.giltCurve.nelsonSiegel },
-      yields: { ...state.market.giltCurve.yields },
-    },
-    macroModel: {
-      ...state.market.macroModel,
-      factors: { ...state.market.macroModel.factors },
-    },
-  },
-  behaviour: { ...state.behaviour },
-  status: { ...state.status },
-  loanCohorts: Object.fromEntries(
-    Object.entries(state.loanCohorts ?? {}).map(([productType, cohorts]) => [
-      productType,
-      (cohorts as LoanCohort[]).map((c) => ({ ...c })),
-    ])
-  ) as Partial<Record<ProductType, LoanCohort[]>>,
-});
 
 const applyInitialOverride = (
   override: Scenario['initialStateOverride'] | undefined,
@@ -111,6 +112,9 @@ const applyInitialOverride = (
   if (override?.status) {
     state.status = { ...state.status, ...override.status };
   }
+  if (override?.board) {
+    state.board = { ...state.board, ...override.board };
+  }
 
   const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
   const loanProducts = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;
@@ -151,6 +155,12 @@ const applyInitialOverride = (
 
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
+  state.board = {
+    score: state.risk.riskMetrics.boardPressureScore,
+    earningsVolatility: state.risk.riskMetrics.boardPressureVolatility,
+    franchiseGap: state.risk.riskMetrics.boardPressureFranchiseGap,
+    riskGap: state.risk.riskMetrics.boardPressureRiskGap,
+  };
   return state;
 };
 
@@ -160,12 +170,23 @@ export const scenarios: Scenario[] = [
     name: 'Wholesale Funding Reliance',
     description:
       'Bank leans on short-term wholesale funding with weaker deposits. Early market spread shock and liquidity run stress funding resilience.',
+    goals: {
+      horizonMonths: 12,
+      objectives: [
+        { label: 'Keep LCR above 110%', metric: 'lcr', direction: 'min', target: 1.1, weight: 35 },
+        { label: 'Keep NSFR above 102%', metric: 'nsfr', direction: 'min', target: 1.02, weight: 30 },
+        { label: 'Keep CET1 above 11.5%', metric: 'cet1Ratio', direction: 'min', target: 0.115, weight: 35 },
+      ],
+    },
     initialStateOverride: {
       financial: {
         balanceSheet: {
           items: [
             { productType: LiabilityProductType.WholesaleFundingST, balance: 80e9 },
-            { productType: LiabilityProductType.RetailDeposits, balance: 200e9 },
+            { productType: LiabilityProductType.RetailTransactionalDeposits, balance: 90e9 },
+            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 110e9 },
+            { productType: LiabilityProductType.CorporateOperatingDeposits, balance: 45e9 },
+            { productType: LiabilityProductType.CorporateNonOperatingDeposits, balance: 20e9 },
           ],
         },
       },
@@ -188,12 +209,46 @@ export const scenarios: Scenario[] = [
         },
       },
     ],
+    arcStages: [
+      {
+        id: 'funding-cliff',
+        stepNumber: 2,
+        trigger: {
+          allMetrics: [{ metric: 'lcr', operator: '<', value: 1.15 }],
+        },
+        shocks: [
+          { type: 'rolloverStress', accessMultiplier: 0.75, spreadBps: 90 },
+          { type: 'idiosyncraticRun', outflowRateMultiplier: 1.2 },
+        ],
+        milestone: 'Funding markets tighten as confidence in your liquidity position fades.',
+        severity: 'warning',
+      },
+      {
+        id: 'funding-stabilises',
+        stepNumber: 2,
+        trigger: {
+          allMetrics: [{ metric: 'lcr', operator: '>=', value: 1.15 }],
+        },
+        shocks: [{ type: 'rolloverStress', accessMultiplier: 0.9, spreadBps: 35 }],
+        milestone: 'Stronger liquidity keeps market access open despite wider spreads.',
+        severity: 'info',
+      },
+    ],
   },
   {
     id: 'corporate-credit-boom',
     name: 'Corporate Credit Boom',
     description:
       'Aggressive growth in corporate lending sets the stage for a downturn that hits PD/LGD hard.',
+    goals: {
+      horizonMonths: 18,
+      objectives: [
+        { label: 'Maintain CET1 above 11%', metric: 'cet1Ratio', direction: 'min', target: 0.11, weight: 30 },
+        { label: 'Hold leverage above 4%', metric: 'leverageRatio', direction: 'min', target: 0.04, weight: 20 },
+        { label: 'Deliver ROE >= 7%', metric: 'roe', direction: 'min', target: 0.07, weight: 25 },
+        { label: 'Keep monthly net income >= £0', metric: 'netIncome', direction: 'min', target: 0, weight: 25 },
+      ],
+    },
     initialStateOverride: {
       financial: {
         balanceSheet: {
@@ -214,6 +269,35 @@ export const scenarios: Scenario[] = [
         },
       },
     ],
+    arcStages: [
+      {
+        id: 'credit-crunch',
+        stepNumber: 6,
+        trigger: {
+          anyMetrics: [
+            { metric: 'cet1Ratio', operator: '<', value: 0.12 },
+            { metric: 'leverageRatio', operator: '<', value: 0.045 },
+          ],
+          actionRequirements: [{ actionType: 'setUnderwriting', minCount: 1 }],
+        },
+        shocks: [
+          { type: 'macroDownturn', pdMultiplier: 1.6, lgdMultiplier: 1.25 },
+          { type: 'marketSpreadShock', wholesaleSpreadBps: 55, loanSpreadBps: 45, repoHaircutIncreasePct: 0.01 },
+        ],
+        milestone: 'Credit markets deteriorate as weaker borrowers miss covenants.',
+        severity: 'warning',
+      },
+      {
+        id: 'soft-landing',
+        stepNumber: 6,
+        trigger: {
+          allMetrics: [{ metric: 'cet1Ratio', operator: '>=', value: 0.12 }],
+        },
+        shocks: [{ type: 'macroDownturn', pdMultiplier: 1.2, lgdMultiplier: 1.05 }],
+        milestone: 'Prudent balance-sheet management softens the downturn.',
+        severity: 'info',
+      },
+    ],
   },
 ];
 
@@ -225,16 +309,38 @@ export const applyScenarioConfig = (
   const scenario = scenarios.find((s) => s.id === scenarioId);
   if (!scenario?.configOverrides) return base;
   const overrides = scenario.configOverrides;
+
+  const mergeRecord = <T extends Record<string, any>>(baseRecord: T, overrideRecord?: Partial<T>): T => {
+    if (!overrideRecord) return { ...baseRecord };
+    const merged = { ...baseRecord } as T;
+    (Object.keys(overrideRecord) as Array<keyof T>).forEach((key) => {
+      const overrideValue = overrideRecord[key];
+      if (overrideValue === undefined) return;
+      const baseValue = baseRecord[key];
+      if (
+        baseValue !== null &&
+        typeof baseValue === 'object' &&
+        !Array.isArray(baseValue) &&
+        overrideValue !== null &&
+        typeof overrideValue === 'object' &&
+        !Array.isArray(overrideValue)
+      ) {
+        merged[key] = { ...baseValue, ...overrideValue };
+        return;
+      }
+      merged[key] = overrideValue as T[keyof T];
+    });
+    return merged;
+  };
+
   return {
     version: overrides.version ?? base.version,
-    productParameters: {
-      ...base.productParameters,
-      ...(overrides.productParameters ?? {}),
+    featureFlags: {
+      ...(base.featureFlags ?? {}),
+      ...(overrides.featureFlags ?? {}),
     },
-    liquidityTags: {
-      ...base.liquidityTags,
-      ...(overrides.liquidityTags ?? {}),
-    },
+    productParameters: mergeRecord(base.productParameters, overrides.productParameters),
+    liquidityTags: mergeRecord(base.liquidityTags, overrides.liquidityTags),
     global: {
       ...base.global,
       ...(overrides.global ?? {}),
@@ -242,6 +348,127 @@ export const applyScenarioConfig = (
     riskLimits: {
       ...base.riskLimits,
       ...(overrides.riskLimits ?? {}),
+      capitalBufferStack: {
+        ...base.riskLimits.capitalBufferStack,
+        ...(overrides.riskLimits?.capitalBufferStack ?? {}),
+      },
+      capitalPolicy: {
+        ...base.riskLimits.capitalPolicy,
+        ...(overrides.riskLimits?.capitalPolicy ?? {}),
+      },
+      concentration: {
+        ...base.riskLimits.concentration,
+        ...(overrides.riskLimits?.concentration ?? {}),
+      },
+      boardPressure: {
+        ...base.riskLimits.boardPressure,
+        ...(overrides.riskLimits?.boardPressure ?? {}),
+      },
+    },
+    behaviour: {
+      ...base.behaviour,
+      ...(overrides.behaviour ?? {}),
+      depositByProduct: mergeRecord(base.behaviour.depositByProduct ?? {}, overrides.behaviour?.depositByProduct),
+      loanPipelineByProduct: mergeRecord(
+        base.behaviour.loanPipelineByProduct ?? {},
+        overrides.behaviour?.loanPipelineByProduct
+      ),
+      creditRiskDynamics: {
+        ...(base.behaviour.creditRiskDynamics ?? {}),
+        ...(overrides.behaviour?.creditRiskDynamics ?? {}),
+        adverseSelection: {
+          ...(base.behaviour.creditRiskDynamics?.adverseSelection ?? {}),
+          ...(overrides.behaviour?.creditRiskDynamics?.adverseSelection ?? {}),
+        },
+        affordabilityByProduct: mergeRecord(
+          base.behaviour.creditRiskDynamics?.affordabilityByProduct ?? {},
+          overrides.behaviour?.creditRiskDynamics?.affordabilityByProduct
+        ),
+        refinanceByProduct: mergeRecord(
+          base.behaviour.creditRiskDynamics?.refinanceByProduct ?? {},
+          overrides.behaviour?.creditRiskDynamics?.refinanceByProduct
+        ),
+        workoutPipeline: {
+          ...(base.behaviour.creditRiskDynamics?.workoutPipeline ?? {}),
+          ...(overrides.behaviour?.creditRiskDynamics?.workoutPipeline ?? {}),
+        },
+      },
+      costModel: {
+        ...(base.behaviour.costModel ?? {}),
+        ...(overrides.behaviour?.costModel ?? {}),
+      },
+      fundingLadder: {
+        ...(base.behaviour.fundingLadder ?? {}),
+        ...(overrides.behaviour?.fundingLadder ?? {}),
+      },
+      ifrs9: {
+        ...(base.behaviour.ifrs9 ?? {}),
+        ...(overrides.behaviour?.ifrs9 ?? {}),
+      },
+      liquidityDynamics: {
+        ...(base.behaviour.liquidityDynamics ?? {}),
+        ...(overrides.behaviour?.liquidityDynamics ?? {}),
+      },
+      irrbb: {
+        ...(base.behaviour.irrbb ?? {}),
+        ...(overrides.behaviour?.irrbb ?? {}),
+      },
+      securitiesAccounting: {
+        ...(base.behaviour.securitiesAccounting ?? {}),
+        ...(overrides.behaviour?.securitiesAccounting ?? {}),
+        defaultClassificationByProduct: {
+          ...(base.behaviour.securitiesAccounting?.defaultClassificationByProduct ?? {}),
+          ...(overrides.behaviour?.securitiesAccounting?.defaultClassificationByProduct ?? {}),
+        },
+        effectiveDurationYearsByProduct: {
+          ...(base.behaviour.securitiesAccounting?.effectiveDurationYearsByProduct ?? {}),
+          ...(overrides.behaviour?.securitiesAccounting?.effectiveDurationYearsByProduct ?? {}),
+        },
+      },
+      concentration: {
+        ...(base.behaviour.concentration ?? {}),
+        ...(overrides.behaviour?.concentration ?? {}),
+        sectorPdMultiplierByStress: {
+          ...(base.behaviour.concentration?.sectorPdMultiplierByStress ?? {}),
+          ...(overrides.behaviour?.concentration?.sectorPdMultiplierByStress ?? {}),
+        },
+        geographyPdMultiplierByStress: {
+          ...(base.behaviour.concentration?.geographyPdMultiplierByStress ?? {}),
+          ...(overrides.behaviour?.concentration?.geographyPdMultiplierByStress ?? {}),
+        },
+      },
+      boardPressure: {
+        ...(base.behaviour.boardPressure ?? {}),
+        ...(overrides.behaviour?.boardPressure ?? {}),
+      },
+      confidenceStateMachine: {
+        ...(base.behaviour.confidenceStateMachine ?? {}),
+        ...(overrides.behaviour?.confidenceStateMachine ?? {}),
+        impacts: {
+          ...(base.behaviour.confidenceStateMachine?.impacts ?? {}),
+          ...(overrides.behaviour?.confidenceStateMachine?.impacts ?? {}),
+        },
+      },
+      conductRisk: {
+        ...(base.behaviour.conductRisk ?? {}),
+        ...(overrides.behaviour?.conductRisk ?? {}),
+      },
+      sharePriceModel: {
+        ...(base.behaviour.sharePriceModel ?? {}),
+        ...(overrides.behaviour?.sharePriceModel ?? {}),
+      },
+    },
+    shockParameters: {
+      ...base.shockParameters,
+      ...(overrides.shockParameters ?? {}),
+      idiosyncraticRun: {
+        ...base.shockParameters.idiosyncraticRun,
+        ...(overrides.shockParameters?.idiosyncraticRun ?? {}),
+      },
+    },
+    tolerances: {
+      ...base.tolerances,
+      ...(overrides.tolerances ?? {}),
     },
   };
 };
@@ -254,8 +481,97 @@ export const getScenarioInitialState = (
   return applyInitialOverride(scenario?.initialStateOverride, config);
 };
 
-export const getScheduledShocksForStep = (scenarioId: string | null | undefined, stepNumber: number): Shock[] => {
-  const scenario = scenarios.find((s) => s.id === scenarioId);
-  if (!scenario) return [];
-  return scenario.scheduledShocks.filter((s) => s.stepNumber === stepNumber).map((s) => s.shock);
+const readMetric = (state: BankState, metric: ScenarioMetricTrigger['metric']): number => {
+  const metrics = state.risk.riskMetrics;
+  if (metric === 'cet1Ratio') return metrics.cet1Ratio;
+  if (metric === 'leverageRatio') return metrics.leverageRatio;
+  if (metric === 'lcr') return metrics.lcr;
+  return metrics.nsfr;
 };
+
+const compareMetric = (left: number, operator: ScenarioMetricTrigger['operator'], right: number): boolean => {
+  if (operator === '<') return left < right;
+  if (operator === '<=') return left <= right;
+  if (operator === '>') return left > right;
+  return left >= right;
+};
+
+const triggerSatisfied = (
+  trigger: ScenarioArcTrigger | undefined,
+  state: BankState | undefined,
+  actions: PlayerAction[] | undefined
+): boolean => {
+  if (!trigger) return true;
+  if (!state) return false;
+
+  const allMetricsOk =
+    (trigger.allMetrics ?? []).length === 0 ||
+    (trigger.allMetrics ?? []).every((condition) =>
+      compareMetric(readMetric(state, condition.metric), condition.operator, condition.value)
+    );
+  if (!allMetricsOk) return false;
+
+  const anyMetrics = trigger.anyMetrics ?? [];
+  const anyMetricsOk =
+    anyMetrics.length === 0 ||
+    anyMetrics.some((condition) =>
+      compareMetric(readMetric(state, condition.metric), condition.operator, condition.value)
+    );
+  if (!anyMetricsOk) return false;
+
+  const requirements = trigger.actionRequirements ?? [];
+  if (requirements.length === 0) return true;
+  const actionCounts = new Map<PlayerAction['type'], number>();
+  (actions ?? []).forEach((action) => {
+    actionCounts.set(action.type, (actionCounts.get(action.type) ?? 0) + 1);
+  });
+  return requirements.every((requirement) => {
+    const count = actionCounts.get(requirement.actionType) ?? 0;
+    return count >= (requirement.minCount ?? 1);
+  });
+};
+
+export const getScenarioStepPayload = (args: {
+  scenarioId: string | null | undefined;
+  stepNumber: number;
+  state?: BankState;
+  actions?: PlayerAction[];
+}): ScenarioStepPayload => {
+  const { scenarioId, stepNumber, state, actions } = args;
+  const scenario = scenarios.find((s) => s.id === scenarioId);
+  if (!scenario) return { shocks: [], milestones: [] };
+
+  const scheduled = scenario.scheduledShocks.filter((s) => s.stepNumber === stepNumber).map((s) => s.shock);
+  const arcMatches = (scenario.arcStages ?? []).filter(
+    (stage) => stage.stepNumber === stepNumber && triggerSatisfied(stage.trigger, state, actions)
+  );
+
+  const arcShocks = arcMatches.flatMap((stage) => stage.shocks);
+  const milestones = arcMatches
+    .filter((stage) => stage.milestone)
+    .map((stage) => ({
+      id: `${scenario.id}-${stage.id}-${stepNumber}`,
+      stepNumber,
+      message: stage.milestone ?? '',
+      severity: stage.severity ?? 'info',
+    }));
+
+  return {
+    shocks: [...scheduled, ...arcShocks],
+    milestones,
+  };
+};
+
+export const getScheduledShocksForStep = (
+  scenarioId: string | null | undefined,
+  stepNumber: number,
+  state?: BankState,
+  actions?: PlayerAction[]
+): Shock[] => getScenarioStepPayload({ scenarioId, stepNumber, state, actions }).shocks;
+
+export const getScenarioMilestonesForStep = (
+  scenarioId: string | null | undefined,
+  stepNumber: number,
+  state?: BankState,
+  actions?: PlayerAction[]
+): ScenarioMilestone[] => getScenarioStepPayload({ scenarioId, stepNumber, state, actions }).milestones;

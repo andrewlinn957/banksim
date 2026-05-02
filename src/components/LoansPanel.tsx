@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { BalanceSheetItem } from '../domain/balanceSheet';
+import { LoanPipelineState } from '../domain/bankState';
 import { AssetProductType, ProductType } from '../domain/enums';
-import { LoanCohort } from '../domain/loanCohorts';
+import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 
 interface Props {
   items: BalanceSheetItem[];
   loanCohorts?: Partial<Record<ProductType, LoanCohort[]>>;
+  loanPipelines?: Partial<Record<ProductType, LoanPipelineState>>;
+  workoutPipelines?: Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 }
 
 const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;
@@ -22,6 +25,8 @@ const PD_THRESHOLDS = { greenMax: 0.005, amberMax: 0.02 };
 const LGD_THRESHOLDS = { greenMax: 0.25, amberMax: 0.45 };
 const PDXLGD_THRESHOLDS = { greenMax: 0.002, amberMax: 0.008 };
 const REMAINING_TERM_THRESHOLDS = { greenMax: 120, amberMax: 300 };
+const SECTOR_ORDER = ['retailMortgage', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
+const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
 
 type RagTone = 'rag-green' | 'rag-amber' | 'rag-red';
 const ragClass = (value: number, thresholds: { greenMax: number; amberMax: number }): RagTone => {
@@ -139,6 +144,9 @@ const EMPTY_LOAN_SUMMARY_FILTERS: Record<LoanSummaryColumnKey, string> = {
 
 type CohortColumnKey =
   | 'cohortId'
+  | 'stage'
+  | 'sector'
+  | 'geography'
   | 'ageMonths'
   | 'remainingTermMonths'
   | 'outstandingPrincipal'
@@ -149,6 +157,9 @@ type CohortColumnKey =
 
 const EMPTY_COHORT_FILTERS: Record<CohortColumnKey, string> = {
   cohortId: '',
+  stage: '',
+  sector: '',
+  geography: '',
   ageMonths: '',
   remainingTermMonths: '',
   outstandingPrincipal: '',
@@ -177,6 +188,35 @@ const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
     value: (cohort) => cohort.cohortId,
     display: (cohort) => formatInt(cohort.cohortId),
     cell: (cohort) => formatInt(cohort.cohortId),
+  },
+  {
+    key: 'stage',
+    label: 'Stage',
+    filterUnit: 'raw',
+    placeholder: 'stage1|2|3',
+    value: (cohort) => (cohort.stage === 'stage3' ? 3 : cohort.stage === 'stage2' ? 2 : 1),
+    display: (cohort) => cohort.stage,
+    cell: (cohort) => cohort.stage,
+  },
+  {
+    key: 'sector',
+    label: 'Sector',
+    filterUnit: 'raw',
+    placeholder: 'e.g. sme',
+    value: (cohort) =>
+      Math.max(0, SECTOR_ORDER.indexOf((cohort.sector ?? 'other') as (typeof SECTOR_ORDER)[number])),
+    display: (cohort) => cohort.sector ?? 'other',
+    cell: (cohort) => cohort.sector ?? 'other',
+  },
+  {
+    key: 'geography',
+    label: 'Geography',
+    filterUnit: 'raw',
+    placeholder: 'e.g. north',
+    value: (cohort) =>
+      Math.max(0, GEOGRAPHY_ORDER.indexOf((cohort.geography ?? 'other') as (typeof GEOGRAPHY_ORDER)[number])),
+    display: (cohort) => cohort.geography ?? 'other',
+    cell: (cohort) => cohort.geography ?? 'other',
   },
   {
     key: 'ageMonths',
@@ -275,7 +315,7 @@ const isLoanPortfolioItem = (
 ): item is BalanceSheetItem & { productType: LoanPortfolioType } =>
   item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.CorporateLoans;
 
-const LoansPanel = ({ items, loanCohorts }: Props) => {
+const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Props) => {
   const loans = useMemo(() => items.filter(isLoanPortfolioItem), [items]);
   const totalLoans = useMemo(() => loans.reduce((sum, loan) => sum + loan.balance, 0), [loans]);
 
@@ -418,9 +458,68 @@ const LoansPanel = ({ items, loanCohorts }: Props) => {
     const weightedPd = weightedAverage(visibleCohorts, (cohort) => cohort.annualPd);
     const weightedLgd = weightedAverage(visibleCohorts, (cohort) => cohort.lgd);
     const weightedRisk = weightedAverage(visibleCohorts, (cohort) => cohort.annualPd * cohort.lgd);
+    const weightedAffordability = weightedAverage(visibleCohorts, (cohort) => cohort.affordabilityIndex ?? 1);
+    const sectorTotals = new Map<string, number>();
+    const geographyTotals = new Map<string, number>();
+    visibleCohorts.forEach((cohort) => {
+      const exposure = Math.max(0, cohort.outstandingPrincipal ?? 0);
+      if (exposure <= 0) return;
+      const sector = cohort.sector ?? 'other';
+      const geography = cohort.geography ?? 'other';
+      sectorTotals.set(sector, (sectorTotals.get(sector) ?? 0) + exposure);
+      geographyTotals.set(geography, (geographyTotals.get(geography) ?? 0) + exposure);
+    });
+    const sectorConcentration =
+      totalOutstanding > 0
+        ? Math.max(0, ...Array.from(sectorTotals.values()).map((value) => value / totalOutstanding))
+        : 0;
+    const geographyConcentration =
+      totalOutstanding > 0
+        ? Math.max(0, ...Array.from(geographyTotals.values()).map((value) => value / totalOutstanding))
+        : 0;
 
-    return { cohortCount, totalOutstanding, weightedCoupon, weightedPd, weightedLgd, weightedRisk };
+    return {
+      cohortCount,
+      totalOutstanding,
+      weightedCoupon,
+      weightedPd,
+      weightedLgd,
+      weightedRisk,
+      weightedAffordability,
+      sectorConcentration,
+      geographyConcentration,
+    };
   }, [visibleCohorts]);
+
+  const pipeline = loanPipelines?.[selectedPortfolio];
+  const workoutSummary = useMemo(() => {
+    const buckets = workoutPipelines?.[selectedPortfolio] ?? [];
+    const stock = buckets.reduce((sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal ?? 0), 0);
+    const expectedRecoveries = buckets.reduce(
+      (sum, bucket) =>
+        sum +
+        Math.max(0, bucket.defaultedPrincipal ?? 0) *
+          Math.max(0, Math.min(1, bucket.expectedRecoveryRate ?? 0)),
+      0
+    );
+    const weightedMonths =
+      stock > 0
+        ? buckets.reduce(
+            (sum, bucket) =>
+              sum +
+              Math.max(0, bucket.defaultedPrincipal ?? 0) *
+                Math.max(0, bucket.monthsToResolution ?? 0),
+            0
+          ) / stock
+        : 0;
+    return {
+      bucketCount: buckets.length,
+      stock,
+      expectedRecoveries,
+      expectedChargeOffs: Math.max(0, stock - expectedRecoveries),
+      weightedMonths,
+    };
+  }, [selectedPortfolio, workoutPipelines]);
 
   return (
     <div className="card stack">
@@ -452,6 +551,22 @@ const LoansPanel = ({ items, loanCohorts }: Props) => {
       <div className="muted">
         Total loans: <strong>{formatCurrency(totalLoans)}</strong>
       </div>
+      {pipeline && (
+        <div className="grid-metrics">
+          <div className="metric-card">
+            <div className="metric-label">Demand this month</div>
+            <div className="metric-value">{formatCurrency(pipeline.demandNotional)}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Approved this month</div>
+            <div className="metric-value">{formatCurrency(pipeline.approvedNotional)}</div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Committed undrawn</div>
+            <div className="metric-value">{formatCurrency(pipeline.committedNotional)}</div>
+          </div>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
         <button
           type="button"
@@ -640,6 +755,38 @@ const LoansPanel = ({ items, loanCohorts }: Props) => {
               <div className="metric-card">
                 <div className="metric-label">WA PD×LGD</div>
                 <div className="metric-value">{formatRate(cohortSummary.weightedRisk)}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Sector concentration</div>
+                <div className="metric-value">{formatRate(cohortSummary.sectorConcentration)}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Geography concentration</div>
+                <div className="metric-value">{formatRate(cohortSummary.geographyConcentration)}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">WA affordability index</div>
+                <div className="metric-value">
+                  {Number.isFinite(cohortSummary.weightedAffordability)
+                    ? cohortSummary.weightedAffordability.toFixed(2)
+                    : '—'}
+                </div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">NPL workout stock</div>
+                <div className="metric-value">{formatCurrency(workoutSummary.stock)}</div>
+                <div className="metric-helper">{workoutSummary.bucketCount} buckets pending</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Expected recoveries</div>
+                <div className="metric-value">{formatCurrency(workoutSummary.expectedRecoveries)}</div>
+                <div className="metric-helper">
+                  Expected charge-off {formatCurrency(workoutSummary.expectedChargeOffs)}
+                </div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Avg workout lag</div>
+                <div className="metric-value">{workoutSummary.weightedMonths.toFixed(1)}m</div>
               </div>
             </div>
 

@@ -18,13 +18,36 @@ import { BalanceSheetItem } from '../domain/balanceSheet';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { AssetProductType, ProductType } from '../domain/enums';
-import { LoanCohort } from '../domain/loanCohorts';
+import {
+  LoanCohort,
+  LoanGeography,
+  LoanSector,
+  LoanStage,
+  LoanWorkoutBucket,
+} from '../domain/loanCohorts';
 import { PRODUCT_META } from '../domain/productMeta';
 
 // Used to convert annual rates/PDs into monthly equivalents.
 const MONTHS_IN_YEAR = 12;
 // Safety cap: prevents unrealistic/buggy terms from creating extreme math.
 const MAX_TERM_MONTHS_CAP = 420;
+const LOAN_SECTORS: LoanSector[] = [
+  'retailMortgage',
+  'commercialRealEstate',
+  'sme',
+  'largeCorporate',
+  'other',
+];
+const LOAN_GEOGRAPHIES: LoanGeography[] = [
+  'london',
+  'south',
+  'midlands',
+  'north',
+  'scotland',
+  'wales',
+  'northernIreland',
+  'other',
+];
 
 /**
  * Clamp a number into the inclusive range `[min, max]`.
@@ -101,6 +124,20 @@ const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCT_MET
 export interface LoanCohortStepResult {
   loanInterestIncome: number;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
+  defaultedPrincipal: number;
+  renewedPrincipal: number;
+  prepaidPrincipal: number;
+  recoveryCash: number;
+  resolvedWorkoutPrincipal: number;
+  selectionPressureNotional: number;
+  selectionPressureIndex: number;
+}
+
+export interface ProvisionTarget {
+  stage1: number;
+  stage2: number;
+  stage3: number;
+  total: number;
 }
 
 /**
@@ -297,7 +334,11 @@ export const syncLoanBalancesFromCohorts = (state: BankState): void => {
     if (!isLoanProduct(productType)) return;
     const item = findItem(state, productType);
     if (!item) return;
-    item.balance = sumLoanOutstanding(cohorts);
+    const workoutStock = (state.workoutPipelines?.[productType] ?? []).reduce(
+      (sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal ?? 0),
+      0
+    );
+    item.balance = sumLoanOutstanding(cohorts) + workoutStock;
   });
 };
 
@@ -364,6 +405,32 @@ const validateCohort = (cohort: LoanCohort, maxTermMonths: number): void => {
   if (!Number.isFinite(cohort.lgd) || cohort.lgd < 0 || cohort.lgd > 1) {
     throw new Error(`Invalid lgd for cohort ${cohort.productType}/${cohort.cohortId}`);
   }
+  if (
+    cohort.affordabilityIndex !== undefined &&
+    (!Number.isFinite(cohort.affordabilityIndex) || cohort.affordabilityIndex <= 0)
+  ) {
+    throw new Error(`Invalid affordabilityIndex for cohort ${cohort.productType}/${cohort.cohortId}`);
+  }
+  if (
+    cohort.renewalCount !== undefined &&
+    (!Number.isFinite(cohort.renewalCount) || cohort.renewalCount < 0)
+  ) {
+    throw new Error(`Invalid renewalCount for cohort ${cohort.productType}/${cohort.cohortId}`);
+  }
+  if (!cohort.stage || !['stage1', 'stage2', 'stage3'].includes(cohort.stage)) {
+    throw new Error(`Invalid stage for cohort ${cohort.productType}/${cohort.cohortId}`);
+  }
+  if (cohort.sector !== undefined && !isValidSector(cohort.sector)) {
+    throw new Error(`Invalid sector for cohort ${cohort.productType}/${cohort.cohortId}`);
+  }
+  if (cohort.geography !== undefined && !isValidGeography(cohort.geography)) {
+    throw new Error(`Invalid geography for cohort ${cohort.productType}/${cohort.cohortId}`);
+  }
+};
+
+const normaliseStage = (stage: LoanStage | undefined): LoanStage => {
+  if (stage === 'stage1' || stage === 'stage2' || stage === 'stage3') return stage;
+  return 'stage1';
 };
 
 const getMaxTermMonths = (config: SimulationConfig, productType: ProductType): number => {
@@ -380,6 +447,26 @@ const getDefaultTermMonths = (config: SimulationConfig, productType: ProductType
   }
   return defaultTerm;
 };
+
+const isValidSector = (value: LoanSector | undefined): value is LoanSector =>
+  value !== undefined && LOAN_SECTORS.includes(value);
+
+const isValidGeography = (value: LoanGeography | undefined): value is LoanGeography =>
+  value !== undefined && LOAN_GEOGRAPHIES.includes(value);
+
+const fallbackSectorForProduct = (productType: ProductType): LoanSector =>
+  productType === AssetProductType.Mortgages ? 'retailMortgage' : 'largeCorporate';
+
+const fallbackGeographyForCohort = (cohortId: number): LoanGeography =>
+  LOAN_GEOGRAPHIES[Math.abs(Math.floor(cohortId)) % LOAN_GEOGRAPHIES.length];
+
+const normaliseSector = (productType: ProductType, cohortId: number, sector: LoanSector | undefined): LoanSector =>
+  isValidSector(sector) ? sector : fallbackSectorForProduct(productType);
+
+const normaliseGeography = (
+  cohortId: number,
+  geography: LoanGeography | undefined
+): LoanGeography => (isValidGeography(geography) ? geography : fallbackGeographyForCohort(cohortId));
 
 export const upsertOriginationCohort = (args: {
   state: BankState;
@@ -426,6 +513,12 @@ export const upsertOriginationCohort = (args: {
     existing.lgd = w > 0 ? (existing.lgd * w0 + args.lgd * w1) / w : args.lgd;
     existing.termMonths = Math.max(existing.termMonths, termMonths);
     existing.ageMonths = Math.min(existing.ageMonths, 0);
+    const baseAffordability = existing.affordabilityIndex ?? 1;
+    existing.affordabilityIndex = clamp((baseAffordability * w0 + 1 * w1) / Math.max(1e-9, w), 0.5, 3);
+    existing.renewalCount = existing.renewalCount ?? 0;
+    existing.stage = normaliseStage(existing.stage);
+    existing.sector = normaliseSector(productType, cohortId, existing.sector);
+    existing.geography = normaliseGeography(cohortId, existing.geography);
   } else {
     cohorts.push({
       productType,
@@ -437,6 +530,11 @@ export const upsertOriginationCohort = (args: {
       ageMonths: 0,
       annualPd: Math.max(0, args.annualPd),
       lgd: clamp(args.lgd, 0, 1),
+      affordabilityIndex: 1,
+      renewalCount: 0,
+      stage: 'stage1',
+      sector: normaliseSector(productType, cohortId, undefined),
+      geography: normaliseGeography(cohortId, undefined),
     });
   }
 
@@ -488,6 +586,207 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
   return (outstandingPrincipal * r) / denom;
 };
 
+const classifyStage = (args: {
+  currentStage: LoanStage;
+  stressedAnnualPd: number;
+  baseAnnualPd: number;
+  unemploymentRate: number;
+  gdpGrowthMoM: number;
+  sicrThreshold: number;
+  stage3PdThreshold: number;
+}): LoanStage => {
+  const {
+    currentStage,
+    stressedAnnualPd,
+    baseAnnualPd,
+    unemploymentRate,
+    gdpGrowthMoM,
+    sicrThreshold,
+    stage3PdThreshold,
+  } = args;
+
+  const stage3Trigger = stressedAnnualPd >= stage3PdThreshold || unemploymentRate >= 0.095;
+  if (stage3Trigger) return 'stage3';
+
+  const sicrTrigger =
+    stressedAnnualPd >= Math.max(1e-6, baseAnnualPd) * sicrThreshold || gdpGrowthMoM <= -0.0025;
+  if (sicrTrigger) return 'stage2';
+
+  if (currentStage === 'stage3' && stressedAnnualPd > stage3PdThreshold * 0.55) return 'stage3';
+  if (currentStage === 'stage2' && stressedAnnualPd > Math.max(1e-6, baseAnnualPd) * 1.1) return 'stage2';
+  return 'stage1';
+};
+
+const getLoanBenchmarkRate = (state: BankState, productType: ProductType): number =>
+  productType === AssetProductType.Mortgages
+    ? state.market.competitorMortgageRate
+    : state.market.riskFreeLong + state.market.corporateLoanSpread;
+
+const calculateAdverseSelectionMultiplier = (args: {
+  offeredRate: number;
+  benchmarkRate: number;
+  threshold: number;
+  slope: number;
+  maxMultiplier: number;
+  underwritingTightness: number;
+  underwritingInteractionWeight: number;
+}): { multiplier: number; ratePremium: number } => {
+  const ratePremium = Math.max(0, args.offeredRate - args.benchmarkRate);
+  const effectivePremium = Math.max(0, ratePremium - Math.max(0, args.threshold));
+  const baseMultiplier = 1 + Math.max(0, args.slope) * effectivePremium;
+  const looseUnderwriting = 1 - clamp(args.underwritingTightness, 0, 1);
+  const interactionBoost =
+    1 + Math.max(0, args.underwritingInteractionWeight) * effectivePremium * 10 * looseUnderwriting;
+  const multiplier = clamp(baseMultiplier * interactionBoost, 1, Math.max(1, args.maxMultiplier));
+  return { multiplier, ratePremium };
+};
+
+const nextCohortId = (cohorts: LoanCohort[]): number =>
+  cohorts.reduce((max, cohort) => Math.max(max, Math.floor(cohort.cohortId)), 0) + 1;
+
+const getWorkoutBucketsArray = (state: BankState, productType: ProductType): LoanWorkoutBucket[] => {
+  if (!state.workoutPipelines) {
+    state.workoutPipelines = {};
+  }
+  const existing = state.workoutPipelines[productType];
+  if (existing) return existing;
+  const created: LoanWorkoutBucket[] = [];
+  state.workoutPipelines[productType] = created;
+  return created;
+};
+
+const getAffordabilityConfig = (config: SimulationConfig, productType: ProductType) => {
+  const byProduct = config.behaviour.creditRiskDynamics?.affordabilityByProduct?.[productType];
+  return {
+    baselineDriftMonthly: byProduct?.baselineDriftMonthly ?? 0,
+    couponGapSensitivity: byProduct?.couponGapSensitivity ?? 3,
+    policyRateSensitivity: byProduct?.policyRateSensitivity ?? 0.5,
+    unemploymentSensitivity: byProduct?.unemploymentSensitivity ?? 2.5,
+    gdpContractionSensitivity: byProduct?.gdpContractionSensitivity ?? 10,
+    recoverySpeedMonthly: byProduct?.recoverySpeedMonthly ?? 0.05,
+    pdStressSlope: byProduct?.pdStressSlope ?? 1,
+    minIndex: byProduct?.minIndex ?? 0.7,
+    maxIndex: byProduct?.maxIndex ?? 3,
+    resetShareOnRenewal: byProduct?.resetShareOnRenewal ?? 0.3,
+  };
+};
+
+const getRefinanceConfig = (config: SimulationConfig, productType: ProductType) => {
+  const byProduct = config.behaviour.creditRiskDynamics?.refinanceByProduct?.[productType];
+  return {
+    minSeasoningMonths: Math.max(0, Math.round(byProduct?.minSeasoningMonths ?? 0)),
+    basePrepayRateMonthly: byProduct?.basePrepayRateMonthly ?? 0,
+    incentiveSensitivity: byProduct?.incentiveSensitivity ?? 0,
+    riskSelectivity: byProduct?.riskSelectivity ?? 0,
+    minPrepayRateMonthly: byProduct?.minPrepayRateMonthly ?? 0,
+    maxPrepayRateMonthly: byProduct?.maxPrepayRateMonthly ?? 1,
+  };
+};
+
+const getAdverseSelectionLifecycleConfig = (config: SimulationConfig) => {
+  const adverse = config.behaviour.creditRiskDynamics?.adverseSelection;
+  return {
+    renewalShareMonthly: adverse?.renewalShareMonthly ?? 0,
+    renewalEligibilityMonths: Math.max(1, Math.round(adverse?.renewalEligibilityMonths ?? 12)),
+    renewalRatePremiumThreshold: adverse?.renewalRatePremiumThreshold ?? 0.005,
+    renewalPdSlope: adverse?.renewalPdSlope ?? 16,
+    renewalMaxMultiplier: adverse?.renewalMaxMultiplier ?? 2.5,
+    underwritingInteractionWeight: adverse?.underwritingInteractionWeight ?? 1,
+  };
+};
+
+const getWorkoutConfig = (config: SimulationConfig) => {
+  const workout = config.behaviour.creditRiskDynamics?.workoutPipeline;
+  return {
+    baseResolutionLagMonths: Math.max(1, Math.round(workout?.baseResolutionLagMonths ?? 6)),
+    stressLagSensitivity: Math.max(0, workout?.stressLagSensitivity ?? 8),
+    baseRecoveryRateFloor: clamp(workout?.baseRecoveryRateFloor ?? 0.1, 0, 1),
+    macroRecoveryPenaltySensitivity: Math.max(0, workout?.macroRecoveryPenaltySensitivity ?? 1.8),
+    concentrationRecoveryPenaltySensitivity: Math.max(
+      0,
+      workout?.concentrationRecoveryPenaltySensitivity ?? 0.3
+    ),
+  };
+};
+
+const stepWorkoutPipelines = (args: {
+  state: BankState;
+  config: SimulationConfig;
+  cash: BalanceSheetItem;
+  recognizedLoanLosses: Partial<Record<ProductType, number>>;
+}): { recoveryCash: number; resolvedWorkoutPrincipal: number } => {
+  const { state, config, cash, recognizedLoanLosses } = args;
+  const workoutConfig = getWorkoutConfig(config);
+  const products = new Set<ProductType>([
+    ...Object.keys(state.workoutPipelines ?? {}),
+    ...Object.keys(state.loanCohorts ?? {}),
+  ] as ProductType[]);
+
+  let recoveryCash = 0;
+  let resolvedWorkoutPrincipal = 0;
+
+  products.forEach((productType) => {
+    if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
+    const buckets = getWorkoutBucketsArray(state, productType);
+    if (buckets.length === 0) return;
+
+    const sectorTotals: Partial<Record<LoanSector, number>> = {};
+    const geographyTotals: Partial<Record<LoanGeography, number>> = {};
+    let totalOpen = 0;
+    buckets.forEach((bucket) => {
+      const principal = Math.max(0, bucket.defaultedPrincipal);
+      if (principal <= 0) return;
+      totalOpen += principal;
+      const sector = bucket.sector ?? 'other';
+      const geography = bucket.geography ?? 'other';
+      sectorTotals[sector] = (sectorTotals[sector] ?? 0) + principal;
+      geographyTotals[geography] = (geographyTotals[geography] ?? 0) + principal;
+    });
+
+    const surviving: LoanWorkoutBucket[] = [];
+    buckets.forEach((bucket) => {
+      const nextMonths = bucket.monthsToResolution - 1;
+      if (nextMonths > 0) {
+        surviving.push({
+          ...bucket,
+          monthsToResolution: nextMonths,
+        });
+        return;
+      }
+
+      const principal = Math.max(0, bucket.defaultedPrincipal);
+      if (principal <= 0) return;
+      const sectorShare = totalOpen > 0 ? (sectorTotals[bucket.sector ?? 'other'] ?? 0) / totalOpen : 0;
+      const geographyShare =
+        totalOpen > 0 ? (geographyTotals[bucket.geography ?? 'other'] ?? 0) / totalOpen : 0;
+      const macroPenalty =
+        workoutConfig.macroRecoveryPenaltySensitivity *
+        (Math.max(0, state.market.unemploymentRate - 0.05) + Math.max(0, -state.market.gdpGrowthMoM) * 12);
+      const concentrationPenalty =
+        workoutConfig.concentrationRecoveryPenaltySensitivity * Math.max(sectorShare, geographyShare);
+      const recoveryRate = clamp(
+        bucket.expectedRecoveryRate - macroPenalty - concentrationPenalty,
+        workoutConfig.baseRecoveryRateFloor,
+        1
+      );
+      const recovered = principal * recoveryRate;
+      const chargeOff = principal - recovered;
+      if (recovered > 0) {
+        cash.balance += recovered;
+      }
+      if (chargeOff > 0) {
+        recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + chargeOff;
+      }
+      recoveryCash += recovered;
+      resolvedWorkoutPrincipal += principal;
+    });
+
+    state.workoutPipelines[productType] = surviving;
+  });
+
+  return { recoveryCash, resolvedWorkoutPrincipal };
+};
+
 export const stepLoanCohorts = (args: {
   state: BankState;
   config: SimulationConfig;
@@ -498,24 +797,90 @@ export const stepLoanCohorts = (args: {
 }): LoanCohortStepResult => {
   const { state, config } = args;
   const dtMonths = Math.max(0, Math.floor(args.dtMonths));
-  if (dtMonths === 0) return { loanInterestIncome: 0, recognizedLoanLosses: {} };
+  if (dtMonths === 0) {
+    return {
+      loanInterestIncome: 0,
+      recognizedLoanLosses: {},
+      defaultedPrincipal: 0,
+      renewedPrincipal: 0,
+      prepaidPrincipal: 0,
+      recoveryCash: 0,
+      resolvedWorkoutPrincipal: 0,
+      selectionPressureNotional: 0,
+      selectionPressureIndex: 0,
+    };
+  }
 
   const cash = getCashItem(state);
   if (!cash) throw new Error('Missing cash line item; cannot step loan cohorts');
 
   const recognizedLoanLosses: Partial<Record<ProductType, number>> = {};
   let loanInterestIncome = 0;
+  let defaultedPrincipal = 0;
+  let renewedPrincipal = 0;
+  let prepaidPrincipal = 0;
+  let recoveryCash = 0;
+  let resolvedWorkoutPrincipal = 0;
+  let selectionPressureNotional = 0;
 
-  const loanProductTypes = Object.keys(state.loanCohorts ?? {}) as ProductType[];
   for (let m = 0; m < dtMonths; m++) {
+    const workoutStep = stepWorkoutPipelines({
+      state,
+      config,
+      cash,
+      recognizedLoanLosses,
+    });
+    recoveryCash += workoutStep.recoveryCash;
+    resolvedWorkoutPrincipal += workoutStep.resolvedWorkoutPrincipal;
+
+    const loanProductTypes = new Set<ProductType>([
+      ...Object.keys(state.loanCohorts ?? {}),
+      ...Object.keys(state.workoutPipelines ?? {}),
+    ] as ProductType[]);
+
     loanProductTypes.forEach((productType) => {
       if (!isLoanProduct(productType)) return;
       const cohorts = getLoanCohortsArray(state, productType);
       const maxTermMonths = getMaxTermMonths(config, productType);
+      const concentrationParams = config.behaviour.concentration;
+      const concentrationStressActive =
+        args.pdMultiplier >= (concentrationParams?.stressActivationPdMultiplier ?? Number.POSITIVE_INFINITY);
+      const productOutstanding = sumLoanOutstanding(cohorts);
+      const sectorTotals: Partial<Record<LoanSector, number>> = {};
+      const geographyTotals: Partial<Record<LoanGeography, number>> = {};
+      if (productOutstanding > 0 && concentrationStressActive) {
+        cohorts.forEach((cohort) => {
+          const exposure = Math.max(0, cohort.outstandingPrincipal ?? 0);
+          if (exposure <= 0) return;
+          const sector = normaliseSector(productType, cohort.cohortId, cohort.sector);
+          const geography = normaliseGeography(cohort.cohortId, cohort.geography);
+          sectorTotals[sector] = (sectorTotals[sector] ?? 0) + exposure;
+          geographyTotals[geography] = (geographyTotals[geography] ?? 0) + exposure;
+        });
+      }
+
+      const benchmarkRate = getLoanBenchmarkRate(state, productType);
+      const offeredRate = findItem(state, productType)?.interestRate ?? benchmarkRate;
+      const underwritingTightness = clamp(state.behaviour.underwritingTightness?.[productType] ?? 0, 0, 1);
+      const adverseConfig = getAdverseSelectionLifecycleConfig(config);
+      const affordabilityConfig = getAffordabilityConfig(config, productType);
+      const refinanceConfig = getRefinanceConfig(config, productType);
+      const workoutConfig = getWorkoutConfig(config);
+      let nextRenewalCohortId = nextCohortId(cohorts);
+      const renewalAdds: LoanCohort[] = [];
 
       cohorts.forEach((cohort) => {
         if (cohort.outstandingPrincipal <= 0) return;
         if (cohort.ageMonths >= cohort.termMonths) return;
+        cohort.stage = normaliseStage(cohort.stage);
+        cohort.sector = normaliseSector(productType, cohort.cohortId, cohort.sector);
+        cohort.geography = normaliseGeography(cohort.cohortId, cohort.geography);
+        cohort.affordabilityIndex = clamp(
+          cohort.affordabilityIndex ?? 1,
+          affordabilityConfig.minIndex,
+          affordabilityConfig.maxIndex
+        );
+        cohort.renewalCount = cohort.renewalCount ?? 0;
         validateCohort(cohort, maxTermMonths);
 
         const remainingMonths = cohort.termMonths - cohort.ageMonths;
@@ -528,22 +893,178 @@ export const stepLoanCohorts = (args: {
         cash.balance += interest + principal;
         loanInterestIncome += interest;
 
-        const annualPd = clamp(cohort.annualPd * args.pdMultiplier, 0, 0.999999);
+        const couponIncentive = Math.max(0, cohort.annualInterestRate - benchmarkRate);
+        const baseAnnualPd = config.productParameters[productType]?.baseDefaultRate ?? cohort.annualPd;
+        const pdPivot = Math.max(1e-4, baseAnnualPd);
+        const relativeRisk = clamp((pdPivot - cohort.annualPd) / pdPivot, -1, 1.5);
+        const selectiveFactor = Math.max(0.15, 1 + refinanceConfig.riskSelectivity * relativeRisk);
+        const prepayRate =
+          cohort.ageMonths >= refinanceConfig.minSeasoningMonths
+            ? clamp(
+                (refinanceConfig.basePrepayRateMonthly +
+                  refinanceConfig.incentiveSensitivity * couponIncentive) *
+                  selectiveFactor,
+                refinanceConfig.minPrepayRateMonthly,
+                refinanceConfig.maxPrepayRateMonthly
+              )
+            : 0;
+        const prepaid = Math.min(cohort.outstandingPrincipal, cohort.outstandingPrincipal * prepayRate);
+        if (prepaid > 0) {
+          cohort.outstandingPrincipal -= prepaid;
+          cash.balance += prepaid;
+          prepaidPrincipal += prepaid;
+        }
+
+        const affordabilityCurrent = clamp(
+          cohort.affordabilityIndex ?? 1,
+          affordabilityConfig.minIndex,
+          affordabilityConfig.maxIndex
+        );
+        const affordabilityDrift =
+          affordabilityConfig.baselineDriftMonthly +
+          affordabilityConfig.couponGapSensitivity * Math.max(0, cohort.annualInterestRate - benchmarkRate) +
+          affordabilityConfig.policyRateSensitivity * Math.max(0, state.market.baseRate - 0.02) +
+          affordabilityConfig.unemploymentSensitivity * Math.max(0, state.market.unemploymentRate - 0.05) +
+          affordabilityConfig.gdpContractionSensitivity * Math.max(0, -state.market.gdpGrowthMoM);
+        const affordabilityReversion = affordabilityConfig.recoverySpeedMonthly * (affordabilityCurrent - 1);
+        const affordabilityIndex = clamp(
+          affordabilityCurrent + affordabilityDrift - affordabilityReversion,
+          affordabilityConfig.minIndex,
+          affordabilityConfig.maxIndex
+        );
+        cohort.affordabilityIndex = affordabilityIndex;
+
+        const shouldRenew =
+          adverseConfig.renewalShareMonthly > 0 &&
+          remainingMonths <= adverseConfig.renewalEligibilityMonths &&
+          cohort.ageMonths > 0 &&
+          cohort.outstandingPrincipal > 0;
+        if (shouldRenew) {
+          const renewalShare = clamp(adverseConfig.renewalShareMonthly, 0, 1);
+          const renewalPrincipal = Math.min(
+            cohort.outstandingPrincipal,
+            cohort.outstandingPrincipal * renewalShare
+          );
+          if (renewalPrincipal > 0) {
+            const renewalSelection = calculateAdverseSelectionMultiplier({
+              offeredRate,
+              benchmarkRate,
+              threshold: adverseConfig.renewalRatePremiumThreshold,
+              slope: adverseConfig.renewalPdSlope,
+              maxMultiplier: adverseConfig.renewalMaxMultiplier,
+              underwritingTightness,
+              underwritingInteractionWeight: adverseConfig.underwritingInteractionWeight,
+            });
+            const renewalAnnualPd = clamp(
+              cohort.annualPd * renewalSelection.multiplier,
+              0,
+              0.999999
+            );
+            const renewalAffordability = clamp(
+              1 +
+                (affordabilityIndex - 1) *
+                  (1 - clamp(affordabilityConfig.resetShareOnRenewal, 0, 1)),
+              affordabilityConfig.minIndex,
+              affordabilityConfig.maxIndex
+            );
+            cohort.outstandingPrincipal -= renewalPrincipal;
+            renewedPrincipal += renewalPrincipal;
+            selectionPressureNotional += renewalPrincipal * Math.max(0, renewalSelection.multiplier - 1);
+            renewalAdds.push({
+              productType,
+              cohortId: nextRenewalCohortId++,
+              originalPrincipal: renewalPrincipal,
+              outstandingPrincipal: renewalPrincipal,
+              annualInterestRate: offeredRate,
+              termMonths: getDefaultTermMonths(config, productType),
+              ageMonths: 0,
+              annualPd: renewalAnnualPd,
+              lgd: clamp(cohort.lgd, 0, 1),
+              affordabilityIndex: renewalAffordability,
+              renewalCount: (cohort.renewalCount ?? 0) + 1,
+              stage: 'stage1',
+              sector: cohort.sector,
+              geography: cohort.geography,
+            });
+          }
+        }
+
+        const sectorShare =
+          concentrationStressActive && productOutstanding > 0
+            ? (sectorTotals[cohort.sector] ?? 0) / productOutstanding
+            : 0;
+        const geographyShare =
+          concentrationStressActive && productOutstanding > 0
+            ? (geographyTotals[cohort.geography] ?? 0) / productOutstanding
+            : 0;
+        const sectorStressMultiplier =
+          concentrationParams?.sectorPdMultiplierByStress?.[cohort.sector] ?? 1;
+        const geographyStressMultiplier =
+          concentrationParams?.geographyPdMultiplierByStress?.[cohort.geography] ?? 1;
+        const concentrationMultiplier =
+          1 +
+          sectorShare * Math.max(0, sectorStressMultiplier - 1) +
+          geographyShare * Math.max(0, geographyStressMultiplier - 1);
+        const affordabilityPdMultiplier = clamp(
+          1 + (affordabilityIndex - 1) * affordabilityConfig.pdStressSlope,
+          0.55,
+          4
+        );
+        const annualPd = clamp(
+          cohort.annualPd * args.pdMultiplier * concentrationMultiplier * affordabilityPdMultiplier,
+          0,
+          0.999999
+        );
+        const sicrThreshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
+        const stage3PdThreshold = config.behaviour.ifrs9?.stage3PdThreshold ?? 0.08;
+        cohort.stage = classifyStage({
+          currentStage: cohort.stage,
+          stressedAnnualPd: annualPd,
+          baseAnnualPd,
+          unemploymentRate: state.market.unemploymentRate,
+          gdpGrowthMoM: state.market.gdpGrowthMoM,
+          sicrThreshold,
+          stage3PdThreshold,
+        });
+
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
         const defaulted = Math.max(0, cohort.outstandingPrincipal * pdMonth);
-
         if (defaulted > 0) {
-          const lgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
-          const loss = defaulted * lgd;
-          const recovery = defaulted - loss;
           cohort.outstandingPrincipal -= defaulted;
-          cash.balance += recovery;
-          recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + loss;
+          defaultedPrincipal += defaulted;
+          const stressedLgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
+          const expectedRecoveryRate = clamp(
+            1 - stressedLgd,
+            workoutConfig.baseRecoveryRateFloor,
+            1
+          );
+          const stressScore =
+            Math.max(0, state.market.unemploymentRate - 0.05) +
+            Math.max(0, -state.market.gdpGrowthMoM) * 12;
+          const lagMultiplier = 1 + workoutConfig.stressLagSensitivity * stressScore;
+          const monthsToResolution = Math.max(
+            1,
+            Math.round(workoutConfig.baseResolutionLagMonths * lagMultiplier)
+          );
+          const workoutBuckets = getWorkoutBucketsArray(state, productType);
+          workoutBuckets.push({
+            productType,
+            sourceCohortId: cohort.cohortId,
+            stageAtDefault: cohort.stage,
+            defaultedPrincipal: defaulted,
+            expectedRecoveryRate,
+            monthsToResolution,
+            sector: cohort.sector,
+            geography: cohort.geography,
+          });
         }
 
         cohort.ageMonths += 1;
       });
 
+      if (renewalAdds.length > 0) {
+        cohorts.push(...renewalAdds);
+      }
       cleanCohorts(cohorts);
     });
   }
@@ -572,7 +1093,19 @@ export const stepLoanCohorts = (args: {
   });
 
   syncLoanBalancesFromCohorts(state);
-  return { loanInterestIncome, recognizedLoanLosses };
+  const selectionPressureIndex =
+    renewedPrincipal > 0 ? selectionPressureNotional / renewedPrincipal : 0;
+  return {
+    loanInterestIncome,
+    recognizedLoanLosses,
+    defaultedPrincipal,
+    renewedPrincipal,
+    prepaidPrincipal,
+    recoveryCash,
+    resolvedWorkoutPrincipal,
+    selectionPressureNotional,
+    selectionPressureIndex,
+  };
 };
 
 export const assertSeasonedLoanPortfolio = (args: {
@@ -636,35 +1169,47 @@ const outstandingFactorAtAgeMonths = (annualInterestRate: number, termMonths: nu
   return clamp((powN - powK) / denom, 0, 1);
 };
 
-const sampleTermMonths = (args: {
-  productType: ProductType;
-  ageMonths: number;
-  maxTermMonths: number;
-  rng: SeededRng;
-}): number => {
-  const { productType, ageMonths, maxTermMonths, rng } = args;
-  const minAllowed = Math.min(maxTermMonths, ageMonths + 1);
-
-  const maxTerm = maxTermMonths;
-  const u = rng.uniform();
-
-  if (productType === AssetProductType.Mortgages) {
-    const minTypical = Math.min(maxTerm, 240);
-    const biased = Math.pow(u, 0.35); // bias toward longer terms
-    const sampled = Math.round(minTypical + (maxTerm - minTypical) * biased);
-    return clamp(sampled, minAllowed, maxTerm);
+const pickWeighted = <T extends string>(
+  rng: SeededRng,
+  weights: Array<{ key: T; weight: number }>
+): T => {
+  const total = weights.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
+  if (total <= 0) return weights[0].key;
+  const draw = rng.uniform() * total;
+  let running = 0;
+  for (const entry of weights) {
+    running += Math.max(0, entry.weight);
+    if (draw <= running) return entry.key;
   }
-
-  if (productType === AssetProductType.CorporateLoans) {
-    const minTypical = Math.min(maxTerm, 12);
-    const maxTypical = Math.min(maxTerm, 120);
-    const biased = Math.pow(u, 1.4); // bias toward shorter terms
-    const sampled = Math.round(minTypical + (maxTypical - minTypical) * biased);
-    return clamp(Math.max(sampled, minAllowed), minAllowed, maxTerm);
-  }
-
-  return clamp(minAllowed, minAllowed, maxTerm);
+  return weights[weights.length - 1].key;
 };
+
+const defaultSectorMix = (productType: ProductType): Array<{ key: LoanSector; weight: number }> => {
+  if (productType === AssetProductType.Mortgages) {
+    return [
+      { key: 'retailMortgage', weight: 0.9 },
+      { key: 'commercialRealEstate', weight: 0.05 },
+      { key: 'other', weight: 0.05 },
+    ];
+  }
+  return [
+    { key: 'largeCorporate', weight: 0.45 },
+    { key: 'sme', weight: 0.3 },
+    { key: 'commercialRealEstate', weight: 0.2 },
+    { key: 'other', weight: 0.05 },
+  ];
+};
+
+const defaultGeographyMix = (): Array<{ key: LoanGeography; weight: number }> => [
+  { key: 'london', weight: 0.28 },
+  { key: 'south', weight: 0.17 },
+  { key: 'midlands', weight: 0.18 },
+  { key: 'north', weight: 0.2 },
+  { key: 'scotland', weight: 0.08 },
+  { key: 'wales', weight: 0.05 },
+  { key: 'northernIreland', weight: 0.02 },
+  { key: 'other', weight: 0.02 },
+];
 
 export const generateSeasonedLoanCohorts = (args: {
   productType: ProductType;
@@ -680,6 +1225,7 @@ export const generateSeasonedLoanCohorts = (args: {
 
   const loanParams = args.config.productParameters[args.productType]?.loan;
   if (!loanParams?.initialSeasoningEnabled) {
+    const seededRng = createSeededRng(args.seed);
     return [
       {
         productType: args.productType,
@@ -689,10 +1235,15 @@ export const generateSeasonedLoanCohorts = (args: {
         annualInterestRate: Math.max(0, args.baseAnnualInterestRate),
         termMonths: getDefaultTermMonths(args.config, args.productType),
         ageMonths: 0,
-        annualPd: Math.max(0, args.baseAnnualPd),
-        lgd: clamp(args.baseLgd, 0, 1),
-      },
-    ];
+      annualPd: Math.max(0, args.baseAnnualPd),
+      lgd: clamp(args.baseLgd, 0, 1),
+      affordabilityIndex: 1,
+      renewalCount: 0,
+      stage: 'stage1',
+      sector: pickWeighted(seededRng, defaultSectorMix(args.productType)),
+      geography: pickWeighted(seededRng, defaultGeographyMix()),
+    },
+  ];
   }
 
   const maxTermMonths = getMaxTermMonths(args.config, args.productType);
@@ -726,6 +1277,7 @@ export const generateSeasonedLoanCohorts = (args: {
     .filter((b) => b.outstanding >= minBucket);
 
   if (kept.length === 0) {
+    const seededRng = createSeededRng(args.seed + 17);
     const termMonths = clamp(getDefaultTermMonths(args.config, args.productType), 1, maxTermMonths);
     const cohort: LoanCohort = {
       productType: args.productType,
@@ -737,6 +1289,11 @@ export const generateSeasonedLoanCohorts = (args: {
       ageMonths: 0,
       annualPd: Math.max(0, args.baseAnnualPd),
       lgd: clamp(args.baseLgd, 0, 1),
+      affordabilityIndex: 1,
+      renewalCount: 0,
+      stage: 'stage1',
+      sector: pickWeighted(seededRng, defaultSectorMix(args.productType)),
+      geography: pickWeighted(seededRng, defaultGeographyMix()),
     };
     assertSeasonedLoanPortfolio({
       productType: args.productType,
@@ -773,6 +1330,11 @@ export const generateSeasonedLoanCohorts = (args: {
       ageMonths,
       annualPd,
       lgd,
+      affordabilityIndex: clamp(1 + rng.normal() * 0.08, 0.75, 1.3),
+      renewalCount: 0,
+      stage: 'stage1',
+      sector: pickWeighted(rng, defaultSectorMix(args.productType)),
+      geography: pickWeighted(rng, defaultGeographyMix()),
     });
   });
 
@@ -784,4 +1346,55 @@ export const generateSeasonedLoanCohorts = (args: {
     maxTermMonths,
   });
   return cohorts;
+};
+
+export const calculateProvisionTargetFromCohorts = (args: {
+  state: BankState;
+  config: SimulationConfig;
+}): ProvisionTarget => {
+  const { state, config } = args;
+  const out: ProvisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
+
+  const stage2LifetimeMultiplier = config.behaviour.ifrs9?.stage2LifetimeMultiplier ?? 1.8;
+  const stage3LifetimeMultiplier = config.behaviour.ifrs9?.stage3LifetimeMultiplier ?? 3.2;
+
+  const entries = Object.entries(state.loanCohorts ?? {}) as Array<[ProductType, LoanCohort[]]>;
+  entries.forEach(([productType, cohorts]) => {
+    if (!isLoanProduct(productType)) return;
+    (cohorts ?? []).forEach((cohort) => {
+      const remainingYears = Math.max(1 / 12, (cohort.termMonths - cohort.ageMonths) / MONTHS_IN_YEAR);
+      const stage = normaliseStage(cohort.stage);
+      const pd = clamp(cohort.annualPd, 0, 0.999999);
+      const lgd = clamp(cohort.lgd, 0, 1);
+
+      let horizonPd = pd;
+      if (stage === 'stage2') {
+        horizonPd = clamp(pd * remainingYears * stage2LifetimeMultiplier, 0, 1);
+      } else if (stage === 'stage3') {
+        horizonPd = clamp(pd * remainingYears * stage3LifetimeMultiplier, 0, 1);
+      }
+
+      const ecl = Math.max(0, cohort.outstandingPrincipal) * horizonPd * lgd;
+      if (stage === 'stage1') out.stage1 += ecl;
+      if (stage === 'stage2') out.stage2 += ecl;
+      if (stage === 'stage3') out.stage3 += ecl;
+    });
+  });
+
+  const workoutEntries = Object.entries(args.state.workoutPipelines ?? {}) as Array<
+    [ProductType, LoanWorkoutBucket[]]
+  >;
+  workoutEntries.forEach(([productType, buckets]) => {
+    if (!isLoanProduct(productType)) return;
+    (buckets ?? []).forEach((bucket) => {
+      const principal = Math.max(0, bucket.defaultedPrincipal ?? 0);
+      if (principal <= 0) return;
+      const recovery = clamp(bucket.expectedRecoveryRate ?? 0, 0, 1);
+      const ecl = principal * (1 - recovery);
+      out.stage3 += ecl;
+    });
+  });
+
+  out.total = out.stage1 + out.stage2 + out.stage3;
+  return out;
 };

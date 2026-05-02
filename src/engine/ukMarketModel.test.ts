@@ -6,6 +6,10 @@ import { createSimulationEngine } from './simulation';
 import { advanceUkMarketState, fitNelsonSiegelFrom3Points, nelsonSiegelYield } from './ukMarketModel';
 
 describe('UK market model', () => {
+  it('keeps long risk-free rate aligned with long-end gilt yield', () => {
+    expect(initialState.market.riskFreeLong).toBe(initialState.market.giltCurve.yields.y30);
+  });
+
   it('advances macro variables and keeps curve coherent', () => {
     const state = cloneBankState(initialState);
     advanceUkMarketState(state.market, 1);

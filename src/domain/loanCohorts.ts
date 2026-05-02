@@ -10,6 +10,23 @@
  */
 import { ProductType } from './enums';
 
+export type LoanStage = 'stage1' | 'stage2' | 'stage3';
+export type LoanSector =
+  | 'retailMortgage'
+  | 'commercialRealEstate'
+  | 'sme'
+  | 'largeCorporate'
+  | 'other';
+export type LoanGeography =
+  | 'london'
+  | 'south'
+  | 'midlands'
+  | 'north'
+  | 'scotland'
+  | 'wales'
+  | 'northernIreland'
+  | 'other';
+
 /**
  * Represents one group ("cohort") of loans that move together through time.
  *
@@ -40,4 +57,24 @@ export interface LoanCohort {
   annualPd: number;
   // Loss given default (LGD) as a decimal between 0 and 1.
   lgd: number;
+  // Borrower affordability stress proxy. 1 is neutral, >1 is stressed, <1 is comfortable.
+  affordabilityIndex?: number;
+  // Number of times exposure has rolled/refinanced inside the bank.
+  renewalCount?: number;
+  // IFRS9-style impairment stage.
+  stage: LoanStage;
+  // Concentration tags used for stress and exposure reporting.
+  sector?: LoanSector;
+  geography?: LoanGeography;
+}
+
+export interface LoanWorkoutBucket {
+  productType: ProductType;
+  sourceCohortId: number;
+  stageAtDefault: LoanStage;
+  defaultedPrincipal: number;
+  expectedRecoveryRate: number;
+  monthsToResolution: number;
+  sector?: LoanSector;
+  geography?: LoanGeography;
 }

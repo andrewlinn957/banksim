@@ -1,4 +1,12 @@
-import { BankState, BehaviouralState, LoanCohortsMap } from '../domain/bankState';
+import {
+  BankState,
+  BehaviouralState,
+  EquityMarketState,
+  FundingLadderMap,
+  LoanCohortsMap,
+  LoanPipelineMap,
+  LoanWorkoutPipelineMap,
+} from '../domain/bankState';
 import { BalanceSheet } from '../domain/balanceSheet';
 import { CashFlowStatement } from '../domain/cashflow';
 import { MarketState } from '../domain/market';
@@ -12,6 +20,7 @@ const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
     ...item,
     liquidityTag: { ...item.liquidityTag },
     encumbrance: item.encumbrance ? { ...item.encumbrance } : { encumberedAmount: 0 },
+    security: item.security ? { ...item.security } : undefined,
   })),
 });
 
@@ -23,7 +32,16 @@ const cloneRiskMetrics = (r: RiskMetrics): RiskMetrics => ({ ...r });
 
 const cloneCompliance = (c: ComplianceStatus): ComplianceStatus => ({ ...c });
 
-const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({ ...b });
+const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
+  ...b,
+  depositRateLagMemory: { ...(b.depositRateLagMemory ?? {}) },
+  depositUnderpricingMonths: { ...(b.depositUnderpricingMonths ?? {}) },
+  depositStabilityIndex: { ...(b.depositStabilityIndex ?? {}) },
+  underwritingTightness: { ...(b.underwritingTightness ?? {}) },
+  capitalPolicy: b.capitalPolicy ? { ...b.capitalPolicy } : undefined,
+});
+
+const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
 
 const cloneMarket = (m: MarketState): MarketState => ({
   ...m,
@@ -47,6 +65,35 @@ const cloneLoanCohorts = (raw: LoanCohortsMap): LoanCohortsMap => {
   return out;
 };
 
+const cloneLoanPipelines = (raw: LoanPipelineMap): LoanPipelineMap => {
+  const out: LoanPipelineMap = {};
+  const entries = Object.entries(raw ?? {}) as Array<[ProductType, { demandNotional: number; approvedNotional: number; committedNotional: number }]>;
+  entries.forEach(([productType, pipeline]) => {
+    out[productType] = { ...pipeline };
+  });
+  return out;
+};
+
+const cloneWorkoutPipelines = (raw: LoanWorkoutPipelineMap): LoanWorkoutPipelineMap => {
+  const out: LoanWorkoutPipelineMap = {};
+  const entries = Object.entries(raw ?? {}) as Array<
+    [ProductType, Array<{ defaultedPrincipal: number; expectedRecoveryRate: number; monthsToResolution: number }>]
+  >;
+  entries.forEach(([productType, buckets]) => {
+    out[productType] = (buckets ?? []).map((bucket) => ({ ...bucket }));
+  });
+  return out;
+};
+
+const cloneFundingLadders = (raw: FundingLadderMap): FundingLadderMap => {
+  const out: FundingLadderMap = {};
+  const entries = Object.entries(raw ?? {}) as Array<[ProductType, Array<{ tenorMonths: number; monthsToMaturity: number; notional: number; rate: number }>]>;
+  entries.forEach(([productType, buckets]) => {
+    out[productType] = (buckets ?? []).map((bucket) => ({ ...bucket }));
+  });
+  return out;
+};
+
 const cloneDate = (raw: unknown): Date => {
   if (raw instanceof Date) return new Date(raw.getTime());
   return new Date(raw as any);
@@ -62,6 +109,8 @@ export const cloneBankState = (state: BankState): BankState => ({
   financial: {
     balanceSheet: cloneBalanceSheet(state.financial.balanceSheet),
     capital: { ...state.financial.capital },
+    provisionStock: { ...state.financial.provisionStock },
+    hedges: (state.financial.hedges ?? []).map((hedge) => ({ ...hedge })),
     incomeStatement: cloneIncomeStatement(state.financial.incomeStatement),
     cashFlowStatement: cloneCashFlowStatement(state.financial.cashFlowStatement),
   },
@@ -69,8 +118,13 @@ export const cloneBankState = (state: BankState): BankState => ({
     riskMetrics: cloneRiskMetrics(state.risk.riskMetrics),
     compliance: cloneCompliance(state.risk.compliance),
   },
+  board: { ...state.board },
+  equityMarket: cloneEquityMarket(state.equityMarket),
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),
   loanCohorts: cloneLoanCohorts(state.loanCohorts),
+  loanPipelines: cloneLoanPipelines(state.loanPipelines),
+  workoutPipelines: cloneWorkoutPipelines(state.workoutPipelines),
+  fundingLadders: cloneFundingLadders(state.fundingLadders),
   status: { ...state.status },
 });

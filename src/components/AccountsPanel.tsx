@@ -34,7 +34,7 @@ const buildBalanceRow = (item: BalanceSheetItem, history: BankState[]): Statemen
   const series = seriesFromHistory(history, (s) => balanceForProduct(s, item.productType));
   return {
     id: item.productType,
-    label: item.label,
+    label: item.security ? `${item.label} (${item.security.classification})` : item.label,
     value: item.balance,
     changePct: buildStepChange(series),
     series,
@@ -62,11 +62,19 @@ const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRo
 
   const cet1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1);
   const at1Series = seriesFromHistory(history, (s) => s.financial.capital.at1);
-  const equitySeries = seriesFromHistory(history, (s) => s.financial.capital.cet1 + s.financial.capital.at1);
+  const ociSeries = seriesFromHistory(history, (s) => s.financial.capital.accumulatedOCI);
+  const equitySeries = seriesFromHistory(
+    history,
+    (s) => s.financial.capital.cet1 + s.financial.capital.at1 + s.financial.capital.accumulatedOCI
+  );
   const liabilitiesSeries = seriesFromHistory(history, (s) => sumSide(s, BalanceSheetSide.Liability));
   const balanceSheetSeries = seriesFromHistory(
     history,
-    (s) => sumSide(s, BalanceSheetSide.Liability) + s.financial.capital.cet1 + s.financial.capital.at1
+    (s) =>
+      sumSide(s, BalanceSheetSide.Liability) +
+      s.financial.capital.cet1 +
+      s.financial.capital.at1 +
+      s.financial.capital.accumulatedOCI
   );
 
   rows.push(
@@ -85,9 +93,19 @@ const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRo
       series: at1Series,
     },
     {
+      id: 'capital-oci',
+      label: 'Accumulated OCI',
+      value: state.financial.capital.accumulatedOCI,
+      changePct: buildStepChange(ociSeries),
+      series: ociSeries,
+    },
+    {
       id: 'capital-total',
       label: 'Total equity',
-      value: state.financial.capital.cet1 + state.financial.capital.at1,
+      value:
+        state.financial.capital.cet1 +
+        state.financial.capital.at1 +
+        state.financial.capital.accumulatedOCI,
       changePct: buildStepChange(equitySeries),
       series: equitySeries,
     },
@@ -104,7 +122,8 @@ const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRo
       value:
         sumSide(state, BalanceSheetSide.Liability) +
         state.financial.capital.cet1 +
-        state.financial.capital.at1,
+        state.financial.capital.at1 +
+        state.financial.capital.accumulatedOCI,
       changePct: buildStepChange(balanceSheetSeries),
       series: balanceSheetSeries,
     }
@@ -118,12 +137,26 @@ const buildIncomeRows = (state: BankState, history: BankState[]): StatementRow[]
     { id: 'interestIncome', label: 'Interest income', selector: (s) => s.financial.incomeStatement.interestIncome },
     { id: 'interestExpense', label: 'Interest expense', selector: (s) => s.financial.incomeStatement.interestExpense },
     { id: 'netInterestIncome', label: 'Net interest income', selector: (s) => s.financial.incomeStatement.netInterestIncome },
+    { id: 'fvtplValuationImpact', label: 'FVTPL valuation impact', selector: (s) => s.financial.incomeStatement.fvtplValuationImpact },
+    { id: 'fvociOciMovement', label: 'FVOCI OCI movement', selector: (s) => s.financial.incomeStatement.fvociOciMovement },
+    { id: 'hedgeCarry', label: 'Hedge carry', selector: (s) => s.financial.incomeStatement.hedgeCarry },
     { id: 'feeIncome', label: 'Fee income', selector: (s) => s.financial.incomeStatement.feeIncome },
     { id: 'creditLosses', label: 'Credit losses', selector: (s) => s.financial.incomeStatement.creditLosses },
+    { id: 'provisionCharge', label: 'Provision charge', selector: (s) => s.financial.incomeStatement.provisionCharge },
+    { id: 'realizedLoanLosses', label: 'Realized loan losses', selector: (s) => s.financial.incomeStatement.realizedLoanLosses },
+    { id: 'realizedNonLoanLosses', label: 'Realized non-loan losses', selector: (s) => s.financial.incomeStatement.realizedNonLoanLosses },
+    { id: 'fixedOperatingCosts', label: 'Fixed operating costs', selector: (s) => s.financial.incomeStatement.fixedOperatingCosts },
+    { id: 'servicingCosts', label: 'Servicing costs', selector: (s) => s.financial.incomeStatement.servicingCosts },
+    { id: 'originationCosts', label: 'Origination costs', selector: (s) => s.financial.incomeStatement.originationCosts },
+    { id: 'workoutCosts', label: 'Workout costs', selector: (s) => s.financial.incomeStatement.workoutCosts },
+    { id: 'conductCosts', label: 'Conduct costs', selector: (s) => s.financial.incomeStatement.conductCosts },
+    { id: 'at1CouponExpense', label: 'AT1 coupon paid', selector: (s) => s.financial.incomeStatement.at1CouponExpense },
+    { id: 'dividendsPaid', label: 'Dividends paid', selector: (s) => s.financial.incomeStatement.dividendsPaid },
     { id: 'operatingExpenses', label: 'Operating expenses', selector: (s) => s.financial.incomeStatement.operatingExpenses },
     { id: 'preTaxProfit', label: 'Pre-tax profit', selector: (s) => s.financial.incomeStatement.preTaxProfit },
     { id: 'tax', label: 'Tax', selector: (s) => s.financial.incomeStatement.tax },
     { id: 'netIncome', label: 'Net income', selector: (s) => s.financial.incomeStatement.netIncome },
+    { id: 'totalComprehensiveIncome', label: 'Total comprehensive income', selector: (s) => s.financial.incomeStatement.totalComprehensiveIncome },
   ];
 
   return fields.map((field) => {

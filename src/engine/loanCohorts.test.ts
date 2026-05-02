@@ -10,20 +10,20 @@ describe('Loan cohort engine', () => {
   it('seeds seasoned cohorts that reconcile to initial loan balances', () => {
     const mortCohorts = initialState.loanCohorts[AssetProductType.Mortgages] ?? [];
     const corpCohorts = initialState.loanCohorts[AssetProductType.CorporateLoans] ?? [];
+    const mortItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
+    const corpItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans);
 
     expect(mortCohorts.length).toBeGreaterThan(10);
     expect(corpCohorts.length).toBeGreaterThan(10);
+    expect(mortItem).toBeTruthy();
+    expect(corpItem).toBeTruthy();
 
     const mortSum = sumLoanOutstanding(mortCohorts);
     const corpSum = sumLoanOutstanding(corpCohorts);
 
-    expect(Math.abs(mortSum - 250e9)).toBeLessThan(1e6);
-    expect(Math.abs(corpSum - 160e9)).toBeLessThan(1e6);
+    expect(Math.abs(mortSum - (mortItem?.balance ?? 0))).toBeLessThan(1e-3);
+    expect(Math.abs(corpSum - (corpItem?.balance ?? 0))).toBeLessThan(1e-3);
 
-    const mortItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
-    const corpItem = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans);
-    expect(mortItem).toBeTruthy();
-    expect(corpItem).toBeTruthy();
     expect(Math.abs((mortItem?.balance ?? 0) - mortSum)).toBeLessThan(1e-3);
     expect(Math.abs((corpItem?.balance ?? 0) - corpSum)).toBeLessThan(1e-3);
 
@@ -45,7 +45,7 @@ describe('Loan cohort engine', () => {
     const params = baseConfig.productParameters[AssetProductType.Mortgages];
     const a = generateSeasonedLoanCohorts({
       productType: AssetProductType.Mortgages,
-      targetOutstanding: 250e9,
+      targetOutstanding: mort.balance,
       baseAnnualInterestRate: mort.interestRate,
       baseAnnualPd: params.baseDefaultRate,
       baseLgd: params.lossGivenDefault,
@@ -54,7 +54,7 @@ describe('Loan cohort engine', () => {
     });
     const b = generateSeasonedLoanCohorts({
       productType: AssetProductType.Mortgages,
-      targetOutstanding: 250e9,
+      targetOutstanding: mort.balance,
       baseAnnualInterestRate: mort.interestRate,
       baseAnnualPd: params.baseDefaultRate,
       baseLgd: params.lossGivenDefault,
@@ -173,6 +173,15 @@ describe('Loan cohort engine', () => {
         operatingCostRatio: 0,
         fixedOperatingCostPerMonth: 0,
       },
+      behaviour: {
+        ...baseConfig.behaviour,
+        costModel: {
+          fixedCostPerMonth: 0,
+          servicingCostRateAnnual: 0,
+          originationCostRate: 0,
+          workoutCostRateOnDefaults: 0,
+        },
+      },
     };
 
     const state = cloneBankState(initialState);
@@ -220,7 +229,21 @@ describe('Loan cohort engine', () => {
     const losses = recogniseLosses(state, config, shockEffects, cohortRes.recognizedLoanLosses);
 
     const cashBeforeClose = cash.balance;
-    const capitalClose = closeCapital(state, config, 1, dtYears, accruals, losses, cohortRes.loanInterestIncome, []);
+    const capitalClose = closeCapital(
+      state,
+      config,
+      1,
+      dtYears,
+      accruals,
+      losses,
+      cohortRes.loanInterestIncome,
+      0,
+      { fvtplValuationImpact: 0, fvociOciMovement: 0, nonCashAdjustmentsByProduct: {} },
+      0,
+      cohortRes.defaultedPrincipal,
+      0,
+      []
+    );
 
     expect(state.financial.incomeStatement.interestIncome).toBeCloseTo(cohortRes.loanInterestIncome, 12);
     expect(capitalClose.operatingCashDeltaApplied).toBeCloseTo(

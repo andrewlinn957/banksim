@@ -13,6 +13,21 @@ const pctChange = (before: number, after: number): number => {
   return (after - before) / before;
 };
 
+const sumBalances = (
+  state: typeof initialState,
+  productTypes: Array<AssetProductType | LiabilityProductType>
+): number => productTypes.reduce((sum, productType) => sum + getBalance(state, productType), 0);
+
+const RETAIL_DEPOSITS = [
+  LiabilityProductType.RetailTransactionalDeposits,
+  LiabilityProductType.RetailSavingsDeposits,
+] as const;
+
+const CORPORATE_DEPOSITS = [
+  LiabilityProductType.CorporateOperatingDeposits,
+  LiabilityProductType.CorporateNonOperatingDeposits,
+] as const;
+
 describe('Initial t0->t1 sanity', () => {
   it('does not produce implausibly large one-step balance jumps', () => {
     const engine = createSimulationEngine();
@@ -27,11 +42,11 @@ describe('Initial t0->t1 sanity', () => {
     const corpLoans0 = getBalance(initialState, AssetProductType.CorporateLoans);
     const corpLoans1 = getBalance(nextState, AssetProductType.CorporateLoans);
 
-    const retailDeps0 = getBalance(initialState, LiabilityProductType.RetailDeposits);
-    const retailDeps1 = getBalance(nextState, LiabilityProductType.RetailDeposits);
+    const retailDeps0 = sumBalances(initialState, [...RETAIL_DEPOSITS]);
+    const retailDeps1 = sumBalances(nextState, [...RETAIL_DEPOSITS]);
 
-    const corpDeps0 = getBalance(initialState, LiabilityProductType.CorporateDeposits);
-    const corpDeps1 = getBalance(nextState, LiabilityProductType.CorporateDeposits);
+    const corpDeps0 = sumBalances(initialState, [...CORPORATE_DEPOSITS]);
+    const corpDeps1 = sumBalances(nextState, [...CORPORATE_DEPOSITS]);
 
     const cashPct = pctChange(cash0, cash1);
     const mortgagesPct = pctChange(mortgages0, mortgages1);

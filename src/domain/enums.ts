@@ -16,8 +16,14 @@ export enum AssetProductType {
 }
 
 export enum LiabilityProductType {
+  // Legacy aggregate categories (kept for backwards-compatibility with older states/tests).
   RetailDeposits = 'RetailDeposits',
   CorporateDeposits = 'CorporateDeposits',
+  // Segmented customer deposits.
+  RetailTransactionalDeposits = 'RetailTransactionalDeposits',
+  RetailSavingsDeposits = 'RetailSavingsDeposits',
+  CorporateOperatingDeposits = 'CorporateOperatingDeposits',
+  CorporateNonOperatingDeposits = 'CorporateNonOperatingDeposits',
   WholesaleFundingST = 'WholesaleFundingST',
   WholesaleFundingLT = 'WholesaleFundingLT',
   RepurchaseAgreements = 'RepurchaseAgreements',

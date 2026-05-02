@@ -100,18 +100,41 @@ const selectFundingRows = (market: MarketState): RowItem[] => {
 };
 
 const selectSimulationRows = (config: SimulationConfig): RowItem[] => {
-  const { global, riskLimits } = config;
+  const { global, riskLimits, behaviour } = config;
+  const costModel = behaviour.costModel;
 
   return [
     { label: 'Tax rate', value: formatPct(global.taxRate) },
-    { label: 'Operating cost ratio (annual)', value: formatPct(global.operatingCostRatio) },
-    { label: 'Fixed operating cost (monthly)', value: formatCurrency(global.fixedOperatingCostPerMonth ?? 0) },
+    { label: 'Servicing cost rate (annual)', value: formatPct(costModel?.servicingCostRateAnnual ?? global.operatingCostRatio) },
+    { label: 'Fixed operating cost (monthly)', value: formatCurrency(costModel?.fixedCostPerMonth ?? global.fixedOperatingCostPerMonth ?? 0) },
+    { label: 'Origination cost rate', value: formatPct(costModel?.originationCostRate ?? 0) },
+    { label: 'Workout cost rate on defaults', value: formatPct(costModel?.workoutCostRateOnDefaults ?? 0) },
     { label: 'Max deposit growth (per step)', value: formatPct(global.maxDepositGrowthPerStep) },
     { label: 'Max loan growth (per step)', value: formatPct(global.maxLoanGrowthPerStep) },
     { label: 'Min CET1 ratio', value: formatPct(riskLimits.minCet1Ratio) },
     { label: 'Min leverage ratio', value: formatPct(riskLimits.minLeverageRatio) },
     { label: 'Min LCR', value: formatMultiple(riskLimits.minLcr) },
     { label: 'Min NSFR', value: formatMultiple(riskLimits.minNsfr) },
+    {
+      label: 'CET1 combined buffer requirement',
+      value: formatPct(
+        riskLimits.minCet1Ratio +
+          riskLimits.capitalBufferStack.conservationBuffer +
+          riskLimits.capitalBufferStack.countercyclicalBuffer +
+          riskLimits.capitalBufferStack.systemicBuffer +
+          riskLimits.capitalBufferStack.managementBuffer
+      ),
+    },
+    { label: 'MDA max payout ratio', value: formatPct(riskLimits.capitalPolicy.mdaMaxPayoutRatio) },
+    {
+      label: 'AT1 discretionary threshold',
+      value: formatPct(riskLimits.capitalPolicy.at1DiscretionaryCet1Threshold),
+    },
+    { label: 'Single sector concentration limit', value: formatPct(riskLimits.concentration.maxSingleSectorShare) },
+    {
+      label: 'Single geography concentration limit',
+      value: formatPct(riskLimits.concentration.maxSingleGeographyShare),
+    },
   ];
 };
 

@@ -10,7 +10,8 @@ export function checkInvariants(state: BankState): string[] {
   const liabilities = state.financial.balanceSheet.items
     .filter((i) => i.side === BalanceSheetSide.Liability)
     .reduce((s, i) => s + i.balance, 0);
-  const equity = state.financial.capital.cet1 + state.financial.capital.at1;
+  const equity =
+    state.financial.capital.cet1 + state.financial.capital.at1 + state.financial.capital.accumulatedOCI;
 
   const diff = assets - (liabilities + equity);
   if (Math.abs(diff) > 1) {

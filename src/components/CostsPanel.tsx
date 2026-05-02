@@ -16,6 +16,11 @@ const CostsPanel = ({ income }: Props) => {
           <Row label="Net Interest Income" value={formatCurrency(income.netInterestIncome)} bold />
           <Row label="Fees" value={formatCurrency(income.feeIncome)} />
           <Row label="Credit Losses" value={formatCurrency(income.creditLosses)} />
+          <Row label="Fixed operating costs" value={formatCurrency(income.fixedOperatingCosts)} />
+          <Row label="Servicing costs" value={formatCurrency(income.servicingCosts)} />
+          <Row label="Origination costs" value={formatCurrency(income.originationCosts)} />
+          <Row label="Workout costs" value={formatCurrency(income.workoutCosts)} />
+          <Row label="Conduct costs" value={formatCurrency(income.conductCosts)} />
           <Row label="Operating Expenses" value={formatCurrency(income.operatingExpenses)} />
           <Row label="Tax" value={formatCurrency(income.tax)} />
           <Row label="Net Income" value={formatCurrency(income.netIncome)} bold />

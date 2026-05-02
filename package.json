@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:fast": "vitest run --exclude src/engine/modelRegression.test.ts",
+    "test:regression": "vitest run src/engine/modelRegression.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

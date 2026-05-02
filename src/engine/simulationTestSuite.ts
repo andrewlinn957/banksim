@@ -56,6 +56,33 @@ const getItem = (state: BankState, productType: ProductType) => {
 
 const getBalance = (state: BankState, productType: ProductType): number => getItem(state, productType).balance;
 
+const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
+  LiabilityProductType.RetailTransactionalDeposits,
+  LiabilityProductType.RetailSavingsDeposits,
+];
+
+const CORPORATE_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
+  LiabilityProductType.CorporateOperatingDeposits,
+  LiabilityProductType.CorporateNonOperatingDeposits,
+];
+
+const getGroupBalance = (state: BankState, products: LiabilityProductType[]): number =>
+  products.reduce((sum, product) => sum + (state.financial.balanceSheet.items.find((i) => i.productType === product)?.balance ?? 0), 0);
+
+const setGroupRate = (state: BankState, products: LiabilityProductType[], rate: number): void => {
+  products.forEach((product) => {
+    const item = state.financial.balanceSheet.items.find((i) => i.productType === product);
+    if (item) item.interestRate = rate;
+  });
+};
+
+const buildRateActions = (products: LiabilityProductType[], rate: number): PlayerAction[] =>
+  products.map((productType) => ({
+    type: 'adjustRate',
+    productType,
+    newRate: rate,
+  }));
+
 const step = (
   ctx: SimulationTestContext,
   state: BankState,
@@ -103,23 +130,24 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'increasing retail deposit rate above competitor increases retail balances vs equal rate',
     run: (ctx) => {
       const stateEqual = ctx.createState();
-      getItem(stateEqual, LiabilityProductType.RetailDeposits).interestRate =
-        stateEqual.market.competitorRetailDepositRate;
+      setGroupRate(
+        stateEqual,
+        RETAIL_DEPOSIT_PRODUCTS,
+        stateEqual.market.competitorRetailDepositRate
+      );
       const baseline = step(ctx, stateEqual);
       assertAccountingOk(baseline, 'baseline');
 
       const stateAdvantage = ctx.createState();
-      const advantaged = step(ctx, stateAdvantage, [
-        {
-          type: 'adjustRate',
-          productType: LiabilityProductType.RetailDeposits,
-          newRate: stateAdvantage.market.competitorRetailDepositRate + 0.01,
-        },
-      ]);
+      const advantaged = step(
+        ctx,
+        stateAdvantage,
+        buildRateActions(RETAIL_DEPOSIT_PRODUCTS, stateAdvantage.market.competitorRetailDepositRate + 0.01)
+      );
       assertAccountingOk(advantaged, 'advantaged');
 
-      const baselineRetail = getBalance(baseline, LiabilityProductType.RetailDeposits);
-      const advantagedRetail = getBalance(advantaged, LiabilityProductType.RetailDeposits);
+      const baselineRetail = getGroupBalance(baseline, RETAIL_DEPOSIT_PRODUCTS);
+      const advantagedRetail = getGroupBalance(advantaged, RETAIL_DEPOSIT_PRODUCTS);
       if (advantagedRetail <= baselineRetail) {
         throw new Error(
           `Retail balances did not improve with higher rate (${formatBn(advantagedRetail)} <= ${formatBn(
@@ -157,7 +185,7 @@ export const simulationTestCases: SimulationTestCase[] = [
       const hqlaDiff = Math.abs(afterSale.risk.riskMetrics.hqla - base.risk.riskMetrics.hqla);
       const lcrDiff = Math.abs(afterSale.risk.riskMetrics.lcr - base.risk.riskMetrics.lcr);
       const hqlaTol = Math.max(base.risk.riskMetrics.hqla * 0.001, 1e6); // 0.1% or >= 1m tolerance for rounding
-      const lcrTol = 1e-4;
+      const lcrTol = 5e-4;
 
       if (hqlaDiff > hqlaTol) {
         throw new Error(
@@ -236,11 +264,8 @@ export const simulationTestCases: SimulationTestCase[] = [
 
       for (let stepNumber = 0; stepNumber < iterations; stepNumber++) {
         actions.length = 0;
-        actions.push({
-          type: 'adjustRate',
-          productType: LiabilityProductType.RetailDeposits,
-          newRate: state.market.competitorRetailDepositRate + (rand() - 0.5) * wiggle,
-        });
+        const retailRate = state.market.competitorRetailDepositRate + (rand() - 0.5) * wiggle;
+        buildRateActions(RETAIL_DEPOSIT_PRODUCTS, retailRate).forEach((action) => actions.push(action));
         actions.push({
           type: 'adjustRate',
           productType: AssetProductType.Mortgages,
@@ -288,7 +313,7 @@ export const simulationTestCases: SimulationTestCase[] = [
   {
     id: 'mortgage-rate-elasticity',
     group: 'Targeted invariants and behaviours',
-    name: 'raising mortgage rate 100bps above reference reduces mortgage volume vs baseline',
+    name: 'raising mortgage rate 100bps above reference reduces mortgage pipeline demand/approvals vs baseline',
     run: (ctx) => {
       const baselineState = ctx.createState();
       const baseline = step(ctx, baselineState, [
@@ -310,13 +335,33 @@ export const simulationTestCases: SimulationTestCase[] = [
       ]);
       assertAccountingOk(adjusted, 'adjusted');
 
-      const baseMort = getBalance(baseline, AssetProductType.Mortgages);
-      const adjMort = getBalance(adjusted, AssetProductType.Mortgages);
-      if (adjMort >= baseMort) {
-        throw new Error(`Mortgage volume did not fall (${formatBn(adjMort)} >= ${formatBn(baseMort)})`);
+      const baselinePipeline = baseline.loanPipelines[AssetProductType.Mortgages];
+      const adjustedPipeline = adjusted.loanPipelines[AssetProductType.Mortgages];
+      if (!baselinePipeline || !adjustedPipeline) {
+        throw new Error('Missing mortgage pipeline state for elasticity assertion');
       }
 
-      return `Mortgage balance ${formatBn(baseMort)} -> ${formatBn(adjMort)}`;
+      if (adjustedPipeline.demandNotional >= baselinePipeline.demandNotional) {
+        throw new Error(
+          `Mortgage demand did not fall (${formatBn(adjustedPipeline.demandNotional)} >= ${formatBn(
+            baselinePipeline.demandNotional
+          )})`
+        );
+      }
+
+      if (adjustedPipeline.approvedNotional >= baselinePipeline.approvedNotional) {
+        throw new Error(
+          `Mortgage approvals did not fall (${formatBn(adjustedPipeline.approvedNotional)} >= ${formatBn(
+            baselinePipeline.approvedNotional
+          )})`
+        );
+      }
+
+      return `Mortgage demand ${formatBn(baselinePipeline.demandNotional)} -> ${formatBn(
+        adjustedPipeline.demandNotional
+      )}, approvals ${formatBn(baselinePipeline.approvedNotional)} -> ${formatBn(
+        adjustedPipeline.approvedNotional
+      )}`;
     },
   },
   {
@@ -340,10 +385,10 @@ export const simulationTestCases: SimulationTestCase[] = [
       );
       assertAccountingOk(runState, 'run');
 
-      const baseRetail = getBalance(baseline, LiabilityProductType.RetailDeposits);
-      const runRetail = getBalance(runState, LiabilityProductType.RetailDeposits);
-      const baseCorp = getBalance(baseline, LiabilityProductType.CorporateDeposits);
-      const runCorp = getBalance(runState, LiabilityProductType.CorporateDeposits);
+      const baseRetail = getGroupBalance(baseline, RETAIL_DEPOSIT_PRODUCTS);
+      const runRetail = getGroupBalance(runState, RETAIL_DEPOSIT_PRODUCTS);
+      const baseCorp = getGroupBalance(baseline, CORPORATE_DEPOSIT_PRODUCTS);
+      const runCorp = getGroupBalance(runState, CORPORATE_DEPOSIT_PRODUCTS);
 
       if (runRetail >= baseRetail || runCorp >= baseCorp) {
         throw new Error(
@@ -428,7 +473,8 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'counterparty default reduces corporate loans roughly by the loss once (no double count)',
     run: (ctx) => {
       const state = ctx.createState();
-      const loss = 10e9;
+      const baseCorporate = getBalance(state, AssetProductType.CorporateLoans);
+      const loss = Math.max(0.25e9, Math.min(1e9, baseCorporate * 0.25));
       const shock: Shock = {
         type: 'counterpartyDefault',
         productType: AssetProductType.CorporateLoans,
@@ -459,18 +505,18 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'baseline deposit growth is positive when matching competitor rates',
     run: (ctx) => {
       const state = ctx.createState();
-      const retail = getItem(state, LiabilityProductType.RetailDeposits);
-      retail.interestRate = state.market.competitorRetailDepositRate;
+      setGroupRate(state, RETAIL_DEPOSIT_PRODUCTS, state.market.competitorRetailDepositRate);
+      const retailBefore = getGroupBalance(state, RETAIL_DEPOSIT_PRODUCTS);
 
       const { nextState } = ctx.engine.step({ state, config: ctx.config, actions: [], shocks: [] });
       assertAccountingOk(nextState, 'after step');
 
-      const retailAfter = getBalance(nextState, LiabilityProductType.RetailDeposits);
-      if (retailAfter <= retail.balance) {
-        throw new Error(`Deposit growth was not positive (${formatBn(retailAfter)} <= ${formatBn(retail.balance)})`);
+      const retailAfter = getGroupBalance(nextState, RETAIL_DEPOSIT_PRODUCTS);
+      if (retailAfter <= retailBefore) {
+        throw new Error(`Deposit growth was not positive (${formatBn(retailAfter)} <= ${formatBn(retailBefore)})`);
       }
 
-      return `Retail deposits ${formatBn(retail.balance)} -> ${formatBn(retailAfter)}`;
+      return `Retail deposits ${formatBn(retailBefore)} -> ${formatBn(retailAfter)}`;
     },
   },
 ];

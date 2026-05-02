@@ -30,9 +30,16 @@ export interface CounterpartyDefaultShock {
   lossAmount: number;
 }
 
+export interface RolloverStressShock {
+  type: 'rolloverStress';
+  accessMultiplier: number;
+  spreadBps: number;
+}
+
 export type Shock =
   | DepositCompetitionShock
   | MarketSpreadShock
   | IdiosyncraticRunShock
   | MacroDownturnShock
-  | CounterpartyDefaultShock;
+  | CounterpartyDefaultShock
+  | RolloverStressShock;
