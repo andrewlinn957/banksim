@@ -4,28 +4,65 @@ BankSim is a React/Vite banking simulator game. You run a UK bank month by month
 
 The simulator models banking mechanics at a management-game level: deposits, loan growth, funding, liquidity ratios, regulatory capital, credit losses, conduct risk, securities marks, scenario shocks, and an equity price signal.
 
-## Quick Start
-
-```powershell
-npm install
-npm run dev
-```
-
-Then open the local Vite URL shown in the terminal.
-
-## Useful Commands
-
-```powershell
-npm run dev              # start the development server
-npm run build            # create a production build
-npm test                 # run the full Vitest suite
-npm run test:fast        # run tests excluding the slower regression suite
-npm run test:regression  # run the model regression tests
-```
-
 ## Gameplay
 
 Each turn advances the bank by one month. The player can adjust rates, underwriting tightness, funding, equity issuance, dividends, cost actions, hedge actions, and related management levers.
+
+The challenge is to keep the bank alive without simply hiding in a defensive posture. Growth can improve earnings and market confidence, but it consumes capital and liquidity. Pulling back can protect ratios, but it may weaken the franchise, reduce profit, and leave the bank behind competitors.
+
+## Objective
+
+Your job is to manage a working bank through normal conditions and stress scenarios. A strong run usually balances four goals:
+
+- earn sustainable profit
+- maintain capital and liquidity buffers
+- preserve deposit and lending franchise strength
+- keep market confidence high enough to support the share price
+
+The bank enters resolution mode if it breaches hard regulatory or cash-flow constraints. Warnings and weak metrics do not always end the game immediately, but they usually make future turns harder.
+
+## Monthly Decisions
+
+Each month, you choose commercial and financial actions before advancing the simulation. Typical decisions include:
+
+- setting retail and corporate deposit rates
+- setting mortgage and corporate lending rates
+- tightening or loosening underwriting standards
+- issuing long-term debt or equity
+- changing dividend payouts
+- reducing operating costs
+- managing hedges and balance-sheet risk
+
+The game rewards understanding second-order effects. For example, raising deposit rates can stabilise funding but compress net interest margin. Cutting loan rates may improve growth but can attract weaker borrowers if underwriting is loose. Issuing equity can save a stressed bank but dilutes existing shareholders.
+
+## Scenarios
+
+Sandbox mode lets you experiment freely. Scenario mode gives the bank a defined macro path and objectives. Scenarios can alter interest rates, spreads, credit losses, funding pressure, deposit behaviour, market confidence, and sector stress.
+
+Scenario goals are scored against the run, so survival alone may not be enough. A good result usually requires handling the stress while still protecting franchise value and shareholder outcomes.
+
+## Share Price
+
+The share price is a game signal, not a random ticker. It responds to profitability, capital strength, liquidity, credit quality, macro conditions, franchise momentum, and dilution.
+
+The model uses earnings and common-equity book value as anchors. A profitable, well-capitalised bank can earn a stronger valuation multiple. A weak or failing bank is discounted sharply, and monthly price moves are capped so the game remains playable rather than swinging unrealistically from one turn to the next.
+
+## Risk And Failure
+
+The most important constraints are:
+
+- CET1 ratio
+- leverage ratio
+- liquidity coverage ratio
+- net stable funding ratio
+- cash availability
+- accounting and balance-sheet invariants
+
+Some risks build gradually. Credit quality can deteriorate through the loan book. Deposit confidence can weaken. Funding costs can rise. Conduct issues can create losses. Concentrations can create warnings before they become a serious strategic problem.
+
+## Learning The Model
+
+The in-app Help tab explains the main mechanics while you play. Events, attribution, reconciliations, and regulatory panels are meant to make the simulation inspectable rather than opaque. When a metric moves, the game should give you enough trail to understand why.
 
 The main tabs are:
 
@@ -55,26 +92,3 @@ Important entry points:
 - `src/config/scenarios.ts`: scenario definitions and step payloads.
 
 Domain types live under `src/domain`, UI components under `src/components`, and explanatory content under `src/content`.
-
-## Testing
-
-The project uses Vitest. The suite includes focused unit tests for mechanics such as capital policy, funding confidence, loan pipelines, liquidity, conduct risk, share price behaviour, replay determinism, and model regression.
-
-Before pushing model changes, run:
-
-```powershell
-npm test
-npm run build
-```
-
-## Repo Hygiene
-
-Generated output and local dependencies are intentionally ignored:
-
-- `node_modules/`
-- `dist/`
-- Vite/Vitest caches
-- local logs and environment files
-- ad hoc generated reports such as PDFs and extracted report text
-
-Keep durable model documentation in tracked markdown files such as `player_guide.md` and `mechanics_exposure_plan.md`.
