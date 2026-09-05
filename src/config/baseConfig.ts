@@ -150,25 +150,25 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     productType: AssetProductType.Gilts,
     hqlaLevel: HQLALevel.Level1,
     lcrInflowRate: 0,
-    nsfrRsfFactor: 0.05,
+    nsfrRsfFactor: 0,
   },
   [AssetProductType.Mortgages]: {
     productType: AssetProductType.Mortgages,
     hqlaLevel: HQLALevel.None,
     lcrInflowRate: 0.05,
-    nsfrRsfFactor: 0.85,
+    nsfrRsfFactor: .65,
   },
   [AssetProductType.CorporateLoans]: {
     productType: AssetProductType.CorporateLoans,
     hqlaLevel: HQLALevel.None,
     lcrInflowRate: 0.05,
-    nsfrRsfFactor: 1.0,
+    nsfrRsfFactor: .85,
   },
   [AssetProductType.ReverseRepo]: {
     productType: AssetProductType.ReverseRepo,
     hqlaLevel: HQLALevel.None,
-    lcrInflowRate: 1.0,
-    nsfrRsfFactor: 0.1,
+    lcrInflowRate: 0,
+    nsfrRsfFactor: 0,
   },
   [LiabilityProductType.RetailDeposits]: {
     productType: LiabilityProductType.RetailDeposits,
@@ -185,26 +185,26 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
   [LiabilityProductType.RetailTransactionalDeposits]: {
     productType: LiabilityProductType.RetailTransactionalDeposits,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.07,
-    nsfrAsfFactor: 0.9,
+    lcrOutflowRate: .05,
+    nsfrAsfFactor: .95,
   },
   [LiabilityProductType.RetailSavingsDeposits]: {
     productType: LiabilityProductType.RetailSavingsDeposits,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.03,
-    nsfrAsfFactor: 0.95,
+    lcrOutflowRate: .1,
+    nsfrAsfFactor: .9,
   },
   [LiabilityProductType.CorporateOperatingDeposits]: {
     productType: LiabilityProductType.CorporateOperatingDeposits,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.25,
-    nsfrAsfFactor: 0.7,
+    lcrOutflowRate: .25,
+    nsfrAsfFactor: .5,
   },
   [LiabilityProductType.CorporateNonOperatingDeposits]: {
     productType: LiabilityProductType.CorporateNonOperatingDeposits,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.6,
-    nsfrAsfFactor: 0.4,
+    lcrOutflowRate: .4,
+    nsfrAsfFactor: .5,
   },
   [LiabilityProductType.WholesaleFundingST]: {
     productType: LiabilityProductType.WholesaleFundingST,
@@ -221,7 +221,7 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
   [LiabilityProductType.RepurchaseAgreements]: {
     productType: LiabilityProductType.RepurchaseAgreements,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 1.0,
+    lcrOutflowRate: 0,
     nsfrAsfFactor: 0.0,
   },
 };
@@ -242,8 +242,10 @@ const global: GlobalSimulationParameters = {
 };
 
 const riskLimits = {
-  minCet1Ratio: 0.105,
-  minLeverageRatio: 0.035,
+  minCet1Ratio: 0.045,
+  minTier1Ratio: 0.06,
+  minTotalCapitalRatio: 0.08,
+  minLeverageRatio: 0.0325,
   minLcr: 1.0,
   minNsfr: 1.0,
   // Report-alignment add-ons so opening RWA is closer to Metro 2024 disclosure table.
@@ -253,14 +255,13 @@ const riskLimits = {
   },
   capitalBufferStack: {
     conservationBuffer: 0.025,
-    countercyclicalBuffer: 0.01,
-    systemicBuffer: 0.005,
+    countercyclicalBuffer: 0.02,
+    systemicBuffer: 0,
     // Remove opening management add-on so sandbox starts closer to Metro baseline.
     managementBuffer: 0,
   },
   capitalPolicy: {
     defaultDividendPayoutRatio: 0.3,
-    mdaMaxPayoutRatio: 0.2,
     at1CouponRateAnnual: 0.08,
     at1DiscretionaryCet1Threshold: 0.125,
     internalTargetBaseBuffer: 0.005,
@@ -460,9 +461,7 @@ const behaviour: BehaviourParameters = {
   },
   ifrs9: {
     sicrPdMultiplierThreshold: 1.75,
-    stage3PdThreshold: 0.08,
-    stage2LifetimeMultiplier: 1.8,
-    stage3LifetimeMultiplier: 3.2,
+    eclScenarios: [{ weight: .2, pdMultiplier: .75 }, { weight: .6, pdMultiplier: 1 }, { weight: .2, pdMultiplier: 1.5 }],
   },
   liquidityDynamics: {
     recessionDepositOutflowMultiplier: 1.25,

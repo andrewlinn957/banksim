@@ -125,7 +125,6 @@ const selectSimulationRows = (config: SimulationConfig): RowItem[] => {
           riskLimits.capitalBufferStack.managementBuffer
       ),
     },
-    { label: 'MDA max payout ratio', value: formatPct(riskLimits.capitalPolicy.mdaMaxPayoutRatio) },
     {
       label: 'AT1 discretionary threshold',
       value: formatPct(riskLimits.capitalPolicy.at1DiscretionaryCet1Threshold),

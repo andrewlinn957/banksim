@@ -112,7 +112,7 @@ const TimeSeriesChart = ({ data, xLabel = 'Simulation step', yLabel = 'Value', x
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: false,
+      animation: false as const,
       interaction: { mode: 'index' as const, intersect: false },
       plugins: {
         legend: { display: false },

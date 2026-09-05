@@ -1,3 +1,4 @@
+import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
@@ -7,7 +8,7 @@ import { LiquidityTag } from '../domain/liquidity';
 import { LoanGeography, LoanSector } from '../domain/loanCohorts';
 import { PRODUCT_META } from '../domain/productMeta';
 
-const HQLA_FACTORS: Record<HQLALevel, number> = {
+export const HQLA_FACTORS: Record<HQLALevel, number> = {
   [HQLALevel.Level1]: 1.0,
   [HQLALevel.Level2A]: 0.85,
   [HQLALevel.Level2B]: 0.5,
@@ -28,14 +29,19 @@ const isRecessionRegime = (state: BankState): boolean =>
   state.market.gdpGrowthMoM < 0 ||
   state.market.unemploymentRate > 0.075;
 
-const computeHqla = (items: BalanceSheetItem[]): number =>
-  items.reduce((sum, item) => {
-    if (!item.liquidityTag) return sum;
-    const factor = HQLA_FACTORS[item.liquidityTag.hqlaLevel] ?? 0;
-    const enc = item.encumbrance?.encumberedAmount ?? 0;
-    const unencumbered = Math.max(0, item.balance - enc);
-    return sum + unencumbered * factor;
-  }, 0);
+export const computeHqla = (items: BalanceSheetItem[]): number => {
+  let level1 = 0, level2a = 0, level2b = 0;
+  for (const i of items) {
+    if (i.side !== BalanceSheetSide.Asset) continue;
+    const v = Math.max(0, i.balance - Math.max(0, i.encumbrance?.encumberedAmount ?? 0));
+    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level1) level1 += v;
+    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level2A) level2a += v * .85;
+    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level2B) level2b += v * .5;
+  }
+  const a = Math.min(level2a, level1 * 2 / 3);
+  const b = Math.min(level2b, (level1 + a) * .15 / .85, Math.max(0, level1 * 2 / 3 - a));
+  return level1 + a + b;
+};
 
 interface LiquidityDynamicsFactors {
   depositOutflowMultiplier: number;
@@ -100,54 +106,6 @@ const computeLiquidityDynamicsFactors = (
     inflowMultiplier,
     asfMultiplier,
   };
-};
-
-const computeLcr = (
-  items: BalanceSheetItem[],
-  hqla: number,
-  depositOutflowMultiplier: number,
-  inflowMultiplier: number
-): { lcr: number; netOutflows: number } => {
-  let outflows = 0;
-  let inflows = 0;
-  items.forEach((item) => {
-    const tag: LiquidityTag | undefined = item.liquidityTag;
-    if (!tag) return;
-    if (tag.lcrOutflowRate !== undefined) {
-      const multiplier = isCustomerDeposit(item.productType) ? depositOutflowMultiplier : 1;
-      outflows += item.balance * tag.lcrOutflowRate * multiplier;
-    }
-    if (tag.lcrInflowRate !== undefined) {
-      inflows += item.balance * tag.lcrInflowRate * inflowMultiplier;
-    }
-  });
-  const inflowsCapped = Math.min(inflows, 0.75 * outflows);
-  const netOutflows = Math.max(0, outflows - inflowsCapped);
-  const lcr = netOutflows > 0 ? hqla / netOutflows : Infinity;
-  return { lcr, netOutflows };
-};
-
-const computeNsfr = (
-  items: BalanceSheetItem[],
-  cet1: number,
-  at1: number,
-  asfMultiplier: number
-): { asf: number; rsf: number; nsfr: number } => {
-  let asf = cet1 + at1;
-  let rsf = 0;
-  items.forEach((item) => {
-    const tag = item.liquidityTag;
-    if (!tag) return;
-    if (tag.nsfrAsfFactor !== undefined) {
-      const multiplier = isCustomerDeposit(item.productType) ? asfMultiplier : 1;
-      asf += item.balance * tag.nsfrAsfFactor * multiplier;
-    }
-    if (tag.nsfrRsfFactor !== undefined) {
-      rsf += item.balance * tag.nsfrRsfFactor;
-    }
-  });
-  const nsfr = rsf > 0 ? asf / rsf : Infinity;
-  return { asf, rsf, nsfr };
 };
 
 const computeFundingMaturityMetrics = (state: BankState): { fundingMaturing3m: number; fundingMaturing12m: number } => {
@@ -271,8 +229,7 @@ const computeCet1Requirement = (limits: RiskLimits): number => {
     limits.minCet1Ratio +
     (stack?.conservationBuffer ?? 0) +
     (stack?.countercyclicalBuffer ?? 0) +
-    (stack?.systemicBuffer ?? 0) +
-    (stack?.managementBuffer ?? 0)
+    (stack?.systemicBuffer ?? 0)
   );
 };
 
@@ -471,12 +428,14 @@ export const calculateRiskMetrics = ({
     Math.max(0, rwaAddOns?.operationalRisk ?? 0) +
     Math.max(0, rwaAddOns?.counterpartyRisk ?? 0) +
     Math.max(0, rwaAddOns?.otherAdjustments ?? 0);
-  const rwa = baseRwa + additionalRwa;
-  const leverageExposure = totalAssets;
+  const commitmentRwa = Object.keys(state.loanPipelines ?? {}).reduce((sum, p) => sum + committedExposure(state, p as ProductType) * .2 * (config.productParameters[p as ProductType]?.riskWeight ?? 1), 0);
+  const rwa = baseRwa + additionalRwa + commitmentRwa;
+  const leverageExposure = totalAssets - centralBankExclusion(state) + committedExposure(state) * .2;
   const fvociInclusionRate = clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
-  const cet1Requirement = computeCet1Requirement(config.riskLimits);
+  const ownFundsCet1Floor = rwa > 0 ? Math.max(config.riskLimits.minCet1Ratio, (config.riskLimits.minTier1Ratio ?? .06) - state.financial.capital.at1 / rwa, (config.riskLimits.minTotalCapitalRatio ?? .08) - state.financial.capital.at1 / rwa) : config.riskLimits.minCet1Ratio;
+  const cet1Requirement = computeCet1Requirement(config.riskLimits) + ownFundsCet1Floor - config.riskLimits.minCet1Ratio;
   const cet1Headroom = cet1Ratio - cet1Requirement;
   const leverageRatio =
     leverageExposure > 0
@@ -491,26 +450,28 @@ export const calculateRiskMetrics = ({
     lcrOutflowMultiplier,
     depositQualityIndex
   );
-  const { lcr } = computeLcr(
-    state.financial.balanceSheet.items,
-    hqla,
-    liquidityFactors.depositOutflowMultiplier,
-    liquidityFactors.inflowMultiplier
-  );
-  const { asf, rsf, nsfr } = computeNsfr(
-    state.financial.balanceSheet.items,
-    adjustedCet1,
-    state.financial.capital.at1,
-    liquidityFactors.asfMultiplier
-  );
+  const lines = prudentialLiquidityLines(state, config);
+  const commitments = commitmentLiquidity(state);
+  const inflows = lines.reduce((sum, l) => sum + l.inflow, 0);
+  const outflows = lines.reduce((sum, l) => sum + l.outflow, commitments.outflow);
+  const net = outflows - Math.min(inflows, outflows * .75);
+  const lcr = net > 0 ? hqla / net : Infinity;
+  const asf = adjustedCet1 + state.financial.capital.at1 + lines.reduce((sum, l) => sum + l.asf, 0);
+  const rsf = lines.reduce((sum, l) => sum + l.rsf, commitments.rsf);
+  const nsfr = rsf > 0 ? asf / rsf : Infinity;
+  const stressOut = lines.reduce((sum, l) => sum + l.outflow * (isCustomerDeposit(l.productType) ? liquidityFactors.depositOutflowMultiplier : 1), commitments.outflow);
+  const stressNet = stressOut - Math.min(inflows * liquidityFactors.inflowMultiplier, stressOut * .75);
+  const managementLcr = stressNet > 0 ? hqla / stressNet : Infinity;
+  const stressAsf = adjustedCet1 + state.financial.capital.at1 + lines.reduce((sum, l) => sum + l.asf * (isCustomerDeposit(l.productType) ? liquidityFactors.asfMultiplier : 1), 0);
+  const managementNsfr = rsf > 0 ? stressAsf / rsf : Infinity;
   const { niiSensitivity100bp, eveSensitivity100bp } = computeIrrbbSensitivities(state, config);
   const { fundingMaturing3m, fundingMaturing12m } = computeFundingMaturityMetrics(state);
   const { fundingStressIndex, fundingConfidenceScore } = computeFundingConfidenceMetrics({
     state,
     cet1Ratio,
     cet1Requirement,
-    lcr,
-    nsfr,
+    lcr: managementLcr,
+    nsfr: managementNsfr,
     depositQualityIndex,
     asf,
     fundingMaturing12m,
@@ -536,12 +497,9 @@ export const calculateRiskMetrics = ({
 
   const { sectorConcentration, geographyConcentration, concentrationHhi } = computeConcentrationMetrics(state);
   const mdaTriggered = cet1Ratio < cet1Requirement;
-  const regulatoryMaxPayoutRatio =
-    cet1Ratio < config.riskLimits.minCet1Ratio
-      ? 0
-      : mdaTriggered
-        ? clamp(config.riskLimits.capitalPolicy.mdaMaxPayoutRatio, 0, 1)
-        : 1;
+  // Conservative bank policy: suspend all distributions inside buffers. This is
+  // not the PRA's MDA amount, which needs four-quarter profits and notifications.
+  const regulatoryMaxPayoutRatio = mdaTriggered ? 0 : 1;
   const payoutRestrictionSlope = Math.max(1e-4, capPolicy.payoutRestrictionSlope ?? 0.04);
   const internalMaxPayoutRatio =
     internalCet1Headroom >= 0 ? 1 : clamp(1 + internalCet1Headroom / payoutRestrictionSlope, 0, 1);
@@ -565,7 +523,11 @@ export const calculateRiskMetrics = ({
     leverageRatio,
     hqla,
     lcr,
-    lcrOutflowMultiplier: liquidityFactors.depositOutflowMultiplier,
+    lcrOutflowMultiplier: 1,
+    managementLcr,
+    managementNsfr,
+    tier1Ratio: rwa > 0 ? (adjustedCet1 + state.financial.capital.at1) / rwa : Infinity,
+    totalCapitalRatio: rwa > 0 ? (adjustedCet1 + state.financial.capital.at1) / rwa : Infinity,
     depositQualityIndex,
     asf,
     rsf,
@@ -595,10 +557,11 @@ export const calculateRiskMetrics = ({
 };
 
 export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => ({
-  cet1Breached: metrics.cet1Ratio < limits.minCet1Ratio,
-  leverageBreached: metrics.leverageRatio < limits.minLeverageRatio,
-  lcrBreached: metrics.lcr < limits.minLcr,
-  nsfrBreached: metrics.nsfr < limits.minNsfr,
+  cet1Breached: !(metrics.cet1Ratio >= limits.minCet1Ratio),
+  ownFundsBreached: !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (limits.minTier1Ratio ?? .06)) || !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (limits.minTotalCapitalRatio ?? .08)),
+  leverageBreached: !(metrics.leverageRatio >= limits.minLeverageRatio),
+  lcrBreached: !(metrics.lcr >= limits.minLcr),
+  nsfrBreached: !(metrics.nsfr >= limits.minNsfr),
   concentrationBreached:
     metrics.sectorConcentration > limits.concentration.maxSingleSectorShare ||
     metrics.geographyConcentration > limits.concentration.maxSingleGeographyShare,

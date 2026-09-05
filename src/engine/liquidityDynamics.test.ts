@@ -5,7 +5,7 @@ import { calculateRiskMetrics } from './metrics';
 import { cloneBankState } from './clone';
 
 describe('Dynamic liquidity factors', () => {
-  it('worse franchise/recession regime increases LCR stress and lowers NSFR', () => {
+  it('behavioural stress worsens management measures without changing prescribed ratios', () => {
     const benign = cloneBankState(initialState);
     benign.market.macroModel.gdpRegime = 'normal';
     benign.market.gdpGrowthMoM = 0.002;
@@ -23,8 +23,9 @@ describe('Dynamic liquidity factors', () => {
     const benignMetrics = calculateRiskMetrics({ state: benign, config: baseConfig, lcrOutflowMultiplier: 1 });
     const stressedMetrics = calculateRiskMetrics({ state: stressed, config: baseConfig, lcrOutflowMultiplier: 1 });
 
-    expect(stressedMetrics.lcrOutflowMultiplier).toBeGreaterThan(benignMetrics.lcrOutflowMultiplier);
-    expect(stressedMetrics.lcr).toBeLessThan(benignMetrics.lcr);
-    expect(stressedMetrics.nsfr).toBeLessThan(benignMetrics.nsfr);
+    expect(stressedMetrics.lcr).toBe(benignMetrics.lcr);
+    expect(stressedMetrics.nsfr).toBe(benignMetrics.nsfr);
+    expect(stressedMetrics.managementLcr).toBeLessThan(benignMetrics.managementLcr!);
+    expect(stressedMetrics.managementNsfr).toBeLessThan(benignMetrics.managementNsfr!);
   });
 });

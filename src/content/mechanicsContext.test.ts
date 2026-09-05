@@ -7,12 +7,7 @@ describe('buildMechanicsDynamicContext', () => {
   it('extracts and formats regulatory thresholds from config', () => {
     const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
     const stack = baseConfig.riskLimits.capitalBufferStack;
-    const combinedRequirement =
-      baseConfig.riskLimits.minCet1Ratio +
-      stack.conservationBuffer +
-      stack.countercyclicalBuffer +
-      stack.systemicBuffer +
-      stack.managementBuffer;
+    const combinedRequirement = initialState.risk.riskMetrics.cet1Requirement;
 
     expect(context.values.minCet1Ratio).toBe(baseConfig.riskLimits.minCet1Ratio);
     expect(context.values.minLeverageRatio).toBe(baseConfig.riskLimits.minLeverageRatio);

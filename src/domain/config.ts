@@ -158,9 +158,7 @@ export interface FundingLadderParameters {
 
 export interface Ifrs9Parameters {
   sicrPdMultiplierThreshold: number;
-  stage3PdThreshold: number;
-  stage2LifetimeMultiplier: number;
-  stage3LifetimeMultiplier: number;
+  eclScenarios?: Array<{ weight: number; pdMultiplier: number }>;
 }
 
 export interface LiquidityDynamicsParameters {

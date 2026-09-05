@@ -60,8 +60,8 @@ export interface Scenario {
   name: string;
   description: string;
   goals?: ScenarioGoals;
-  initialStateOverride?: Partial<BankState> & {
-    financial?: {
+  initialStateOverride?: Omit<Partial<BankState>, 'financial'> & {
+    financial?: Omit<Partial<BankState['financial']>, 'balanceSheet'> & {
       balanceSheet?: {
         items?: Array<Partial<BalanceSheetItem> & { productType: ProductType }>;
       };
@@ -325,7 +325,7 @@ export const applyScenarioConfig = (
         typeof overrideValue === 'object' &&
         !Array.isArray(overrideValue)
       ) {
-        merged[key] = { ...baseValue, ...overrideValue };
+        merged[key] = mergeRecord(baseValue, overrideValue);
         return;
       }
       merged[key] = overrideValue as T[keyof T];
@@ -333,144 +333,7 @@ export const applyScenarioConfig = (
     return merged;
   };
 
-  return {
-    version: overrides.version ?? base.version,
-    featureFlags: {
-      ...(base.featureFlags ?? {}),
-      ...(overrides.featureFlags ?? {}),
-    },
-    productParameters: mergeRecord(base.productParameters, overrides.productParameters),
-    liquidityTags: mergeRecord(base.liquidityTags, overrides.liquidityTags),
-    global: {
-      ...base.global,
-      ...(overrides.global ?? {}),
-    },
-    riskLimits: {
-      ...base.riskLimits,
-      ...(overrides.riskLimits ?? {}),
-      capitalBufferStack: {
-        ...base.riskLimits.capitalBufferStack,
-        ...(overrides.riskLimits?.capitalBufferStack ?? {}),
-      },
-      capitalPolicy: {
-        ...base.riskLimits.capitalPolicy,
-        ...(overrides.riskLimits?.capitalPolicy ?? {}),
-      },
-      concentration: {
-        ...base.riskLimits.concentration,
-        ...(overrides.riskLimits?.concentration ?? {}),
-      },
-      boardPressure: {
-        ...base.riskLimits.boardPressure,
-        ...(overrides.riskLimits?.boardPressure ?? {}),
-      },
-    },
-    behaviour: {
-      ...base.behaviour,
-      ...(overrides.behaviour ?? {}),
-      depositByProduct: mergeRecord(base.behaviour.depositByProduct ?? {}, overrides.behaviour?.depositByProduct),
-      loanPipelineByProduct: mergeRecord(
-        base.behaviour.loanPipelineByProduct ?? {},
-        overrides.behaviour?.loanPipelineByProduct
-      ),
-      creditRiskDynamics: {
-        ...(base.behaviour.creditRiskDynamics ?? {}),
-        ...(overrides.behaviour?.creditRiskDynamics ?? {}),
-        adverseSelection: {
-          ...(base.behaviour.creditRiskDynamics?.adverseSelection ?? {}),
-          ...(overrides.behaviour?.creditRiskDynamics?.adverseSelection ?? {}),
-        },
-        affordabilityByProduct: mergeRecord(
-          base.behaviour.creditRiskDynamics?.affordabilityByProduct ?? {},
-          overrides.behaviour?.creditRiskDynamics?.affordabilityByProduct
-        ),
-        refinanceByProduct: mergeRecord(
-          base.behaviour.creditRiskDynamics?.refinanceByProduct ?? {},
-          overrides.behaviour?.creditRiskDynamics?.refinanceByProduct
-        ),
-        workoutPipeline: {
-          ...(base.behaviour.creditRiskDynamics?.workoutPipeline ?? {}),
-          ...(overrides.behaviour?.creditRiskDynamics?.workoutPipeline ?? {}),
-        },
-      },
-      costModel: {
-        ...(base.behaviour.costModel ?? {}),
-        ...(overrides.behaviour?.costModel ?? {}),
-      },
-      fundingLadder: {
-        ...(base.behaviour.fundingLadder ?? {}),
-        ...(overrides.behaviour?.fundingLadder ?? {}),
-      },
-      ifrs9: {
-        ...(base.behaviour.ifrs9 ?? {}),
-        ...(overrides.behaviour?.ifrs9 ?? {}),
-      },
-      liquidityDynamics: {
-        ...(base.behaviour.liquidityDynamics ?? {}),
-        ...(overrides.behaviour?.liquidityDynamics ?? {}),
-      },
-      irrbb: {
-        ...(base.behaviour.irrbb ?? {}),
-        ...(overrides.behaviour?.irrbb ?? {}),
-      },
-      securitiesAccounting: {
-        ...(base.behaviour.securitiesAccounting ?? {}),
-        ...(overrides.behaviour?.securitiesAccounting ?? {}),
-        defaultClassificationByProduct: {
-          ...(base.behaviour.securitiesAccounting?.defaultClassificationByProduct ?? {}),
-          ...(overrides.behaviour?.securitiesAccounting?.defaultClassificationByProduct ?? {}),
-        },
-        effectiveDurationYearsByProduct: {
-          ...(base.behaviour.securitiesAccounting?.effectiveDurationYearsByProduct ?? {}),
-          ...(overrides.behaviour?.securitiesAccounting?.effectiveDurationYearsByProduct ?? {}),
-        },
-      },
-      concentration: {
-        ...(base.behaviour.concentration ?? {}),
-        ...(overrides.behaviour?.concentration ?? {}),
-        sectorPdMultiplierByStress: {
-          ...(base.behaviour.concentration?.sectorPdMultiplierByStress ?? {}),
-          ...(overrides.behaviour?.concentration?.sectorPdMultiplierByStress ?? {}),
-        },
-        geographyPdMultiplierByStress: {
-          ...(base.behaviour.concentration?.geographyPdMultiplierByStress ?? {}),
-          ...(overrides.behaviour?.concentration?.geographyPdMultiplierByStress ?? {}),
-        },
-      },
-      boardPressure: {
-        ...(base.behaviour.boardPressure ?? {}),
-        ...(overrides.behaviour?.boardPressure ?? {}),
-      },
-      confidenceStateMachine: {
-        ...(base.behaviour.confidenceStateMachine ?? {}),
-        ...(overrides.behaviour?.confidenceStateMachine ?? {}),
-        impacts: {
-          ...(base.behaviour.confidenceStateMachine?.impacts ?? {}),
-          ...(overrides.behaviour?.confidenceStateMachine?.impacts ?? {}),
-        },
-      },
-      conductRisk: {
-        ...(base.behaviour.conductRisk ?? {}),
-        ...(overrides.behaviour?.conductRisk ?? {}),
-      },
-      sharePriceModel: {
-        ...(base.behaviour.sharePriceModel ?? {}),
-        ...(overrides.behaviour?.sharePriceModel ?? {}),
-      },
-    },
-    shockParameters: {
-      ...base.shockParameters,
-      ...(overrides.shockParameters ?? {}),
-      idiosyncraticRun: {
-        ...base.shockParameters.idiosyncraticRun,
-        ...(overrides.shockParameters?.idiosyncraticRun ?? {}),
-      },
-    },
-    tolerances: {
-      ...base.tolerances,
-      ...(overrides.tolerances ?? {}),
-    },
-  };
+  return mergeRecord(base, overrides);
 };
 
 export const getScenarioInitialState = (

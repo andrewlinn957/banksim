@@ -4,6 +4,12 @@ BankSim is a React/Vite banking simulator game. You run a UK bank month by month
 
 The simulator models banking mechanics at a management-game level: deposits, loan growth, funding, liquidity ratios, regulatory capital, credit losses, conduct risk, securities marks, scenario shocks, and an equity price signal.
 
+Start in the Boardroom: complete a twelve-month mandate, choose proposals with explicit commercial trade-offs, and inspect the results after every monthly close. Earn stars for shareholder return, consistent profits and franchise strength, subject to remaining within prudential minima. Then continue in the sandbox or start another year.
+
+The redesigned interface uses a generated Threadneedle Street bank illustration, clearer typography and responsive decision cards.
+
+See [model basis and remaining gaps](docs/model-basis.md) for the 2026 PRA assumptions and funded-loan IFRS 9 treatment, and [art direction](docs/art-direction.md) for the image prompt.
+
 ## Gameplay
 
 Each turn advances the bank by one month. The player can adjust rates, underwriting tightness, funding, equity issuance, dividends, cost actions, hedge actions, and related management levers.
@@ -19,7 +25,7 @@ Your job is to manage a working bank through normal conditions and stress scenar
 - preserve deposit and lending franchise strength
 - keep market confidence high enough to support the share price
 
-The bank enters resolution mode if it breaches hard regulatory or cash-flow constraints. Warnings and weak metrics do not always end the game immediately, but they usually make future turns harder.
+The game ends on capital-minimum or actual cash failures. This is a gameplay condition, not a legal resolution assessment. Liquidity breaches prompt recovery warnings. Warnings and weak metrics do not always end the game immediately, but they usually make future turns harder.
 
 ## Monthly Decisions
 
@@ -92,3 +98,7 @@ Important entry points:
 - `src/config/scenarios.ts`: scenario definitions and step payloads.
 
 Domain types live under `src/domain`, UI components under `src/components`, and explanatory content under `src/content`.
+
+## Verification
+
+Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build`. CI runs tests, source type checking and the production build.

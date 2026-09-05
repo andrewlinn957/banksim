@@ -30,10 +30,6 @@ export type LoanGeography =
 /**
  * Represents one group ("cohort") of loans that move together through time.
  *
- * Parameters: none (this is a type, not a function).
- * Return type: none (interfaces only describe shape).
- * Side effects: none.
- * Thrown errors: none.
  */
 export interface LoanCohort {
   // Which product this cohort belongs to (e.g. mortgages vs corporate loans).
@@ -55,6 +51,8 @@ export interface LoanCohort {
 
   // Annual probability of default (PD) as a decimal between 0 and 1.
   annualPd: number;
+  effectiveAnnualPd?: number;
+  effectiveLgd?: number;
   // Loss given default (LGD) as a decimal between 0 and 1.
   lgd: number;
   // Borrower affordability stress proxy. 1 is neutral, >1 is stressed, <1 is comfortable.
@@ -74,6 +72,7 @@ export interface LoanWorkoutBucket {
   stageAtDefault: LoanStage;
   defaultedPrincipal: number;
   expectedRecoveryRate: number;
+  effectiveInterestRate?: number;
   monthsToResolution: number;
   sector?: LoanSector;
   geography?: LoanGeography;

@@ -469,7 +469,7 @@ const adjustCashOrFail = (state: BankState, delta: number, events: SimulationEve
   if (cash.balance >= 0) return;
 
   const shortfall = -cash.balance;
-  cash.balance = 0;
+  // Preserve the cash shortfall for the accounting identity; it ends the game.
   state.status.hasFailed = true;
   events.push(createEvent('error', `Cash balance breached: short by ${shortfall.toFixed(2)} after flow`));
 };
@@ -536,7 +536,7 @@ const applyIssueEquity = (
     config.behaviour.sharePriceModel?.priceFloor ?? 0.05,
     state.equityMarket.sharePrice * (1 - issuanceDiscount)
   );
-  const issuedShares = netProceeds / Math.max(1e-6, issuePrice);
+  const issuedShares = executable / Math.max(1e-6, issuePrice);
   state.equityMarket.sharesOutstanding += issuedShares;
   state.equityMarket.marketCap = state.equityMarket.sharePrice * state.equityMarket.sharesOutstanding;
 
@@ -907,7 +907,7 @@ const applyBuySellAsset = (
       createEvent('info', `Bought ${productType}: +${buyAmount.toFixed(2)}, cash -${buyAmount.toFixed(2)}`)
     );
   } else {
-    const sellAmount = Math.min(asset.balance, Math.abs(amountDelta));
+    const sellAmount = Math.min(Math.max(0, asset.balance - (asset.encumbrance?.encumberedAmount ?? 0)), Math.abs(amountDelta));
     asset.balance -= sellAmount;
     adjustCashOrFail(state, sellAmount, events);
     events.push(
@@ -969,8 +969,8 @@ const applyRepoBorrow = (
   if (!cash) return;
 
   const collateral = findItem(state.financial.balanceSheet, collateralProduct);
-  const effectiveHaircut = Math.max(0, haircut ?? 0);
-  const collateralRequirement = 1 + effectiveHaircut;
+  const effectiveHaircut = clamp(haircut ?? 0, 0, 1);
+  const collateralRequirement = effectiveHaircut < 1 ? 1 / (1 - effectiveHaircut) : Infinity;
   const availableCollateral = collateral
     ? Math.max(0, collateral.balance - (collateral.encumbrance?.encumberedAmount ?? 0))
     : 0;
@@ -1000,6 +1000,7 @@ const applyRepoBorrow = (
     if (!collateral.encumbrance) {
       collateral.encumbrance = { encumberedAmount: 0 };
     }
+    collateral.encumbrance.remainingMonths = 1;
     collateral.encumbrance.encumberedAmount = clamp(
       (collateral.encumbrance.encumberedAmount ?? 0) + encumbered,
       0,
@@ -1031,7 +1032,7 @@ const applyRepoLend = (
     rate,
     config
   );
-  const lendAmount = Math.min(cash.balance, amount);
+  const lendAmount = Math.min(Math.max(0, cash.balance), amount);
   reverseRepo.interestRate = blendRate(reverseRepo.balance, reverseRepo.interestRate, lendAmount, rate);
   reverseRepo.balance += lendAmount;
   cash.balance -= lendAmount;
@@ -1220,7 +1221,17 @@ export const applyActions = (
 ): void => {
   ensureFundingLadders(state, config);
   const actionContext: ActionContext = { state, config, events };
-  actions.forEach((action) => dispatchAction(action, actionContext));
+  actions.forEach(action => {
+    if (Object.values(action).some(v => typeof v === 'number' && !Number.isFinite(v)) || ('amount' in action && action.amount < 0) || ('notional' in action && action.notional < 0)) {
+      events.push(createEvent('warning', 'Invalid transaction amount or rate. Action rejected.'));
+      return;
+    }
+    if (action.type === 'enterRepo' && (action.collateralProduct !== AssetProductType.Gilts || (action.maturityMonths !== undefined && action.maturityMonths !== 1))) {
+      events.push(createEvent('warning', 'This portfolio supports rolling one-month gilt repos only. Unsupported collateral or tenor rejected.'));
+      return;
+    }
+    dispatchAction(action, actionContext);
+  });
 };
 
 export interface FundingLifecycleResult {
@@ -2169,86 +2180,6 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
   return { assets, liabilities, interestIncome, interestExpense };
 };
 
-const applyProvisionDeltaToProductCohorts = (
-  cohorts: Array<{ outstandingPrincipal: number }>,
-  targetDelta: number
-): number => {
-  if (!Number.isFinite(targetDelta) || Math.abs(targetDelta) <= 1e-9 || cohorts.length === 0) return 0;
-  const totalOutstanding = cohorts.reduce((sum, cohort) => sum + Math.max(0, cohort.outstandingPrincipal), 0);
-  if (totalOutstanding <= 0) return 0;
-
-  if (targetDelta > 0) {
-    const reducible = Math.min(targetDelta, totalOutstanding);
-    let remaining = reducible;
-    cohorts.forEach((cohort, idx) => {
-      if (remaining <= 1e-9) return;
-      const base =
-        idx === cohorts.length - 1
-          ? remaining
-          : (reducible * Math.max(0, cohort.outstandingPrincipal)) / totalOutstanding;
-      const reduction = Math.min(Math.max(0, cohort.outstandingPrincipal), Math.max(0, base));
-      cohort.outstandingPrincipal -= reduction;
-      remaining -= reduction;
-    });
-    return reducible;
-  }
-
-  const increase = Math.abs(targetDelta);
-  cohorts.forEach((cohort, idx) => {
-    const weight = idx === cohorts.length - 1 ? 1 : Math.max(0, cohort.outstandingPrincipal) / totalOutstanding;
-    const bump = idx === cohorts.length - 1 ? 0 : increase * weight;
-    cohort.outstandingPrincipal += bump;
-  });
-  // Ensure exact reconciliation for floating point drift.
-  const postTotal = cohorts.reduce((sum, cohort) => sum + Math.max(0, cohort.outstandingPrincipal), 0);
-  const expected = totalOutstanding + increase;
-  const drift = expected - postTotal;
-  if (Math.abs(drift) > 1e-9) {
-    cohorts[cohorts.length - 1].outstandingPrincipal = Math.max(
-      0,
-      cohorts[cohorts.length - 1].outstandingPrincipal + drift
-    );
-  }
-  return -increase;
-};
-
-const applyProvisionDeltaToLoanBook = (
-  state: BankState,
-  targetDelta: number,
-  recognizedLoanLosses: Partial<Record<ProductType, number>>
-): number => {
-  if (!Number.isFinite(targetDelta) || Math.abs(targetDelta) <= 1e-9) return 0;
-  const entries = Object.entries(state.loanCohorts ?? {}) as Array<[ProductType, Array<{ outstandingPrincipal: number }>]>;
-  const loanEntries = entries.filter(
-    ([productType, cohorts]) =>
-      Boolean(PRODUCT_META[productType]?.behaviour?.isLoan) && (cohorts?.length ?? 0) > 0
-  );
-  const totalOutstanding = loanEntries.reduce(
-    (sum, [, cohorts]) =>
-      sum + cohorts.reduce((inner, cohort) => inner + Math.max(0, cohort.outstandingPrincipal), 0),
-    0
-  );
-  if (totalOutstanding <= 0) return 0;
-
-  let applied = 0;
-  let remaining = targetDelta;
-  loanEntries.forEach(([productType, cohorts], idx) => {
-    const productOutstanding = cohorts.reduce((sum, cohort) => sum + Math.max(0, cohort.outstandingPrincipal), 0);
-    if (productOutstanding <= 0) return;
-    const alloc =
-      idx === loanEntries.length - 1
-        ? remaining
-        : (targetDelta * productOutstanding) / totalOutstanding;
-    const productApplied = applyProvisionDeltaToProductCohorts(cohorts, alloc);
-    recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + productApplied;
-    applied += productApplied;
-    remaining -= productApplied;
-  });
-
-  syncLoanBalancesFromCohorts(state);
-  return applied;
-};
-
 export interface LossRecognitionResult {
   loanItems: BalanceSheetItem[];
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
@@ -2305,24 +2236,19 @@ export const recogniseLosses = (
 
   const realizedNonLoanLosses = Object.values(recognizedNonLoanLosses).reduce((sum, loss) => sum + (loss ?? 0), 0);
   const openingProvisionStock = Math.max(0, state.financial.provisionStock.total ?? 0);
-  const provisionTarget = calculateProvisionTargetFromCohorts({ state, config });
-  const requestedProvisionDelta = provisionTarget.total - openingProvisionStock;
-  const appliedProvisionDelta = applyProvisionDeltaToLoanBook(
-    state,
-    requestedProvisionDelta,
-    recognizedLoanLosses
-  );
-  // IFRS9 flow: impairment P&L = write-offs + applied provision stock movement.
-  const provisionCharge = realizedLoanLosses + appliedProvisionDelta;
-  const closingProvisionStock = Math.max(0, openingProvisionStock + appliedProvisionDelta);
-  const targetTotal = Math.max(0, provisionTarget.total);
-  const stageScale = targetTotal > 0 ? closingProvisionStock / targetTotal : 0;
-  state.financial.provisionStock = {
-    stage1: provisionTarget.stage1 * stageScale,
-    stage2: provisionTarget.stage2 * stageScale,
-    stage3: provisionTarget.stage3 * stageScale,
-    total: closingProvisionStock,
-  };
+  const provisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
+  let allowanceMovement = 0;
+  loanItems.forEach(item => {
+    const target = calculateProvisionTargetFromCohorts({ state, config, productType: item.productType });
+    const delta = target.total - (item.lossAllowance ?? 0);
+    item.lossAllowance = target.total;
+    allowanceMovement += delta;
+    recognizedLoanLosses[item.productType] = (recognizedLoanLosses[item.productType] ?? 0) + delta;
+    for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) provisionTarget[stage] += target[stage];
+  });
+  syncLoanBalancesFromCohorts(state);
+  const provisionCharge = realizedLoanLosses + allowanceMovement;
+  state.financial.provisionStock = provisionTarget;
   const creditLosses = provisionCharge + realizedNonLoanLosses;
 
   return {
@@ -2531,7 +2457,8 @@ export const applyCapitalPolicyDistributions = (
   const rwa = Math.max(0, metrics.rwa);
   const minimumCET1 = config.riskLimits.minCet1Ratio * rwa;
   const internalTargetCapital = Math.max(minimumCET1, Math.max(0, metrics.internalCet1TargetRatio) * rwa);
-  let distributableCapital = Math.max(0, state.financial.capital.cet1 - internalTargetCapital);
+  const regulatoryCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
+  let distributableCapital = state.status.hasFailed ? 0 : Math.max(0, Math.min(regulatoryCet1 - internalTargetCapital, regulatoryCet1 + state.financial.capital.at1 - config.riskLimits.minLeverageRatio * metrics.leverageExposure));
 
   const dividendsPaid = Math.min(requestedDividend, distributableCapital, availableCash);
   distributableCapital = Math.max(0, distributableCapital - dividendsPaid);
@@ -2545,7 +2472,7 @@ export const applyCapitalPolicyDistributions = (
     metrics.cet1Ratio >= config.riskLimits.capitalPolicy.at1DiscretionaryCet1Threshold &&
     metrics.internalCet1Headroom >= (config.riskLimits.capitalPolicy.at1InternalTargetHeadroom ?? 0);
   const payAt1 =
-    policy.at1CouponMode === 'pay' || (policy.at1CouponMode === 'auto' && autoAllowsAt1);
+    !metrics.mdaTriggered && (policy.at1CouponMode === 'pay' || (policy.at1CouponMode === 'auto' && autoAllowsAt1));
 
   const at1CouponsPaid = payAt1
     ? Math.min(at1CouponDue, Math.max(0, availableCash - dividendsPaid), distributableCapital)
@@ -2609,7 +2536,7 @@ export const applyCapitalPolicyDistributions = (
 /**
  * Computes risk metrics (RWA/leverage/liquidity) and evaluates regulatory compliance.
  *
- * If any limit is breached, the bank is flagged as failed for the step.
+ * Capital minima end the game. Liquidity ratio breaches initiate recovery warnings.
  */
 export const computeMetrics = (
   state: BankState,
@@ -2641,9 +2568,8 @@ export const computeMetrics = (
   state.status.hasFailed =
     state.status.hasFailed ||
     state.risk.compliance.cet1Breached ||
-    state.risk.compliance.leverageBreached ||
-    state.risk.compliance.lcrBreached ||
-    state.risk.compliance.nsfrBreached;
+    Boolean(state.risk.compliance.ownFundsBreached) ||
+    state.risk.compliance.leverageBreached;
 
   if (!emitRegulatoryEvents) {
     return;
@@ -2670,8 +2596,11 @@ export const computeMetrics = (
     );
   }
 
+  if (state.risk.compliance.lcrBreached || state.risk.compliance.nsfrBreached) {
+    events.push(createEvent('warning', 'Liquidity recovery required: restore the buffer and protect funding access. A ratio breach alone does not end the game.'));
+  }
   if (state.status.hasFailed) {
-    events.push(createEvent('error', 'Regulatory breach: your bank has failed!'));
+    events.push(createEvent('error', 'Mandate ended: a capital minimum or cash obligation was breached. This is a game rule, not a legal resolution determination.'));
   }
 };
 
@@ -3060,6 +2989,7 @@ export const createSimulationEngine = (): SimulationEngine => {
         })
       : {
           loanInterestIncome: 0,
+          nonCashInterest: 0,
           recognizedLoanLosses: {},
           defaultedPrincipal: 0,
           renewedPrincipal: 0,
@@ -3115,6 +3045,9 @@ export const createSimulationEngine = (): SimulationEngine => {
     const accruals = accruePnL(state, dtYears);
     const hedgeCarry = featureFlags.irrbbHedges ? stepHedges(state, activeConfig, dtMonths, dtYears, events) : 0;
     const losses = recogniseLosses(state, activeConfig, shockEffects, cohortStep.recognizedLoanLosses);
+    // Reclassify discount unwinding on net credit-impaired assets as interest.
+    losses.creditLosses += cohortStep.nonCashInterest;
+    losses.provisionCharge += cohortStep.nonCashInterest;
     const capitalClose = closeCapital(
       state,
       activeConfig,
@@ -3122,7 +3055,7 @@ export const createSimulationEngine = (): SimulationEngine => {
       dtYears,
       accruals,
       losses,
-      cohortStep.loanInterestIncome,
+      cohortStep.loanInterestIncome + cohortStep.nonCashInterest,
       hedgeCarry,
       securitiesValuation,
       loanBehaviour.originatedNotional,
@@ -3130,6 +3063,7 @@ export const createSimulationEngine = (): SimulationEngine => {
       conductStep.conductCosts,
       events
     );
+    capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;
     computeMetrics(state, activeConfig, shockEffects.lcrOutflowMultiplier, events, true, false);
     if (featureFlags.capitalPolicy) {
       applyCapitalPolicyDistributions(state, activeConfig, dtYears, events);

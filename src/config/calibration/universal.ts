@@ -29,7 +29,8 @@ export const createUniversalCalibration = (): CalibrationPack => {
     envelope: {
       cet1Ratio: [0.08, 0.45],
       lcr: [0.9, 6.0],
-      nsfr: [0.9, 3.0],
+      // 2026 prescribed ASF/RSF and contractual maturity treatment; see model-basis.md.
+      nsfr: [0.9, 4.0],
       roe: [-0.05, 0.3],
     },
   };

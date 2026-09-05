@@ -392,7 +392,7 @@ const status: SimulationStatus = {
 
 const time: SimulationTime = {
   step: 0,
-  date: new Date('2024-12-31T00:00:00Z'),
+  date: new Date('2025-12-31T00:00:00Z'),
   stepLengthMonths: 1,
 };
 
@@ -459,6 +459,11 @@ const seedLoanCohorts = (productType: AssetProductType): void => {
   seedState.loanCohorts[productType] = cohorts;
   item.balance = sumLoanOutstanding(cohorts);
 };
+
+// Opening repo stock is secured on gilts; assume a 2% haircut and monthly rollover.
+const openingRepo = seedState.financial.balanceSheet.items.find(i => i.productType === LiabilityProductType.RepurchaseAgreements)!;
+const openingGilts = seedState.financial.balanceSheet.items.find(i => i.productType === AssetProductType.Gilts)!;
+openingGilts.encumbrance = { encumberedAmount: Math.min(openingGilts.balance, openingRepo.balance / .98), remainingMonths: 1 };
 
 seedLoanCohorts(AssetProductType.Mortgages);
 seedLoanCohorts(AssetProductType.CorporateLoans);

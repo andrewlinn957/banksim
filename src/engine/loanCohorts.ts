@@ -1,3 +1,4 @@
+import { cohortEcl, workoutRecoveryEstimator, workoutPresentValue } from './impairment';
 /**
  * Loan cohort "engine" logic.
  *
@@ -52,28 +53,12 @@ const LOAN_GEOGRAPHIES: LoanGeography[] = [
 /**
  * Clamp a number into the inclusive range `[min, max]`.
  *
- * Parameters:
- * - `value: number` - the input number we want to limit.
- * - `min: number` - lowest allowed value.
- * - `max: number` - highest allowed value.
- *
- * Returns: `number` within the range.
- * Side effects: none.
- * Thrown errors: none.
  */
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 /**
  * Find a balance-sheet line item for a given `productType`.
  *
- * Parameters:
- * - `state: BankState`
- * - `productType: ProductType`
- *
- * Returns: `BalanceSheetItem | undefined` (a union type) because `.find(...)`
- * might not find anything.
- * Side effects: none.
- * Thrown errors: none.
  */
 const findItem = (state: BankState, productType: ProductType): BalanceSheetItem | undefined =>
   state.financial.balanceSheet.items.find((i) => i.productType === productType);
@@ -81,12 +66,6 @@ const findItem = (state: BankState, productType: ProductType): BalanceSheetItem 
 /**
  * Convenience helper to get the cash reserves line item.
  *
- * Parameters:
- * - `state: BankState`
- *
- * Returns: `BalanceSheetItem | undefined` (cash might be missing in malformed states).
- * Side effects: none.
- * Thrown errors: none.
  */
 const getCashItem = (state: BankState): BalanceSheetItem | undefined =>
   state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves);
@@ -94,35 +73,16 @@ const getCashItem = (state: BankState): BalanceSheetItem | undefined =>
 /**
  * Check whether a `ProductType` is treated as a loan in our product metadata.
  *
- * Parameters:
- * - `productType: ProductType`
- *
- * Returns: `boolean`.
- * Side effects: none.
- * Thrown errors: none.
- *
- * TypeScript note: optional chaining (`?.`) prevents a crash if any intermediate
- * value is `undefined` (e.g. missing metadata for a product type).
  */
 const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCT_META[productType]?.behaviour?.isLoan);
 
 /**
  * Result returned by `stepLoanCohorts(...)` for one simulation step.
  *
- * Parameters: none (this is a data shape).
- * Return type: none.
- * Side effects: none.
- * Thrown errors: none.
- *
- * TypeScript note: `Partial<Record<ProductType, number>>` means:
- * - `Record<K, V>`: "a map from keys K to values V"
- * - `Partial<T>`: "all properties are optional"
- *
- * So `recognizedLoanLosses` can contain only the product types that actually had
- * losses this step (missing keys are treated as 0).
  */
 export interface LoanCohortStepResult {
   loanInterestIncome: number;
+  nonCashInterest: number;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
   defaultedPrincipal: number;
   renewedPrincipal: number;
@@ -143,10 +103,6 @@ export interface ProvisionTarget {
 /**
  * A tiny seeded random number generator (RNG) interface.
  *
- * Parameters: none (data + functions).
- * Return type: none.
- * Side effects: calling `uniform()` / `normal()` advances internal RNG state.
- * Thrown errors: none.
  */
 export interface SeededRng {
   seed: number;
@@ -157,16 +113,6 @@ export interface SeededRng {
 /**
  * Create a deterministic (seeded) RNG used for repeatable simulations.
  *
- * Parameters:
- * - `seed: number` - initial seed value. Any number is accepted; internally we
- *   coerce it into a 32-bit integer for the RNG algorithm.
- *
- * Returns: `SeededRng` (an object with `uniform()` and `normal()` methods).
- * Side effects: the returned object stores mutable internal RNG state in a closure.
- * Thrown errors: none.
- *
- * Optional TODO: This RNG is for simulation/replay, not security (do not use it
- * for cryptography).
  */
 export const createSeededRng = (seed: number): SeededRng => {
   // `| 0` is a common JavaScript trick to coerce a number into a signed 32-bit int.
@@ -217,19 +163,6 @@ export const createSeededRng = (seed: number): SeededRng => {
  * the same amount each month. Given the loan's age, term, and rate, we can
  * "reverse" the amortisation math to estimate what the original balance was.
  *
- * Parameters:
- * - `outstandingPrincipal: number` - current unpaid balance (>= 0).
- * - `annualInterestRate: number` - annual rate as a decimal (e.g. 0.06 means 6%).
- * - `termMonths: number` - total term in months (positive integer).
- * - `ageMonths: number` - months since origination (integer in [0, termMonths)).
- *
- * Returns: `number` (estimated original principal).
- * Side effects: none.
- * Thrown errors: if inputs are invalid (non-finite, inconsistent) or if the
- * amortisation factors become numerically invalid.
- *
- * Optional TODO: The function allows negative `annualInterestRate` values. Most
- * other code paths clamp rates to >= 0; confirm whether negative rates are intended.
  */
 export const inferOriginalPrincipalFromOutstanding = (
   outstandingPrincipal: number,
@@ -273,13 +206,6 @@ export const inferOriginalPrincipalFromOutstanding = (
 /**
  * Get (or lazily create) the loan cohort array for a specific product type.
  *
- * Parameters:
- * - `state: BankState` - the bank state we mutate/store cohorts in.
- * - `productType: ProductType` - which product's cohort list to return.
- *
- * Returns: `LoanCohort[]` (a mutable array stored inside `state`).
- * Side effects: may create/mutate `state.loanCohorts` and `state.loanCohorts[productType]`.
- * Thrown errors: none.
  */
 const getLoanCohortsArray = (state: BankState, productType: ProductType): LoanCohort[] => {
   if (!state.loanCohorts) {
@@ -295,22 +221,6 @@ const getLoanCohortsArray = (state: BankState, productType: ProductType): LoanCo
 /**
  * Sum outstanding principal across cohorts.
  *
- * Parameters:
- * - `cohorts: readonly LoanCohort[] | undefined`
- *   - `readonly ...[]` means callers can't reassign array elements or push/splice
- *     through this reference (but the objects inside could still be mutable).
- *   - `| undefined` is a union type allowing "no cohorts".
- *
- * Returns: `number`.
- * Side effects: none.
- * Thrown errors: none.
- *
- * TypeScript note: nullish coalescing (`??`) falls back only when the left side
- * is `null`/`undefined` (unlike `||`, which also treats 0 as "falsey").
- *
- * Optional TODO: `LoanCohort.outstandingPrincipal` is not optional in the interface,
- * but the code still uses `?? 0` when summing; confirm whether partial/legacy cohort
- * objects can exist at runtime.
  */
 export const sumLoanOutstanding = (cohorts: readonly LoanCohort[] | undefined): number =>
   (cohorts ?? []).reduce((sum, c) => sum + (c.outstandingPrincipal ?? 0), 0);
@@ -318,39 +228,19 @@ export const sumLoanOutstanding = (cohorts: readonly LoanCohort[] | undefined): 
 /**
  * Update balance-sheet loan item balances so they match the cohort totals.
  *
- * Parameters:
- * - `state: BankState`
- *
- * Returns: `void`.
- * Side effects: mutates `state.financial.balanceSheet.items[*].balance`.
- * Thrown errors: none.
  */
 export const syncLoanBalancesFromCohorts = (state: BankState): void => {
-  // `Object.entries(...)` is typed as `[string, unknown][]` in TS, so we assert
-  // the tuple type we expect at runtime.
-  // Optional TODO: Consider validating that the keys are valid `ProductType` values.
-  const entries = Object.entries(state.loanCohorts ?? {}) as Array<[ProductType, LoanCohort[]]>;
-  entries.forEach(([productType, cohorts]) => {
-    if (!isLoanProduct(productType)) return;
-    const item = findItem(state, productType);
-    if (!item) return;
-    const workoutStock = (state.workoutPipelines?.[productType] ?? []).reduce(
-      (sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal ?? 0),
-      0
-    );
-    item.balance = sumLoanOutstanding(cohorts) + workoutStock;
+  state.financial.balanceSheet.items.forEach(item => {
+    const p = item.productType;
+    if (!isLoanProduct(p) || (!state.loanCohorts?.[p] && !state.workoutPipelines?.[p])) return;
+    const gross = sumLoanOutstanding(state.loanCohorts?.[p]) + (state.workoutPipelines?.[p] ?? []).reduce((sum, b) => sum + b.defaultedPrincipal, 0);
+    item.balance = Math.max(0, gross - (item.lossAllowance ?? 0));
   });
 };
 
 /**
  * Remove cohorts that are effectively finished.
  *
- * Parameters:
- * - `cohorts: LoanCohort[]` - the mutable cohort array to clean.
- *
- * Returns: `void`.
- * Side effects: mutates the input array in-place (removes elements).
- * Thrown errors: none.
  */
 const cleanCohorts = (cohorts: LoanCohort[]): void => {
   // Small epsilon to avoid keeping "dust" balances caused by floating point math.
@@ -367,13 +257,6 @@ const cleanCohorts = (cohorts: LoanCohort[]): void => {
 /**
  * Validate a cohort's numeric fields and basic invariants.
  *
- * Parameters:
- * - `cohort: LoanCohort` - the cohort to check.
- * - `maxTermMonths: number` - product/config-specific maximum allowed term.
- *
- * Returns: `void`.
- * Side effects: none (but it can throw).
- * Thrown errors: throws `Error` with a descriptive message if a check fails.
  */
 const validateCohort = (cohort: LoanCohort, maxTermMonths: number): void => {
   if (!Number.isFinite(cohort.outstandingPrincipal) || cohort.outstandingPrincipal < 0) {
@@ -586,34 +469,11 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
   return (outstandingPrincipal * r) / denom;
 };
 
-const classifyStage = (args: {
-  currentStage: LoanStage;
-  stressedAnnualPd: number;
-  baseAnnualPd: number;
-  unemploymentRate: number;
-  gdpGrowthMoM: number;
-  sicrThreshold: number;
-  stage3PdThreshold: number;
-}): LoanStage => {
-  const {
-    currentStage,
-    stressedAnnualPd,
-    baseAnnualPd,
-    unemploymentRate,
-    gdpGrowthMoM,
-    sicrThreshold,
-    stage3PdThreshold,
-  } = args;
-
-  const stage3Trigger = stressedAnnualPd >= stage3PdThreshold || unemploymentRate >= 0.095;
-  if (stage3Trigger) return 'stage3';
-
-  const sicrTrigger =
-    stressedAnnualPd >= Math.max(1e-6, baseAnnualPd) * sicrThreshold || gdpGrowthMoM <= -0.0025;
-  if (sicrTrigger) return 'stage2';
-
-  if (currentStage === 'stage3' && stressedAnnualPd > stage3PdThreshold * 0.55) return 'stage3';
-  if (currentStage === 'stage2' && stressedAnnualPd > Math.max(1e-6, baseAnnualPd) * 1.1) return 'stage2';
+const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number; baseAnnualPd: number; gdpGrowthMoM: number; sicrThreshold: number }): LoanStage => {
+  // SICR is assessed relative to origination. A recession does not itself prove default.
+  if (args.currentStage === 'stage3') return 'stage3';
+  if (args.stressedAnnualPd >= Math.max(1e-6, args.baseAnnualPd) * args.sicrThreshold || args.gdpGrowthMoM <= -0.0025) return 'stage2';
+  if (args.currentStage === 'stage2' && args.stressedAnnualPd > Math.max(1e-6, args.baseAnnualPd) * 1.1) return 'stage2';
   return 'stage1';
 };
 
@@ -714,7 +574,7 @@ const stepWorkoutPipelines = (args: {
   config: SimulationConfig;
   cash: BalanceSheetItem;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
-}): { recoveryCash: number; resolvedWorkoutPrincipal: number } => {
+}): { recoveryCash: number; resolvedWorkoutPrincipal: number; nonCashInterest: number } => {
   const { state, config, cash, recognizedLoanLosses } = args;
   const workoutConfig = getWorkoutConfig(config);
   const products = new Set<ProductType>([
@@ -723,6 +583,7 @@ const stepWorkoutPipelines = (args: {
   ] as ProductType[]);
 
   let recoveryCash = 0;
+  let nonCashInterest = 0;
   let resolvedWorkoutPrincipal = 0;
 
   products.forEach((productType) => {
@@ -730,21 +591,10 @@ const stepWorkoutPipelines = (args: {
     const buckets = getWorkoutBucketsArray(state, productType);
     if (buckets.length === 0) return;
 
-    const sectorTotals: Partial<Record<LoanSector, number>> = {};
-    const geographyTotals: Partial<Record<LoanGeography, number>> = {};
-    let totalOpen = 0;
-    buckets.forEach((bucket) => {
-      const principal = Math.max(0, bucket.defaultedPrincipal);
-      if (principal <= 0) return;
-      totalOpen += principal;
-      const sector = bucket.sector ?? 'other';
-      const geography = bucket.geography ?? 'other';
-      sectorTotals[sector] = (sectorTotals[sector] ?? 0) + principal;
-      geographyTotals[geography] = (geographyTotals[geography] ?? 0) + principal;
-    });
-
+    const recoveryRateFor = workoutRecoveryEstimator(state, config, productType);
     const surviving: LoanWorkoutBucket[] = [];
     buckets.forEach((bucket) => {
+      nonCashInterest += workoutPresentValue(state, config, productType, bucket, recoveryRateFor(bucket)) * Math.max(0, bucket.effectiveInterestRate ?? 0) / 12;
       const nextMonths = bucket.monthsToResolution - 1;
       if (nextMonths > 0) {
         surviving.push({
@@ -756,19 +606,7 @@ const stepWorkoutPipelines = (args: {
 
       const principal = Math.max(0, bucket.defaultedPrincipal);
       if (principal <= 0) return;
-      const sectorShare = totalOpen > 0 ? (sectorTotals[bucket.sector ?? 'other'] ?? 0) / totalOpen : 0;
-      const geographyShare =
-        totalOpen > 0 ? (geographyTotals[bucket.geography ?? 'other'] ?? 0) / totalOpen : 0;
-      const macroPenalty =
-        workoutConfig.macroRecoveryPenaltySensitivity *
-        (Math.max(0, state.market.unemploymentRate - 0.05) + Math.max(0, -state.market.gdpGrowthMoM) * 12);
-      const concentrationPenalty =
-        workoutConfig.concentrationRecoveryPenaltySensitivity * Math.max(sectorShare, geographyShare);
-      const recoveryRate = clamp(
-        bucket.expectedRecoveryRate - macroPenalty - concentrationPenalty,
-        workoutConfig.baseRecoveryRateFloor,
-        1
-      );
+      const recoveryRate = recoveryRateFor(bucket);
       const recovered = principal * recoveryRate;
       const chargeOff = principal - recovered;
       if (recovered > 0) {
@@ -784,7 +622,7 @@ const stepWorkoutPipelines = (args: {
     state.workoutPipelines[productType] = surviving;
   });
 
-  return { recoveryCash, resolvedWorkoutPrincipal };
+  return { recoveryCash, resolvedWorkoutPrincipal, nonCashInterest };
 };
 
 export const stepLoanCohorts = (args: {
@@ -800,6 +638,7 @@ export const stepLoanCohorts = (args: {
   if (dtMonths === 0) {
     return {
       loanInterestIncome: 0,
+      nonCashInterest: 0,
       recognizedLoanLosses: {},
       defaultedPrincipal: 0,
       renewedPrincipal: 0,
@@ -816,6 +655,7 @@ export const stepLoanCohorts = (args: {
 
   const recognizedLoanLosses: Partial<Record<ProductType, number>> = {};
   let loanInterestIncome = 0;
+  let nonCashInterest = 0;
   let defaultedPrincipal = 0;
   let renewedPrincipal = 0;
   let prepaidPrincipal = 0;
@@ -831,6 +671,7 @@ export const stepLoanCohorts = (args: {
       recognizedLoanLosses,
     });
     recoveryCash += workoutStep.recoveryCash;
+    nonCashInterest += workoutStep.nonCashInterest;
     resolvedWorkoutPrincipal += workoutStep.resolvedWorkoutPrincipal;
 
     const loanProductTypes = new Set<ProductType>([
@@ -871,6 +712,12 @@ export const stepLoanCohorts = (args: {
 
       cohorts.forEach((cohort) => {
         if (cohort.outstandingPrincipal <= 0) return;
+        if (cohort.stage === 'stage3') {
+          getWorkoutBucketsArray(state, productType).push({ productType, sourceCohortId: cohort.cohortId, stageAtDefault: 'stage3', defaultedPrincipal: cohort.outstandingPrincipal, expectedRecoveryRate: 1 - (cohort.effectiveLgd ?? cohort.lgd), effectiveInterestRate: cohort.annualInterestRate, monthsToResolution: Math.max(1, Math.round(workoutConfig.baseResolutionLagMonths)), sector: cohort.sector, geography: cohort.geography });
+          defaultedPrincipal += cohort.outstandingPrincipal;
+          cohort.outstandingPrincipal = 0;
+          return;
+        }
         if (cohort.ageMonths >= cohort.termMonths) return;
         cohort.stage = normaliseStage(cohort.stage);
         cohort.sector = normaliseSector(productType, cohort.cohortId, cohort.sector);
@@ -1016,15 +863,14 @@ export const stepLoanCohorts = (args: {
           0.999999
         );
         const sicrThreshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
-        const stage3PdThreshold = config.behaviour.ifrs9?.stage3PdThreshold ?? 0.08;
+        cohort.effectiveAnnualPd = annualPd;
+        cohort.effectiveLgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
         cohort.stage = classifyStage({
           currentStage: cohort.stage,
           stressedAnnualPd: annualPd,
-          baseAnnualPd,
-          unemploymentRate: state.market.unemploymentRate,
+          baseAnnualPd: cohort.annualPd,
           gdpGrowthMoM: state.market.gdpGrowthMoM,
           sicrThreshold,
-          stage3PdThreshold,
         });
 
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
@@ -1053,6 +899,7 @@ export const stepLoanCohorts = (args: {
             stageAtDefault: cohort.stage,
             defaultedPrincipal: defaulted,
             expectedRecoveryRate,
+            effectiveInterestRate: cohort.annualInterestRate,
             monthsToResolution,
             sector: cohort.sector,
             geography: cohort.geography,
@@ -1097,6 +944,7 @@ export const stepLoanCohorts = (args: {
     renewedPrincipal > 0 ? selectionPressureNotional / renewedPrincipal : 0;
   return {
     loanInterestIncome,
+    nonCashInterest,
     recognizedLoanLosses,
     defaultedPrincipal,
     renewedPrincipal,
@@ -1348,53 +1196,18 @@ export const generateSeasonedLoanCohorts = (args: {
   return cohorts;
 };
 
-export const calculateProvisionTargetFromCohorts = (args: {
-  state: BankState;
-  config: SimulationConfig;
-}): ProvisionTarget => {
+export const calculateProvisionTargetFromCohorts = (args: { state: BankState; config: SimulationConfig; productType?: ProductType }): ProvisionTarget => {
   const { state, config } = args;
   const out: ProvisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
-
-  const stage2LifetimeMultiplier = config.behaviour.ifrs9?.stage2LifetimeMultiplier ?? 1.8;
-  const stage3LifetimeMultiplier = config.behaviour.ifrs9?.stage3LifetimeMultiplier ?? 3.2;
-
-  const entries = Object.entries(state.loanCohorts ?? {}) as Array<[ProductType, LoanCohort[]]>;
-  entries.forEach(([productType, cohorts]) => {
-    if (!isLoanProduct(productType)) return;
-    (cohorts ?? []).forEach((cohort) => {
-      const remainingYears = Math.max(1 / 12, (cohort.termMonths - cohort.ageMonths) / MONTHS_IN_YEAR);
-      const stage = normaliseStage(cohort.stage);
-      const pd = clamp(cohort.annualPd, 0, 0.999999);
-      const lgd = clamp(cohort.lgd, 0, 1);
-
-      let horizonPd = pd;
-      if (stage === 'stage2') {
-        horizonPd = clamp(pd * remainingYears * stage2LifetimeMultiplier, 0, 1);
-      } else if (stage === 'stage3') {
-        horizonPd = clamp(pd * remainingYears * stage3LifetimeMultiplier, 0, 1);
-      }
-
-      const ecl = Math.max(0, cohort.outstandingPrincipal) * horizonPd * lgd;
-      if (stage === 'stage1') out.stage1 += ecl;
-      if (stage === 'stage2') out.stage2 += ecl;
-      if (stage === 'stage3') out.stage3 += ecl;
-    });
-  });
-
-  const workoutEntries = Object.entries(args.state.workoutPipelines ?? {}) as Array<
-    [ProductType, LoanWorkoutBucket[]]
-  >;
-  workoutEntries.forEach(([productType, buckets]) => {
-    if (!isLoanProduct(productType)) return;
-    (buckets ?? []).forEach((bucket) => {
-      const principal = Math.max(0, bucket.defaultedPrincipal ?? 0);
-      if (principal <= 0) return;
-      const recovery = clamp(bucket.expectedRecoveryRate ?? 0, 0, 1);
-      const ecl = principal * (1 - recovery);
-      out.stage3 += ecl;
-    });
-  });
-
+  for (const [product, cohorts] of Object.entries(state.loanCohorts ?? {})) {
+    if (args.productType && product !== args.productType) continue;
+    for (const cohort of cohorts ?? []) out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config);
+  }
+  for (const [product, buckets] of Object.entries(state.workoutPipelines ?? {})) {
+    if (args.productType && product !== args.productType) continue;
+    const recoveryRateFor = workoutRecoveryEstimator(state, config, product as ProductType);
+    for (const bucket of buckets ?? []) out.stage3 += Math.max(0, bucket.defaultedPrincipal - workoutPresentValue(state, config, product as ProductType, bucket, recoveryRateFor(bucket)));
+  }
   out.total = out.stage1 + out.stage2 + out.stage3;
   return out;
 };

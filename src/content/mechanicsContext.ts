@@ -11,7 +11,6 @@ export interface MechanicsDynamicContext {
   minLcr: number;
   minNsfr: number;
   combinedCet1Requirement: number;
-  mdaMaxPayoutRatio: number;
   at1DiscretionaryCet1Threshold: number;
   confidenceStrongMinScore: number;
   confidenceStableMinScore: number;
@@ -32,7 +31,6 @@ export interface MechanicsDisplayContext {
     minLcr: string;
     minNsfr: string;
     combinedCet1Requirement: string;
-    mdaMaxPayoutRatio: string;
     at1DiscretionaryCet1Threshold: string;
     confidenceStrongMinScore: string;
     confidenceStableMinScore: string;
@@ -59,13 +57,11 @@ export const buildMechanicsDynamicContext = (args: {
     minLeverageRatio: config.riskLimits.minLeverageRatio,
     minLcr: config.riskLimits.minLcr,
     minNsfr: config.riskLimits.minNsfr,
-    combinedCet1Requirement:
+    combinedCet1Requirement: state?.risk.riskMetrics.cet1Requirement ?? (
       config.riskLimits.minCet1Ratio +
       stack.conservationBuffer +
       stack.countercyclicalBuffer +
-      stack.systemicBuffer +
-      stack.managementBuffer,
-    mdaMaxPayoutRatio: config.riskLimits.capitalPolicy.mdaMaxPayoutRatio,
+      stack.systemicBuffer),
     at1DiscretionaryCet1Threshold: config.riskLimits.capitalPolicy.at1DiscretionaryCet1Threshold,
     confidenceStrongMinScore: confidence?.strongMinScore ?? 0.8,
     confidenceStableMinScore: confidence?.stableMinScore ?? 0.6,
@@ -91,7 +87,6 @@ export const buildMechanicsDynamicContext = (args: {
       minLcr: formatMultiple(values.minLcr),
       minNsfr: formatMultiple(values.minNsfr),
       combinedCet1Requirement: formatPct(values.combinedCet1Requirement),
-      mdaMaxPayoutRatio: formatPct(values.mdaMaxPayoutRatio),
       at1DiscretionaryCet1Threshold: formatPct(values.at1DiscretionaryCet1Threshold),
       confidenceStrongMinScore: formatPct(values.confidenceStrongMinScore),
       confidenceStableMinScore: formatPct(values.confidenceStableMinScore),

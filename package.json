@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:fast": "vitest run --exclude src/engine/modelRegression.test.ts",
     "test:regression": "vitest run src/engine/modelRegression.test.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "chart.js": "^4.5.1",
