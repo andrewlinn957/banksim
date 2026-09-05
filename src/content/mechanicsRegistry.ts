@@ -118,9 +118,9 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     whyItMatters:
       'Credit risk is driven by both current pricing and the quality/age distribution of prior originations.',
     driverSummary: [
-      'Stage transitions use PD and macro triggers.',
+      'SICR compares current PD with origination risk. Macro deterioration alone does not establish credit impairment.',
       'Defaults feed workout pipeline with lagged recoveries.',
-      'Provision target is stage-based and updates impairment charges.',
+      'Probability-weighted discounted ECL is held separately from borrower principal. Stage 1 uses defaults within 12 months; stage 2 uses remaining life.',
     ],
     formula: 'Monthly default probability ~= 1 - (1 - annualPd)^(1/12)',
     relatedMetrics: [metric('Credit Losses'), metric('CET1 Ratio'), metric('Sector Concentration')],
@@ -148,11 +148,11 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     plainDescription:
       'LCR compares HQLA to stressed 30-day net outflows, while NSFR compares available stable funding to required stable funding.',
     whyItMatters:
-      'These are hard failure constraints and can worsen through behavioral multipliers before balances visibly collapse.',
+      'Breaches require recovery and reduce confidence. A liquidity ratio shortfall alone does not end the game.',
     driverSummary: [
-      'Customer outflows are amplified by runoff multipliers.',
+      'Regulatory outflows use prescribed product factors and contractual maturities.',
       'Inflows are capped (75% of outflows for LCR).',
-      'Deposit quality affects runoff and ASF multipliers.',
+      'Behavioural runoff and ASF haircuts affect separate management stress estimates.',
     ],
     thresholds: [
       { label: 'Min LCR', value: ctx.formatted.minLcr },
@@ -173,11 +173,10 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
       'You can appear profitable but still be distribution-constrained by internal target logic.',
     driverSummary: [
       'Dividend ratio is capped by max payout ratio.',
-      'AT1 auto mode can skip coupons when buffers are weak.',
+      'Bank policy suspends dividends and AT1 coupons inside combined buffers, including manual pay mode. This is not the PRA MDA amount.',
       'Paid distributions reduce CET1 and cash immediately.',
     ],
     thresholds: [
-      { label: 'MDA max payout ratio', value: ctx.formatted.mdaMaxPayoutRatio },
       { label: 'AT1 discretionary CET1 threshold', value: ctx.formatted.at1DiscretionaryCet1Threshold },
     ],
     relatedMetrics: [metric('Max Payout Ratio'), metric('Internal CET1 Headroom'), metric('CET1 Ratio')],
@@ -188,7 +187,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     category: 'Capital & Compliance',
     title: 'Capital and Hard Breach Limits',
     plainDescription:
-      'CET1, leverage, LCR, and NSFR are recomputed each month and any hard breach marks the bank failed.',
+      'CET1, Tier 1, total capital, leverage, LCR and NSFR are recomputed each month. The game ends for capital minimum or cash failures; liquidity ratios can recover.',
     whyItMatters:
       'These are the run-ending constraints, so strategy should be framed around preserving headroom, not only profitability.',
     driverSummary: [

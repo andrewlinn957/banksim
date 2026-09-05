@@ -83,7 +83,7 @@ export const buildPreRunGuardrails = (inputs: GuardrailInputs): PreRunGuardrail[
         reason:
           `Preview stress metrics are tight (CET1 ${(preview.stressedCet1Ratio * 100).toFixed(1)}%, ` +
           `LCR ${preview.stressedLcr.toFixed(2)}x, NSFR ${preview.stressedNsfr.toFixed(2)}x; ` +
-          `breach probability ${(preview.breachProbability * 100).toFixed(0)}%).`,
+          `stress paths breaching limits ${(preview.breachProbability * 100).toFixed(0)}%).`,
         mitigation:
           'Raise capital/funding headroom or reduce risk growth before running the month.',
         helpSectionId: 'preview-and-recommendations',

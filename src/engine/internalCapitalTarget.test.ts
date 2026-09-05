@@ -15,7 +15,7 @@ describe('Internal capital target and payout gating', () => {
     const benignState = cloneBankState(initialState);
     const benignCash = findBalance(benignState, AssetProductType.CashReserves);
     if (!benignCash) throw new Error('Missing cash line for benign internal target test');
-    const targetCet1 = initialState.financial.capital.cet1 * 1.3;
+    const targetCet1 = initialState.financial.capital.cet1 * 0.95;
     const benignCet1Delta = targetCet1 - benignState.financial.capital.cet1;
     benignState.financial.capital.cet1 = targetCet1;
     benignCash.balance += benignCet1Delta;

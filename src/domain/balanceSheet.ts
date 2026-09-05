@@ -14,7 +14,9 @@ export interface BalanceSheetItem {
   productType: ProductType;
   label: string;
   currency: Currency;
+  // Net carrying amount. Contractual loan principal is held in cohorts.
   balance: number;
+  lossAllowance?: number;
   interestRate: number;
   maturityBucket: MaturityBucket;
   liquidityTag: LiquidityTag;

@@ -42,8 +42,9 @@ export const createChallengerCalibration = (): CalibrationPack => {
     initialState: state,
     envelope: {
       cet1Ratio: [0.07, 0.45],
-      lcr: [0.85, 6.0],
-      nsfr: [0.85, 1.9],
+      lcr: [0.85, 8.0],
+      // 2026 prescribed ASF/RSF and contractual maturity treatment; see model-basis.md.
+      nsfr: [0.85, 2.8],
       roe: [-0.08, 0.3],
     },
   };

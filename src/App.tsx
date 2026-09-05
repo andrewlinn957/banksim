@@ -1,3 +1,5 @@
+import Boardroom from './components/Boardroom';
+import { BoardDecision, MANDATE_MONTHS } from './game/boardroom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
@@ -27,7 +29,7 @@ import CostsPanel from './components/CostsPanel';
 import ReconciliationPanel from './components/ReconciliationPanel';
 import { SimulationConfig } from './domain/config';
 import { calculateRiskMetrics, evaluateCompliance } from './engine/metrics';
-import { SimulationController, StopCondition } from './ui/simulationController';
+import { SimulationController, StopCondition, isRecurringAction } from './ui/simulationController';
 import AccountsPanel from './components/AccountsPanel';
 import ExogenousVariablesPanel from './components/ExogenousVariablesPanel';
 import { formatCurrency, formatPct, formatSignedPct } from './utils/formatters';
@@ -48,6 +50,7 @@ import { readTutorialCompleted, writeTutorialCompleted } from './content/tutoria
 
 const controller = new SimulationController(baseConfig);
 const tabs = [
+  'Boardroom',
   'Overview',
   'Share Price',
   'Scenarios',
@@ -147,10 +150,12 @@ const App = () => {
     hedgeFixedRate: '',
     hedgeMaturityMonths: '24',
   });
+  const [campaign, setCampaign] = useState(true);
+  const [selectedDecisions, setSelectedDecisions] = useState<string[]>([]);
   const [lastAttribution, setLastAttribution] = useState<StepAttribution | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('Overview');
+  const [activeTab, setActiveTab] = useState<string>('Boardroom');
   const [helpSectionFocus, setHelpSectionFocus] = useState<string | null>(null);
   const [highlightedEventIds, setHighlightedEventIds] = useState<string[]>([]);
   const [selectedAttributionLine, setSelectedAttributionLine] = useState<AttributionLineSelection | null>(null);
@@ -164,7 +169,7 @@ const App = () => {
   ]);
   const [runCounter, setRunCounter] = useState(1);
   const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(() => readTutorialCompleted());
-  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(() => !readTutorialCompleted());
+  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
   const [tutorialRunAnchorStep, setTutorialRunAnchorStep] = useState<number | null>(null);
   const [tutorialRiskPreparedStep, setTutorialRiskPreparedStep] = useState<number | null>(null);
@@ -188,8 +193,9 @@ const App = () => {
     [bankState.financial.balanceSheet]
   );
 
-  const roe = totalEquity > 0 ? (bankState.financial.incomeStatement.netIncome * 12) / totalEquity : 0;
-  const nim = totalAssets > 0 ? (bankState.financial.incomeStatement.netInterestIncome * 12) / totalAssets : 0;
+  const roe = totalEquity > 0 ? bankState.financial.incomeStatement.netIncome * 12 / totalEquity : 0;
+  const nim = totalAssets > 0 ? bankState.financial.incomeStatement.netInterestIncome * 12 / totalAssets : 0;
+
   const previousFranchiseStrength =
     stateHistory.length >= 2 ? stateHistory[stateHistory.length - 2].behaviour.depositFranchiseStrength : null;
   const franchiseDeltaMoM =
@@ -351,7 +357,17 @@ const App = () => {
       timestamp: Date.now(),
     }));
 
+  const clearTransactions = () => {
+    setActionForm(prev => ({ ...prev, issueLTDebtAmount: '', issueEquityAmount: '', hedgeDirection: 'none', hedgeNotional: '' }));
+    setSelectedDecisions([]);
+  };
+  const backProposal = (decision: BoardDecision) => {
+    setActionForm(prev => ({ ...prev, ...decision.changes }));
+    setSelectedDecisions(prev => [...prev.filter(id => id !== decision.id && !(['growth', 'quality'].includes(id) && ['growth', 'quality'].includes(decision.id))), decision.id]);
+  };
+  const mandateEnded = campaign && bankState.time.step - stateHistory[0].time.step >= MANDATE_MONTHS;
   const handleRunNextMonth = () => {
+    if (bankState.status.hasFailed || mandateEnded) return;
     if (parsedActionForm.hasErrors) {
       setEventLog((prev) => [
         ...prev,
@@ -376,6 +392,7 @@ const App = () => {
     const { nextState, events, diagnostics } = controller.step(bankState, actions, scenarioStep.shocks);
     const milestoneEvents = milestoneEventsFromPayload(scenarioStep);
 
+    clearTransactions();
     setBankState(nextState);
     setStateHistory((prev) => [...prev, nextState]);
     setEventLog((prev) => [...prev, ...events, ...milestoneEvents]);
@@ -390,6 +407,7 @@ const App = () => {
   };
 
   const handleRunMultipleMonths = () => {
+    if (bankState.status.hasFailed || mandateEnded) return;
     if (parsedActionForm.hasErrors) {
       setEventLog((prev) => [
         ...prev,
@@ -408,14 +426,14 @@ const App = () => {
     const stopCondition = buildStopCondition();
     const result = controller.runMonths({
       state: bankState,
-      months: runHorizonMonths,
-      actions: () => fixedActions,
-      shocks: (stateAtStep) =>
+      months: campaign ? Math.min(runHorizonMonths, MANDATE_MONTHS - (bankState.time.step - stateHistory[0].time.step)) : runHorizonMonths,
+      actions: fixedActions,
+      shocks: (stateAtStep, monthIndex) =>
         getScenarioStepPayload({
           scenarioId: activeScenarioId,
           stepNumber: stateAtStep.time.step,
           state: stateAtStep,
-          actions: fixedActions,
+          actions: fixedActions.filter(a => monthIndex === 0 || isRecurringAction(a)),
         }).shocks,
       stopCondition,
       scenarioGoals: activeScenario?.goals,
@@ -445,6 +463,7 @@ const App = () => {
       });
     }
 
+    clearTransactions();
     setBankState(result.finalState);
     setStateHistory((prev) => [...prev, ...result.records.map((record) => record.state)]);
     setEventLog((prev) => [...prev, ...allEvents]);
@@ -478,10 +497,13 @@ const App = () => {
     ]);
   };
 
-  const handleStartScenario = () => {
-    if (!selectedScenarioId) return;
-    const scenarioConfig = applyScenarioConfig(baseConfig, selectedScenarioId);
-    const scenarioState = getScenarioInitialState(selectedScenarioId, scenarioConfig);
+  const handleStartScenario = (scenarioId: string | null = selectedScenarioId) => {
+    if (bankState.time.step > stateHistory[0].time.step) handleSaveCurrentRun();
+    setCampaign(!scenarioId);
+    setSelectedDecisions([]);
+    setActiveTab('Boardroom');
+    const scenarioConfig = applyScenarioConfig(baseConfig, scenarioId);
+    const scenarioState = getScenarioInitialState(scenarioId, scenarioConfig);
     const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
     scenarioState.risk.riskMetrics = metrics;
     scenarioState.risk.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
@@ -499,7 +521,7 @@ const App = () => {
     setLastAttribution(null);
     setHighlightedEventIds([]);
     setSelectedAttributionLine(null);
-    setActiveScenarioId(selectedScenarioId);
+    setActiveScenarioId(scenarioId);
     setCurrentTimeline([]);
     setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
     setActionForm({
@@ -808,90 +830,15 @@ const App = () => {
 
   return (
     <div className="app-shell">
-      <header className="hero">
-        <div className="hero-content">
-          <div className="eyebrow">Bank strategy lab</div>
-          <h1>UK Bank Simulator</h1>
-          <div className="hero-pills">
-            <span className="pill">Month {bankState.time.step}</span>
-            <button className="button small" type="button" onClick={() => setIsActionsOpen(true)}>
-              Actions
-            </button>
-            <button
-              className="button primary small"
-              type="button"
-              onClick={handleRunNextMonth}
-              disabled={bankState.status.hasFailed}
-            >
-              Run next month
-            </button>
-            <label className="field" style={{ minWidth: 140 }}>
-              <span className="muted" style={{ fontSize: 11 }}>Autopilot months</span>
-              <select
-                value={runHorizonMonths}
-                onChange={(e) => setRunHorizonMonths(Number(e.target.value))}
-              >
-                <option value={1}>1 month</option>
-                <option value={3}>3 months</option>
-                <option value={6}>6 months</option>
-                <option value={12}>12 months</option>
-              </select>
-            </label>
-            <label className="field" style={{ minWidth: 170 }}>
-              <span className="muted" style={{ fontSize: 11 }}>Stop condition</span>
-              <select
-                value={stopConditionMode}
-                onChange={(e) => setStopConditionMode(e.target.value as typeof stopConditionMode)}
-              >
-                <option value="none">None</option>
-                <option value="nearBreach">Near breach (5%)</option>
-                <option value="breach">On breach</option>
-                <option value="scoreTarget">On score target</option>
-              </select>
-            </label>
-            <button
-              className="button small"
-              type="button"
-              onClick={handleRunMultipleMonths}
-              disabled={bankState.status.hasFailed}
-            >
-              Run {runHorizonMonths}m
-            </button>
-            <button className="button ghost small" type="button" onClick={handleSaveCurrentRun}>
-              Save run
-            </button>
-            <button className="button ghost small" type="button" onClick={handleTutorialButton}>
-              {tutorialButtonLabel}
-            </button>
-            <span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>
-              {bankState.status.hasFailed ? 'Resolution mode' : 'Going concern'}
-            </span>
-            <span className="pill warning">{activeScenarioId ? `Scenario: ${activeScenarioId}` : 'Sandbox mode'}</span>
-          </div>
-        </div>
-        <div className="hero-side">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span className="muted" style={{ fontSize: 12 }}>Theme</span>
-            <button
-              className="button ghost"
-              onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
-            >
-              {theme === 'light' ? 'Switch to dark' : 'Switch to light'}
-            </button>
-          </div>
-          <div className="muted align-right">
-            ROE {formatPct(roe)} • NIM {formatPct(nim)}
-          </div>
-          <div className="hero-pills" style={{ justifyContent: 'flex-end' }}>
-            <span className="pill">Assets {formatCurrency(totalAssets)}</span>
-            <span className="pill">Equity {formatCurrency(totalEquity)}</span>
-          </div>
-        </div>
+      <header className="masthead">
+        <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>THE ART OF BANKING</small></span></button>
+        <div className="masthead-actions"><span className="muted">{bankState.time.date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span><span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>{bankState.status.hasFailed ? 'Mandate ended' : `Month ${bankState.time.step}`}</span><button className="button primary" onClick={() => setIsActionsOpen(true)}>Your plan ↗</button><button className="button ghost" onClick={() => setTheme(p => p === 'light' ? 'dark' : 'light')} aria-label="Toggle colour theme">{theme === 'light' ? 'Dark' : 'Light'}</button></div>
       </header>
+      <details className="run-controls"><summary>Game controls · save, restart, tutorial and autopilot</summary><div className="run-controls-inner"><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh year</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><label>Autopilot <select aria-label="Autopilot months" value={runHorizonMonths} onChange={e => setRunHorizonMonths(Number(e.target.value))}>{[1,3,6,12].map(n => <option key={n} value={n}>{n} months</option>)}</select></label><label>Stop <select aria-label="Autopilot stop condition" value={stopConditionMode} onChange={e => setStopConditionMode(e.target.value as typeof stopConditionMode)}><option value="none">At horizon</option><option value="nearBreach">Near breach</option><option value="breach">On breach</option><option value="scoreTarget">At score target</option></select></label><button className="button primary" onClick={handleRunMultipleMonths} disabled={bankState.status.hasFailed || mandateEnded}>Run {runHorizonMonths} months</button></div></details>
 
       {bankState.status.hasFailed && (
         <div className="alert danger">
-          <div style={{ fontWeight: 700 }}>Bank failed or regulatory breach occurred.</div>
+          <div style={{ fontWeight: 700 }}>Your mandate has ended.</div>
           <div className="muted" style={{ marginTop: 6 }}>{failureSummary}</div>
           <div className="muted" style={{ marginTop: 8 }}>
             <strong>Final metrics:</strong> CET1 {formatPct(bankState.risk.riskMetrics.cet1Ratio)}, Leverage {formatPct(bankState.risk.riskMetrics.leverageRatio)}, LCR {formatPct(bankState.risk.riskMetrics.lcr)}, NSFR {formatPct(bankState.risk.riskMetrics.nsfr)}.
@@ -939,6 +886,8 @@ const App = () => {
           </div>
         </div>
       )}
+
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} selected={selectedDecisions} campaign={campaign} hasErrors={parsedActionForm.hasErrors} onDecision={backProposal} onRun={handleRunNextMonth} onPlan={() => setIsActionsOpen(true)} onRestart={() => handleStartScenario(null)} onContinue={() => setCampaign(false)} onNavigate={setActiveTab} />}
 
       {activeTab === 'Overview' && (
         <div className="section-grid">
@@ -1017,7 +966,7 @@ const App = () => {
               scenarios={scenarios}
               selectedId={selectedScenarioId}
               onSelect={(id) => setSelectedScenarioId(id)}
-              onStart={handleStartScenario}
+              onStart={() => handleStartScenario()}
               description={scenarios.find((s) => s.id === selectedScenarioId)?.description}
             />
             <div className="card stack">
@@ -1283,9 +1232,9 @@ const App = () => {
           <div className="card stack">
             <ActionsPanel
               state={actionForm}
-              onChange={setActionForm}
+              onChange={next => { setActionForm(next); setSelectedDecisions([]); }}
               onSubmit={handleRunNextMonth}
-              disabled={bankState.status.hasFailed}
+              disabled={bankState.status.hasFailed || mandateEnded}
               errors={parsedActionForm.errors}
               hasValidationErrors={parsedActionForm.hasErrors}
               recommendations={recommendations}
@@ -1323,7 +1272,7 @@ const App = () => {
                     <td className="numeric">{formatPct(preview.stressed.risk.riskMetrics.lcr)}</td>
                   </tr>
                   <tr>
-                    <td>Regulatory breach probability</td>
+                    <td>Regulatory share of stress paths breaching limits</td>
                     <td className="numeric">{formatPct(preview.breachProbability)} ({preview.pathCount} paths)</td>
                   </tr>
                 </tbody>

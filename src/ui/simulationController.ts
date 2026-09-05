@@ -11,6 +11,8 @@ import { buildRecommendations, Recommendation } from '../engine/recommendations'
 import { StepAttribution } from '../domain/attribution';
 import { isFeatureEnabled } from '../engine/featureFlags';
 
+export const isRecurringAction = (a: PlayerAction) => a.type === 'adjustRate' || a.type === 'setUnderwriting' || a.type === 'setCapitalPolicy';
+
 export type StopConditionKind = 'breach' | 'nearBreach' | 'scoreTarget';
 
 export interface StopCondition {
@@ -50,6 +52,7 @@ export interface RunMonthsResult {
 const stopForBreach = (state: BankState): boolean =>
   state.status.hasFailed ||
   state.risk.compliance.cet1Breached ||
+  Boolean(state.risk.compliance.ownFundsBreached) ||
   state.risk.compliance.leverageBreached ||
   state.risk.compliance.lcrBreached ||
   state.risk.compliance.nsfrBreached;
@@ -107,8 +110,9 @@ export class SimulationController {
     let stoppedReason: string | undefined;
 
     for (let idx = 0; idx < requestedMonths; idx++) {
+      if (working.status.hasFailed) { stoppedReason = 'failure'; break; }
       const actions = (
-        typeof options.actions === 'function' ? options.actions(working, idx) : options.actions
+        typeof options.actions === 'function' ? options.actions(working, idx) : options.actions.filter(a => idx === 0 || isRecurringAction(a))
       ).map((a) => ({ ...a }));
       const shocks = (
         typeof options.shocks === 'function' ? options.shocks(working, idx) : options.shocks ?? []
@@ -129,6 +133,7 @@ export class SimulationController {
       working = nextClone;
 
       const stopCondition = options.stopCondition;
+      if (working.status.hasFailed) { stoppedReason = stopCondition?.kind === 'breach' ? 'breach' : 'failure'; break; }
       if (!stopCondition) continue;
       if (stopCondition.kind === 'breach' && stopForBreach(working)) {
         stoppedReason = 'breach';
@@ -216,6 +221,7 @@ export class SimulationController {
       const result = this.step(state, actions, [...shocks, ...scenario.extraShocks]).nextState;
       const breached =
         result.risk.compliance.cet1Breached ||
+        Boolean(result.risk.compliance.ownFundsBreached) ||
         result.risk.compliance.leverageBreached ||
         result.risk.compliance.lcrBreached ||
         result.risk.compliance.nsfrBreached ||

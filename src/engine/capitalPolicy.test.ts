@@ -10,7 +10,7 @@ describe('Capital policy and buffer stack', () => {
     const state = cloneBankState(initialState);
     const cash = state.financial.balanceSheet.items.find((line) => line.productType === AssetProductType.CashReserves);
     if (!cash) throw new Error('Missing cash line for MDA test');
-    const targetCet1 = initialState.financial.capital.cet1 * 0.9;
+    const targetCet1 = initialState.financial.capital.cet1 * 0.75;
     const cet1Delta = targetCet1 - state.financial.capital.cet1;
     state.financial.capital.cet1 = targetCet1;
     cash.balance += cet1Delta;
@@ -19,7 +19,7 @@ describe('Capital policy and buffer stack', () => {
     const engine = createSimulationEngine();
     const next = engine.step({ state, config: baseConfig, actions: [], shocks: [] }).nextState;
 
-    const maxRatio = baseConfig.riskLimits.capitalPolicy.mdaMaxPayoutRatio;
+    const maxRatio = 0; // Conservative bank policy suspends distributions inside buffers.
     const positiveIncome = Math.max(0, next.financial.incomeStatement.netIncome);
     const allowed = positiveIncome * maxRatio;
 

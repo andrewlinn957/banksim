@@ -11,4 +11,5 @@ export interface LiquidityTag {
 
 export interface Encumbrance {
   encumberedAmount: number;
+  remainingMonths?: number;
 }

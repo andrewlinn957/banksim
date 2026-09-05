@@ -103,7 +103,7 @@ describe('Simulation correctness guardrails', () => {
     const stressed = cloneBankState(initialState);
     const cash = stressed.financial.balanceSheet.items.find((line) => line.productType === AssetProductType.CashReserves);
     if (!cash) throw new Error('Missing cash line item');
-    const targetCet1 = initialState.financial.capital.cet1 * 1.3;
+    const targetCet1 = initialState.financial.capital.cet1 * 0.95;
     const cet1Delta = targetCet1 - stressed.financial.capital.cet1;
     stressed.financial.capital.cet1 = targetCet1;
     cash.balance += cet1Delta;

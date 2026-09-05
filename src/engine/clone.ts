@@ -12,7 +12,7 @@ import { CashFlowStatement } from '../domain/cashflow';
 import { MarketState } from '../domain/market';
 import { IncomeStatement } from '../domain/pnl';
 import { ComplianceStatus, RiskMetrics } from '../domain/risks';
-import { LoanCohort } from '../domain/loanCohorts';
+import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { ProductType } from '../domain/enums';
 
 const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
@@ -77,7 +77,7 @@ const cloneLoanPipelines = (raw: LoanPipelineMap): LoanPipelineMap => {
 const cloneWorkoutPipelines = (raw: LoanWorkoutPipelineMap): LoanWorkoutPipelineMap => {
   const out: LoanWorkoutPipelineMap = {};
   const entries = Object.entries(raw ?? {}) as Array<
-    [ProductType, Array<{ defaultedPrincipal: number; expectedRecoveryRate: number; monthsToResolution: number }>]
+    [ProductType, LoanWorkoutBucket[]]
   >;
   entries.forEach(([productType, buckets]) => {
     out[productType] = (buckets ?? []).map((bucket) => ({ ...bucket }));

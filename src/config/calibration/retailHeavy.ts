@@ -45,7 +45,8 @@ export const createRetailHeavyCalibration = (): CalibrationPack => {
     envelope: {
       cet1Ratio: [0.085, 0.45],
       lcr: [0.95, 6.0],
-      nsfr: [0.95, 3.0],
+      // 2026 prescribed ASF/RSF and contractual maturity treatment; see model-basis.md.
+      nsfr: [0.95, 3.6],
       roe: [-0.03, 0.3],
     },
   };

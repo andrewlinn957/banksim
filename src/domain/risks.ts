@@ -8,6 +8,10 @@ export interface CapitalState {
 
 export interface RiskMetrics {
   rwa: number;
+  tier1Ratio?: number;
+  totalCapitalRatio?: number;
+  managementLcr?: number;
+  managementNsfr?: number;
   leverageExposure: number;
   cet1Ratio: number;
   cet1Requirement: number;
@@ -52,7 +56,6 @@ export interface CapitalBufferStack {
 
 export interface CapitalPolicyLimits {
   defaultDividendPayoutRatio: number;
-  mdaMaxPayoutRatio: number;
   at1CouponRateAnnual: number;
   at1DiscretionaryCet1Threshold: number;
   internalTargetBaseBuffer: number;
@@ -84,6 +87,8 @@ export interface RwaAddOnLimits {
 
 export interface RiskLimits {
   minCet1Ratio: number;
+  minTier1Ratio?: number;
+  minTotalCapitalRatio?: number;
   minLeverageRatio: number;
   minLcr: number;
   minNsfr: number;
@@ -96,6 +101,7 @@ export interface RiskLimits {
 
 export interface ComplianceStatus {
   cet1Breached: boolean;
+  ownFundsBreached?: boolean;
   leverageBreached: boolean;
   lcrBreached: boolean;
   nsfrBreached: boolean;
