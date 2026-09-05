@@ -15,6 +15,9 @@ import {
 import { LiquidityTag } from '../domain/liquidity';
 
 const productParameters: Record<ProductType, ProductRiskParameters> = {
+  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, riskWeight: 1, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
   [AssetProductType.CashReserves]: {
     productType: AssetProductType.CashReserves,
     riskWeight: 0,
@@ -140,6 +143,9 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
 };
 
 const liquidityTags: Record<ProductType, LiquidityTag> = {
+  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, hqlaLevel: HQLALevel.None, lcrInflowRate: 0, nsfrRsfFactor: 1 },
+  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 0 },
+  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 0 },
   [AssetProductType.CashReserves]: {
     productType: AssetProductType.CashReserves,
     hqlaLevel: HQLALevel.Level1,

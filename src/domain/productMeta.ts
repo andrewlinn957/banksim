@@ -17,6 +17,9 @@ export interface ProductMetadata {
 }
 
 export const PRODUCT_META: Record<ProductType, ProductMetadata> = {
+  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, label: 'Derivative assets', side: BalanceSheetSide.Asset, behaviour: {} },
+  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, label: 'Derivative liabilities', side: BalanceSheetSide.Liability, behaviour: {} },
+  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, label: 'Undrawn credit provisions', side: BalanceSheetSide.Liability, behaviour: {} },
   [AssetProductType.CashReserves]: {
     productType: AssetProductType.CashReserves,
     label: 'Cash & Reserves',

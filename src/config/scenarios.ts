@@ -8,7 +8,7 @@ import { SimulationConfig } from '../domain/config';
 import { baseConfig } from './baseConfig';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
 import { cloneBankState } from '../engine/clone';
-import { generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
+import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
 import { ScenarioGoals } from '../domain/scoring';
 import { PlayerAction } from '../domain/actions';
 
@@ -153,6 +153,29 @@ const applyInitialOverride = (
     item.balance = sumLoanOutstanding(seeded);
   });
 
+  // Overrides specify net balances; initialise a matching gross book and opening allowance.
+  state.financial.provisionStock = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
+  for (const productType of loanProducts) {
+    const item = state.financial.balanceSheet.items.find(i => i.productType === productType)!;
+    const target = calculateProvisionTargetFromCohorts({ state, config, productType });
+    const gross = sumLoanOutstanding(state.loanCohorts[productType] ?? []);
+    const scale = gross > 0 ? item.balance / Math.max(1, gross - target.total) : 0;
+    (state.loanCohorts[productType] ?? []).forEach(c => { c.outstandingPrincipal *= scale; c.originalPrincipal *= scale; });
+    const allowance = calculateProvisionTargetFromCohorts({ state, config, productType });
+    item.lossAllowance = allowance.total;
+    item.balance = sumLoanOutstanding(state.loanCohorts[productType] ?? []) - allowance.total;
+    for (const stage of ['stage1','stage2','stage3','total'] as const) state.financial.provisionStock[stage] += allowance[stage];
+  }
+  // Keep contractual maturity ladders consistent when a scenario changes funding stock.
+  for (const p of [LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT]) {
+    const buckets = state.fundingLadders[p] ?? [];
+    const total = buckets.reduce((sum, b) => sum + b.notional, 0);
+    const balance = state.financial.balanceSheet.items.find(i => i.productType === p)?.balance ?? 0;
+    if (total > 0) buckets.forEach(b => b.notional *= balance / total);
+  }
+  const cash = state.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves)!;
+  const netOther = state.financial.balanceSheet.items.filter(i => i !== cash).reduce((sum, i) => sum + (i.side === 'Asset' ? i.balance : -i.balance), 0);
+  cash.balance = state.financial.capital.cet1 + state.financial.capital.at1 + state.financial.capital.accumulatedOCI - netOther;
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
   state.board = {
@@ -165,6 +188,17 @@ const applyInitialOverride = (
 };
 
 export const scenarios: Scenario[] = [
+  {
+    id: 'supervisory-review', name: 'The supervisory review',
+    description: 'A fictional bank-specific capital decision raises the stakes: absorb a 1.5% Pillar 2A requirement and 1% PRA buffer while keeping the business profitable.',
+    configOverrides: { riskLimits: { ...baseConfig.riskLimits, pillar2A: { totalRatio: .015 }, praBufferRatio: .01 } },
+    goals: { horizonMonths: 12, objectives: [
+      { label: 'Finish with CET1 above 14%', metric: 'cet1Ratio', direction: 'min', target: .14, weight: 40 },
+      { label: 'Keep liquidity available', metric: 'lcr', direction: 'min', target: 1.1, weight: 30 },
+      { label: 'Keep stable funding', metric: 'nsfr', direction: 'min', target: 1.05, weight: 30 },
+    ] },
+    scheduledShocks: [{ stepNumber: 4, shock: { type: 'depositCompetition', retailRateIncrease: .0025 } }, { stepNumber: 7, shock: { type: 'macroDownturn', pdMultiplier: 1.3, lgdMultiplier: 1.1 } }],
+  },
   {
     id: 'wholesale-funding-reliance',
     name: 'Wholesale Funding Reliance',
@@ -182,11 +216,11 @@ export const scenarios: Scenario[] = [
       financial: {
         balanceSheet: {
           items: [
-            { productType: LiabilityProductType.WholesaleFundingST, balance: 80e9 },
-            { productType: LiabilityProductType.RetailTransactionalDeposits, balance: 90e9 },
-            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 110e9 },
-            { productType: LiabilityProductType.CorporateOperatingDeposits, balance: 45e9 },
-            { productType: LiabilityProductType.CorporateNonOperatingDeposits, balance: 20e9 },
+            { productType: LiabilityProductType.WholesaleFundingST, balance: 2.4e9 },
+            { productType: LiabilityProductType.RetailTransactionalDeposits, balance: 3.5e9 },
+            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 4.5e9 },
+            { productType: LiabilityProductType.CorporateOperatingDeposits, balance: 1.3e9 },
+            { productType: LiabilityProductType.CorporateNonOperatingDeposits, balance: 0.7e9 },
           ],
         },
       },
@@ -253,8 +287,8 @@ export const scenarios: Scenario[] = [
       financial: {
         balanceSheet: {
           items: [
-            { productType: AssetProductType.CorporateLoans, balance: 240e9 },
-            { productType: AssetProductType.Mortgages, balance: 170e9 },
+            { productType: AssetProductType.CorporateLoans, balance: 4.0e9 },
+            { productType: AssetProductType.Mortgages, balance: 5.5e9 },
           ],
         },
       },

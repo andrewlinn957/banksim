@@ -6,7 +6,7 @@ import { AssetProductType, BalanceSheetSide, ProductType } from '../../domain/en
 import { calculateRiskMetrics, evaluateCompliance } from '../../engine/metrics';
 import { cloneBankState } from '../../engine/clone';
 import { PRODUCT_META } from '../../domain/productMeta';
-import { sumLoanOutstanding } from '../../engine/loanCohorts';
+import { calculateProvisionTargetFromCohorts, sumLoanOutstanding } from '../../engine/loanCohorts';
 
 const cloneConfig = (): SimulationConfig => JSON.parse(JSON.stringify(baseConfig)) as SimulationConfig;
 
@@ -19,6 +19,10 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
   const item = state.financial.balanceSheet.items.find((line) => line.productType === productType);
   if (!item) throw new Error(`Missing balance-sheet line for ${productType}`);
   const nextBalance = Math.max(0, balance);
+  if (item.security && item.balance > 0) {
+    item.security.amortisedCost = (item.security.amortisedCost ?? item.balance) * nextBalance / item.balance;
+    item.security.lossAllowance = (item.security.lossAllowance ?? 0) * nextBalance / item.balance;
+  }
   item.balance = nextBalance;
 
   if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
@@ -32,7 +36,8 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
   const currentBalance = sumLoanOutstanding(cohorts) + workoutStock;
   if (currentBalance <= 0) return;
 
-  const scale = nextBalance / currentBalance;
+  const scale = nextBalance / Math.max(1, currentBalance - (item.lossAllowance ?? 0));
+  item.lossAllowance = (item.lossAllowance ?? 0) * scale;
   cohorts.forEach((cohort) => {
     cohort.originalPrincipal = Math.max(0, cohort.originalPrincipal * scale);
     cohort.outstandingPrincipal = Math.max(0, cohort.outstandingPrincipal * scale);
@@ -60,6 +65,7 @@ export const rebalanceCash = (state: BankState): void => {
 };
 
 export const refreshRiskState = (state: BankState, config: SimulationConfig): void => {
+  state.financial.provisionStock = calculateProvisionTargetFromCohorts({ state, config });
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
 };

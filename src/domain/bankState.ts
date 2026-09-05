@@ -34,6 +34,7 @@ export interface ProvisionStock {
 }
 
 export interface InterestRateHedge {
+  fairValue?: number;
   id: string;
   direction: 'payFixedReceiveFloat' | 'receiveFixedPayFloat';
   notional: number;

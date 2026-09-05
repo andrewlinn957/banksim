@@ -252,7 +252,7 @@ const ActionsPanel = ({
           onNavigateHelp={onNavigateHelp}
         />
         <LabeledInput
-          label="Hedge fixed rate"
+          label="Hedge fixed rate (off-market terms require upfront cash)"
           help={{
             sectionId: 'actions-pricing-and-underwriting',
             tooltip:

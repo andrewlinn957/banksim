@@ -24,7 +24,7 @@ describe('calibration pack accounting', () => {
       Object.entries(pack.initialState.loanCohorts).forEach(([productType, cohorts]) => {
         const line = pack.initialState.financial.balanceSheet.items.find((item) => item.productType === productType);
         expect(line, `${pack.id}/${productType}`).toBeDefined();
-        expect(line!.balance).toBeCloseTo(sumLoanOutstanding(cohorts), -2);
+        expect(line!.balance + (line!.lossAllowance ?? 0)).toBeCloseTo(sumLoanOutstanding(cohorts), -2);
       });
     });
   });

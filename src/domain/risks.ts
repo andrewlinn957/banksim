@@ -15,6 +15,11 @@ export interface RiskMetrics {
   leverageExposure: number;
   cet1Ratio: number;
   cet1Requirement: number;
+  minimumCet1Ratio?: number;
+  minimumTier1Ratio?: number;
+  minimumTotalCapitalRatio?: number;
+  praBufferTarget?: number;
+  praBufferBreached?: boolean;
   cet1Headroom: number;
   leverageRatio: number;
   hqla: number;
@@ -86,6 +91,9 @@ export interface RwaAddOnLimits {
 }
 
 export interface RiskLimits {
+  /** Firm-specific additional requirements, not universal PRA rates. */
+  pillar2A?: { totalRatio: number; fixedAmount?: number; cet1Share?: number; tier1Share?: number };
+  praBufferRatio?: number;
   minCet1Ratio: number;
   minTier1Ratio?: number;
   minTotalCapitalRatio?: number;

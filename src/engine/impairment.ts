@@ -51,3 +51,20 @@ export const workoutRecoveryEstimator = (state: BankState, config: SimulationCon
 export const workoutPresentValue = (state: BankState, config: SimulationConfig, product: ProductType, bucket: LoanWorkoutBucket, recoveryRate?: number): number =>
   Math.max(0, bucket.defaultedPrincipal) * (recoveryRate ?? workoutRecoveryEstimator(state, config, product)(bucket)) /
   (1 + Math.max(0, bucket.effectiveInterestRate ?? 0) / 12) ** Math.max(0, bucket.monthsToResolution);
+
+// Pipeline offers use expected take-up and the resulting loan's ECL.
+// IFRS expected drawdowns are independent of prudential CCFs.
+export const commitmentEcl = (state: BankState, config: SimulationConfig): number =>
+  Object.entries(state.loanPipelines ?? {}).reduce((sum, [key, pipeline]) => {
+    const productType = key as ProductType, p = config.productParameters[productType];
+    if (!p?.loan || !pipeline?.committedNotional) return sum;
+    const cohorts = state.loanCohorts[productType] ?? [];
+    const gross = cohorts.reduce((n, c) => n + c.outstandingPrincipal, 0);
+    const pd = gross > 0 ? cohorts.reduce((n, c) => n + c.outstandingPrincipal * (c.effectiveAnnualPd ?? c.annualPd), 0) / gross : p.baseDefaultRate;
+    const rate = state.financial.balanceSheet.items.find(i => i.productType === productType)?.interestRate ?? 0;
+    const flow = config.behaviour.loanPipelineByProduct?.[productType];
+    const draw = clamp(flow?.drawdownRateMonthly ?? 1), cancel = clamp(flow?.cancellationRateMonthly ?? 0);
+    const monthlyDraw = (1 - cancel) * draw;
+    const takeUp = monthlyDraw + cancel > 0 ? monthlyDraw / (monthlyDraw + cancel) : 0;
+    return sum + takeUp * cohortEcl({ productType, cohortId: -1, originalPrincipal: pipeline.committedNotional, outstandingPrincipal: Math.max(0, pipeline.committedNotional), annualInterestRate: rate, annualPd: p.baseDefaultRate, effectiveAnnualPd: pd, lgd: p.lossGivenDefault, termMonths: p.loan.defaultTermMonths, ageMonths: 0, stage: pd > p.baseDefaultRate * (config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75) ? 'stage2' : 'stage1' }, config);
+  }, 0);

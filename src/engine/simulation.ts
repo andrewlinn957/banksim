@@ -1,3 +1,6 @@
+import { recogniseSecurityImpairment } from './securityImpairment';
+import { hedgeFairValue, syncHedgeBalances, revalueHedges } from './hedgeValuation';
+import { commitmentEcl } from './impairment';
 /**
  * Core simulation step logic.
  *
@@ -95,6 +98,8 @@ type ActionHandlerMap = HandlerMap<PlayerAction, ActionContext>;
 // Concrete implementations for each `PlayerAction` type.
 const actionHandlers: ActionHandlerMap = {
   adjustRate: (action: AdjustRateAction, ctx) => {
+    const product = PRODUCT_META[action.productType];
+    if (!product?.behaviour?.isLoan && !product?.behaviour?.isCustomerDeposit) { ctx.events.push(createEvent('warning', 'Only customer loan and deposit offer rates can be set directly.')); return; }
     adjustInterestRate(findItem(ctx.state.financial.balanceSheet, action.productType), action.newRate);
     ctx.events.push(createEvent('info', `Adjusted rate for ${action.productType} to ${action.newRate.toFixed(4)}`));
   },
@@ -782,7 +787,13 @@ const applyEnterHedge = (
   if (!state.financial.hedges) {
     state.financial.hedges = [];
   }
+  // Off-market fixed rates require fair-value upfront payment, not a free asset.
+  hedge.fairValue = hedgeFairValue(hedge, state.market.riskFreeShort);
+  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
+  if (!cash || hedge.fairValue > cash.balance) { events.push(createEvent('warning', 'Hedge rejected: insufficient cash for its fair-value upfront payment.')); return; }
+  cash.balance -= hedge.fairValue;
   state.financial.hedges.push(hedge);
+  syncHedgeBalances(state, config);
   const carrySpread = Math.max(0, Math.abs(config.behaviour.irrbb?.hedgeCarrySpread ?? 0));
   events.push(
     createEvent(
@@ -890,9 +901,11 @@ const applyBuySellAsset = (
     }
     return;
   }
+  if (productType === AssetProductType.DerivativeAssets) { events.push(createEvent('warning', 'Manage derivatives through hedge trades.')); return; }
   if (amountDelta >= 0) {
     // buying asset
     const buyAmount = Math.min(amountDelta, Math.max(0, cash.balance));
+    if (asset.security) asset.security.amortisedCost = (asset.security.amortisedCost ?? asset.balance) + buyAmount;
     asset.balance += buyAmount;
     cash.balance -= buyAmount;
     if (buyAmount < amountDelta) {
@@ -908,6 +921,13 @@ const applyBuySellAsset = (
     );
   } else {
     const sellAmount = Math.min(Math.max(0, asset.balance - (asset.encumbrance?.encumberedAmount ?? 0)), Math.abs(amountDelta));
+    if (asset.security && asset.balance > 0) {
+      const security = asset.security, fraction = sellAmount / asset.balance;
+      const cost = security.amortisedCost ?? asset.balance;
+      if (security.classification === 'FVOCI') security.pendingRecycling = (security.pendingRecycling ?? 0) + (asset.balance - cost + (security.lossAllowance ?? 0)) * fraction;
+      security.amortisedCost = cost * (1-fraction);
+      security.lossAllowance = (security.lossAllowance ?? 0) * (1-fraction);
+    }
     asset.balance -= sellAmount;
     adjustCashOrFail(state, sellAmount, events);
     events.push(
@@ -1100,6 +1120,8 @@ export const applySecuritiesValuation = (
     .forEach((item) => {
       const security = item.security;
       if (!security) return;
+      security.amortisedCost ??= item.balance;
+      security.pendingRecycling = 0;
 
       const previousYield =
         Number.isFinite(security.valuationReferenceYield) && security.valuationReferenceYield > 0
@@ -2174,7 +2196,7 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
   const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
   const interestIncome = assets
     .filter((a) => !PRODUCT_META[a.productType]?.behaviour?.isLoan)
-    .reduce((sum, a) => sum + a.balance * a.interestRate * dtYears, 0);
+    .reduce((sum, a) => sum + (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears, 0);
   const interestExpense = liabilities.reduce((sum, l) => sum + l.balance * l.interestRate * dtYears, 0);
 
   return { assets, liabilities, interestIncome, interestExpense };
@@ -2247,7 +2269,15 @@ export const recogniseLosses = (
     for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) provisionTarget[stage] += target[stage];
   });
   syncLoanBalancesFromCohorts(state);
-  const provisionCharge = realizedLoanLosses + allowanceMovement;
+  const commitmentTarget = commitmentEcl(state, config);
+  let creditProvision = findItem(state.financial.balanceSheet, LiabilityProductType.CreditProvisions);
+  const commitmentMovement = commitmentTarget - (creditProvision?.balance ?? 0);
+  if (!creditProvision && commitmentTarget > 0) {
+    creditProvision = { ...loanItems[0], productType: LiabilityProductType.CreditProvisions, label: 'Undrawn credit provisions', side: BalanceSheetSide.Liability, balance: 0, interestRate: 0, lossAllowance: undefined, security: undefined, encumbrance: { encumberedAmount: 0 }, liquidityTag: config.liquidityTags[LiabilityProductType.CreditProvisions] };
+    state.financial.balanceSheet.items.push(creditProvision);
+  }
+  if (creditProvision) creditProvision.balance = commitmentTarget;
+  const provisionCharge = realizedLoanLosses + allowanceMovement + commitmentMovement;
   state.financial.provisionStock = provisionTarget;
   const creditLosses = provisionCharge + realizedNonLoanLosses;
 
@@ -2578,6 +2608,7 @@ export const computeMetrics = (
   if (state.risk.compliance.mdaTriggered) {
     events.push(createEvent('warning', 'CET1 has entered the combined buffer stack (MDA restrictions active)'));
   }
+  if (metrics.praBufferBreached) events.push(createEvent('warning', 'PRA buffer in use: prepare a capital recovery plan. This supervisory target is separate from automatic combined-buffer distribution restrictions.', ['capital']));
   if (metrics.payoutBlockedByInternalTarget) {
     events.push(
       createEvent(
@@ -2774,6 +2805,7 @@ const computeBalanceFlows = (
   });
 
   const operatingLiabilityProducts = new Set<ProductType>([
+    LiabilityProductType.DerivativeLiabilities,
     LiabilityProductType.RetailDeposits,
     LiabilityProductType.CorporateDeposits,
     LiabilityProductType.RetailTransactionalDeposits,
@@ -2808,8 +2840,9 @@ const computeBalanceFlows = (
         operatingBalanceFlow += flow;
       }
     } else {
+      if (productType === LiabilityProductType.CreditProvisions) return; // entirely non-cash ECL movement
       const delta = current - previous;
-      const flow = delta; // liability increase = inflow
+      const flow = delta + (nonCashBalanceAdjustmentsByProduct[productType] ?? 0); // exclude non-cash marks
       if (operatingLiabilityProducts.has(productType)) {
         operatingBalanceFlow += flow;
       } else {
@@ -3044,7 +3077,23 @@ export const createSimulationEngine = (): SimulationEngine => {
     }
     const accruals = accruePnL(state, dtYears);
     const hedgeCarry = featureFlags.irrbbHedges ? stepHedges(state, activeConfig, dtMonths, dtYears, events) : 0;
+    if (featureFlags.irrbbHedges) {
+      const valuation = revalueHedges(state, activeConfig);
+      securitiesValuation.fvtplValuationImpact += valuation.pnl;
+      Object.assign(securitiesValuation.nonCashAdjustmentsByProduct, valuation.adjustments);
+    }
     const losses = recogniseLosses(state, activeConfig, shockEffects, cohortStep.recognizedLoanLosses);
+    if (featureFlags.securitiesAccounting) {
+      const impairment = recogniseSecurityImpairment(state, activeConfig);
+      losses.creditLosses += impairment.expense;
+      losses.provisionCharge += impairment.expense;
+      securitiesValuation.fvociOciMovement += impairment.oci;
+      for (const [p, adjustment] of Object.entries(impairment.adjustments)) securitiesValuation.nonCashAdjustmentsByProduct[p as ProductType] = (securitiesValuation.nonCashAdjustmentsByProduct[p as ProductType] ?? 0) + adjustment;
+      const recycling = state.financial.balanceSheet.items.reduce((sum,i)=>sum+(i.security?.pendingRecycling ?? 0),0);
+      securitiesValuation.fvtplValuationImpact += recycling;
+      securitiesValuation.fvociOciMovement -= recycling;
+      state.financial.balanceSheet.items.forEach(i=>{if(i.security)i.security.pendingRecycling=0;});
+    }
     // Reclassify discount unwinding on net credit-impaired assets as interest.
     losses.creditLosses += cohortStep.nonCashInterest;
     losses.provisionCharge += cohortStep.nonCashInterest;

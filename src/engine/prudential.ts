@@ -24,6 +24,19 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
   let inflow = asset ? b * Math.min(1, Math.max(0, tag?.lcrInflowRate ?? 0)) : 0;
   let asf = asset ? 0 : b * (tag?.nsfrAsfFactor ?? 0);
   let rsf = asset ? b * (tag?.nsfrRsfFactor ?? 0) : 0;
+  if (p === AssetProductType.DerivativeAssets || p === LiabilityProductType.DerivativeLiabilities) {
+    let receipts=0, payments=0;
+    for(const hedge of s.financial.hedges){
+      if(hedge.monthsRemaining <= 0)continue;
+      const spread=hedge.direction==='payFixedReceiveFloat'?s.market.riskFreeShort-hedge.fixedRate:hedge.fixedRate-s.market.riskFreeShort;
+      const coupon=hedge.notional*(spread-Math.abs(c.behaviour.irrbb?.hedgeCarrySpread ?? 0))/12;
+      receipts+=Math.max(0,coupon);payments+=Math.max(0,-coupon);
+    }
+    const assets=s.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.DerivativeAssets)?.balance ?? 0;
+    const liabilities=s.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.DerivativeLiabilities)?.balance ?? 0;
+    inflow=asset?receipts:0;outflow=asset?0:payments;asf=0;
+    rsf=asset?Math.max(0,assets-liabilities):liabilities*.05;
+  }
   if (p === LiabilityProductType.WholesaleFundingST || p === LiabilityProductType.WholesaleFundingLT) {
     const buckets = s.fundingLadders?.[p];
     if (buckets?.length) {
@@ -55,3 +68,12 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
   }
   return { productType: p, label: i.label, balance: b, asset, outflow, inflow, asf, rsf };
 });
+
+// SS31/15: firm-specific P2A may contain an RWA rate and fixed nominal add-ons.
+export const ownFundsRequirements = (limits: SimulationConfig['riskLimits'], rwa: number) => {
+  const p = limits.pillar2A;
+  const total = Math.max(0, p?.totalRatio ?? 0) + (rwa > 0 ? Math.max(0, p?.fixedAmount ?? 0) / rwa : 0);
+  const cet1Share = Math.max(.5625, Math.min(1, p?.cet1Share ?? .5625));
+  const tier1Share = Math.max(.75, cet1Share, Math.min(1, p?.tier1Share ?? .75));
+  return { cet1: limits.minCet1Ratio + total * cet1Share, tier1: (limits.minTier1Ratio ?? .06) + total * tier1Share, total: (limits.minTotalCapitalRatio ?? .08) + total };
+};
