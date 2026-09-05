@@ -1,3 +1,4 @@
+import { securityEcl } from '../engine/securityImpairment';
 import {
   AssetProductType,
   BalanceSheetSide,
@@ -24,7 +25,7 @@ import { MarketState } from '../domain/market';
 import { CashFlowStatement } from '../domain/cashflow';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
 import { fitNelsonSiegelFrom3Points } from '../engine/ukMarketModel';
-import { generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
+import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
@@ -457,7 +458,14 @@ const seedLoanCohorts = (productType: AssetProductType): void => {
     seed: initialPortfolioSeed + (productType === AssetProductType.Mortgages ? 0 : 1),
   });
   seedState.loanCohorts[productType] = cohorts;
-  item.balance = sumLoanOutstanding(cohorts);
+  const net = sumLoanOutstanding(cohorts);
+  const unitAllowance = calculateProvisionTargetFromCohorts({ state: seedState, config: baseConfig, productType }).total;
+  const scale = net / Math.max(1, net - unitAllowance);
+  cohorts.forEach(c => { c.outstandingPrincipal *= scale; c.originalPrincipal *= scale; });
+  const allowance = calculateProvisionTargetFromCohorts({ state: seedState, config: baseConfig, productType });
+  item.lossAllowance = allowance.total;
+  item.balance = sumLoanOutstanding(cohorts) - allowance.total;
+  for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) seedState.financial.provisionStock[stage] += allowance[stage];
 };
 
 // Opening repo stock is secured on gilts; assume a 2% haircut and monthly rollover.
@@ -471,6 +479,12 @@ seedLoanCohorts(AssetProductType.CorporateLoans);
 seedState.financial.balanceSheet.items.forEach((item) => {
   if (!item.security) return;
   item.security.valuationReferenceYield = seedState.market.riskFreeLong;
+  item.security.amortisedCost = item.balance;
+  item.security.lossAllowance = securityEcl(item, baseConfig);
+  if (item.security.classification === 'FVOCI') {
+    seedState.financial.capital.cet1 -= item.security.lossAllowance;
+    seedState.financial.capital.accumulatedOCI += item.security.lossAllowance;
+  }
 });
 
 const riskMetrics = calculateRiskMetrics({ state: seedState, config: baseConfig });

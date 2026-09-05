@@ -21,11 +21,11 @@ describe('Loan cohort engine', () => {
     const mortSum = sumLoanOutstanding(mortCohorts);
     const corpSum = sumLoanOutstanding(corpCohorts);
 
-    expect(Math.abs(mortSum - (mortItem?.balance ?? 0))).toBeLessThan(1e-3);
-    expect(Math.abs(corpSum - (corpItem?.balance ?? 0))).toBeLessThan(1e-3);
+    expect(Math.abs(mortSum - ((mortItem?.balance ?? 0) + (mortItem?.lossAllowance ?? 0)))).toBeLessThan(1e-3);
+    expect(Math.abs(corpSum - ((corpItem?.balance ?? 0) + (corpItem?.lossAllowance ?? 0)))).toBeLessThan(1e-3);
 
-    expect(Math.abs((mortItem?.balance ?? 0) - mortSum)).toBeLessThan(1e-3);
-    expect(Math.abs((corpItem?.balance ?? 0) - corpSum)).toBeLessThan(1e-3);
+    expect(Math.abs(((mortItem?.balance ?? 0) + (mortItem?.lossAllowance ?? 0)) - mortSum)).toBeLessThan(1e-3);
+    expect(Math.abs(((corpItem?.balance ?? 0) + (corpItem?.lossAllowance ?? 0)) - corpSum)).toBeLessThan(1e-3);
 
     mortCohorts.forEach((c) => {
       expect(c.termMonths).toBeLessThanOrEqual(420);

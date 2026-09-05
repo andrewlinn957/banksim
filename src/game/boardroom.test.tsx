@@ -29,3 +29,14 @@ describe('First-year mandate', () => {
     expect(markup).toContain('Close month 1');expect(markup).toContain('disabled');expect(markup).toContain('Your plan has an invalid input');expect(markup).toContain('What’s on the agenda?');
   });
 });
+
+import { quarterlyReviews } from './boardroom';
+it('freezes quarterly badges at their deadline and offers real equity recovery', () => {
+  const first=structuredClone(initialState), end=structuredClone(first), later=structuredClone(first);
+  end.time.step=3;later.time.step=4;later.behaviour.depositFranchiseStrength=0;
+  expect(quarterlyReviews([first,end,later])[0].earned).toBe(true);
+  later.risk.riskMetrics.internalCet1Headroom=-.01;
+  const rescue=boardDecisions(later).find(d=>d.id==='capital');
+  expect(Number(rescue?.changes.issueEquityAmount)).toBeGreaterThan(0);
+  expect(boardDecisions(later).some(d=>d.id==='growth')).toBe(false);
+});

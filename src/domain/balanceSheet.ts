@@ -4,6 +4,9 @@ import { Encumbrance, LiquidityTag } from './liquidity';
 export type SecuritiesClassification = 'HTM' | 'FVOCI' | 'FVTPL';
 
 export interface SecurityMetadata {
+  amortisedCost?: number;
+  lossAllowance?: number;
+  pendingRecycling?: number;
   classification: SecuritiesClassification;
   effectiveDurationYears: number;
   valuationReferenceYield: number;

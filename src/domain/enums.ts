@@ -8,6 +8,7 @@ export enum BalanceSheetSide {
 }
 
 export enum AssetProductType {
+  DerivativeAssets = 'DerivativeAssets',
   CashReserves = 'CashReserves',
   Gilts = 'Gilts',
   Mortgages = 'Mortgages',
@@ -16,6 +17,8 @@ export enum AssetProductType {
 }
 
 export enum LiabilityProductType {
+  DerivativeLiabilities = 'DerivativeLiabilities',
+  CreditProvisions = 'CreditProvisions',
   // Legacy aggregate categories (kept for backwards-compatibility with older states/tests).
   RetailDeposits = 'RetailDeposits',
   CorporateDeposits = 'CorporateDeposits',

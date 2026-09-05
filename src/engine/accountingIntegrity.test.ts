@@ -13,9 +13,9 @@ const recognize = (s: typeof initialState, config = baseConfig, losses = {}) => 
 
 describe('Loan accounting identities', () => {
   it('books and releases allowance without changing contractual principal or cash', () => {
-    const s = cloneBankState(initialState), gross = item(s).balance, cash = item(s, AssetProductType.CashReserves).balance;
+    const s = cloneBankState(initialState), gross = item(s).balance + (item(s).lossAllowance ?? 0), cash = item(s, AssetProductType.CashReserves).balance;
     const cohorts = JSON.stringify(s.loanCohorts);
-    expect(recognize(s).provisionCharge).toBeGreaterThan(0);
+    expect(recognize(s).provisionCharge).toBeCloseTo(0, 5);
     expect(JSON.stringify(s.loanCohorts)).toBe(cohorts);
     expect(item(s).balance + item(s).lossAllowance!).toBeCloseTo(gross, 4);
     expect(recognize(s).provisionCharge).toBeCloseTo(0, 5);

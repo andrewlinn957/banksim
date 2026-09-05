@@ -112,17 +112,18 @@ const selectSimulationRows = (config: SimulationConfig): RowItem[] => {
     { label: 'Max deposit growth (per step)', value: formatPct(global.maxDepositGrowthPerStep) },
     { label: 'Max loan growth (per step)', value: formatPct(global.maxLoanGrowthPerStep) },
     { label: 'Min CET1 ratio', value: formatPct(riskLimits.minCet1Ratio) },
+    { label: 'Pillar 2A rate (firm-specific)', value: formatPct(riskLimits.pillar2A?.totalRatio ?? 0) },
+    { label: 'Pillar 2A fixed add-on', value: formatCurrency(riskLimits.pillar2A?.fixedAmount ?? 0) },
+    { label: 'PRA buffer', value: formatPct(riskLimits.praBufferRatio ?? 0) },
     { label: 'Min leverage ratio', value: formatPct(riskLimits.minLeverageRatio) },
     { label: 'Min LCR', value: formatMultiple(riskLimits.minLcr) },
     { label: 'Min NSFR', value: formatMultiple(riskLimits.minNsfr) },
     {
-      label: 'CET1 combined buffer requirement',
+      label: 'Combined buffer rate (above own-funds minima)',
       value: formatPct(
-        riskLimits.minCet1Ratio +
-          riskLimits.capitalBufferStack.conservationBuffer +
+        riskLimits.capitalBufferStack.conservationBuffer +
           riskLimits.capitalBufferStack.countercyclicalBuffer +
-          riskLimits.capitalBufferStack.systemicBuffer +
-          riskLimits.capitalBufferStack.managementBuffer
+          riskLimits.capitalBufferStack.systemicBuffer
       ),
     },
     {

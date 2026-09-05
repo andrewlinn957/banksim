@@ -1,3 +1,6 @@
+import { hedgeExposures } from './hedgeValuation';
+import { assetCreditRwa } from './creditRwa';
+import { ownFundsRequirements } from './prudential';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
@@ -421,7 +424,7 @@ export const calculateRiskMetrics = ({
   const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
   const baseRwa = assets.reduce((sum, a) => {
     const params = config.productParameters[a.productType];
-    return sum + a.balance * (params?.riskWeight ?? 0);
+    return sum + assetCreditRwa(state, config, a);
   }, 0);
   const rwaAddOns = config.riskLimits.rwaAddOns;
   const additionalRwa =
@@ -430,12 +433,15 @@ export const calculateRiskMetrics = ({
     Math.max(0, rwaAddOns?.otherAdjustments ?? 0);
   const commitmentRwa = Object.keys(state.loanPipelines ?? {}).reduce((sum, p) => sum + committedExposure(state, p as ProductType) * .2 * (config.productParameters[p as ProductType]?.riskWeight ?? 1), 0);
   const rwa = baseRwa + additionalRwa + commitmentRwa;
-  const leverageExposure = totalAssets - centralBankExclusion(state) + committedExposure(state) * .2;
+  const derivativeBook = assets.find(i=>i.productType===AssetProductType.DerivativeAssets)?.balance ?? 0;
+  const leverageExposure = totalAssets - derivativeBook + hedgeExposures(state).leverage - centralBankExclusion(state) + committedExposure(state) * .2;
   const fvociInclusionRate = clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
-  const ownFundsCet1Floor = rwa > 0 ? Math.max(config.riskLimits.minCet1Ratio, (config.riskLimits.minTier1Ratio ?? .06) - state.financial.capital.at1 / rwa, (config.riskLimits.minTotalCapitalRatio ?? .08) - state.financial.capital.at1 / rwa) : config.riskLimits.minCet1Ratio;
+  const minima = ownFundsRequirements(config.riskLimits, rwa);
+  const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - state.financial.capital.at1 / rwa) : minima.cet1;
   const cet1Requirement = computeCet1Requirement(config.riskLimits) + ownFundsCet1Floor - config.riskLimits.minCet1Ratio;
+  const praBufferTarget = cet1Requirement + Math.max(0, config.riskLimits.praBufferRatio ?? 0);
   const cet1Headroom = cet1Ratio - cet1Requirement;
   const leverageRatio =
     leverageExposure > 0
@@ -489,7 +495,7 @@ export const calculateRiskMetrics = ({
   const { internalCet1TargetRatio, internalCet1Headroom } = computeInternalCapitalTarget({
     state,
     config,
-    cet1Requirement,
+    cet1Requirement: praBufferTarget,
     cet1Ratio,
     fundingStressIndex,
     fundingConfidenceState,
@@ -519,6 +525,8 @@ export const calculateRiskMetrics = ({
     leverageExposure,
     cet1Ratio,
     cet1Requirement,
+    minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
+    praBufferTarget, praBufferBreached: cet1Ratio < praBufferTarget,
     cet1Headroom,
     leverageRatio,
     hqla,
@@ -557,8 +565,8 @@ export const calculateRiskMetrics = ({
 };
 
 export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => ({
-  cet1Breached: !(metrics.cet1Ratio >= limits.minCet1Ratio),
-  ownFundsBreached: !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (limits.minTier1Ratio ?? .06)) || !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (limits.minTotalCapitalRatio ?? .08)),
+  cet1Breached: !(metrics.cet1Ratio >= ownFundsRequirements(limits, metrics.rwa).cet1),
+  ownFundsBreached: !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= ownFundsRequirements(limits, metrics.rwa).tier1) || !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= ownFundsRequirements(limits, metrics.rwa).total),
   leverageBreached: !(metrics.leverageRatio >= limits.minLeverageRatio),
   lcrBreached: !(metrics.lcr >= limits.minLcr),
   nsfrBreached: !(metrics.nsfr >= limits.minNsfr),

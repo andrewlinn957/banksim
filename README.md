@@ -4,7 +4,7 @@ BankSim is a React/Vite banking simulator game. You run a UK bank month by month
 
 The simulator models banking mechanics at a management-game level: deposits, loan growth, funding, liquidity ratios, regulatory capital, credit losses, conduct risk, securities marks, scenario shocks, and an equity price signal.
 
-Start in the Boardroom: complete a twelve-month mandate, choose proposals with explicit commercial trade-offs, and inspect the results after every monthly close. Earn stars for shareholder return, consistent profits and franchise strength, subject to remaining within prudential minima. Then continue in the sandbox or start another year.
+Start in the Boardroom: complete a twelve-month mandate, choose proposals with explicit commercial trade-offs, and inspect the results after every monthly close. Earn stars for shareholder return, consistent profits and franchise strength, subject to remaining within prudential minima. Quarterly badges give shorter goals; a capital recovery proposal appears when headroom runs short. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge. Then continue in the sandbox or start another year.
 
 The redesigned interface uses a generated Threadneedle Street bank illustration, clearer typography and responsive decision cards.
 
