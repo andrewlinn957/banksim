@@ -1301,7 +1301,7 @@ summary { cursor:pointer; }
 .profit-track>div { position:absolute; bottom:50%; max-height:65px; }
 .profit-track>div.negative { bottom:auto; top:50%; border-radius:0 0 4px 4px; }
 
-/* The bank is the main surface. Reports are secondary; departments own decisions. */
+/* The bank is the main surface; departments own decisions. */
 .bank-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; }
 .bank-workspace.with-department { grid-template-columns:minmax(0,1.2fr) minmax(380px,1fr); }
 .bank-map { position:relative; display:flex; flex-direction:column; justify-content:space-between; min-height:610px; overflow:hidden; border-radius:16px; isolation:isolate; color:#f1f7fb; background:#102c3c url('./assets/bank-district.webp') 65% center/cover no-repeat; border:1px solid #4d7185; }
@@ -1347,15 +1347,15 @@ summary { cursor:pointer; }
 .department-office .field input { width:100%; max-width:none; font-size:16px; }
 .department-office .stack { gap:16px; }
 .report-link { justify-self:start; }
-.reports-menu,.settings-menu { position:relative; font-size:14px; }
-.reports-menu>summary,.settings-menu>summary { padding:10px 15px; border:1px solid var(--border); background:var(--panel); border-radius:8px; list-style:none; }
-.reports-menu>summary::after,.settings-menu>summary::after { content:' ▾'; }
-.reports-menu>nav,.settings-menu>div { position:absolute; top:calc(100% + 8px); right:0; min-width:260px; z-index:60; padding:12px; background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:var(--overlay-shadow); display:grid; gap:4px; }
-.reports-menu nav button { border:0; background:none; text-align:left; padding:10px 12px; color:var(--text); cursor:pointer; font-size:14px; border-radius:6px; }
-.reports-menu nav button:hover { background:var(--bg-2); }
+.settings-menu { position:relative; font-size:14px; }
+.settings-menu>summary { padding:10px 15px; border:1px solid var(--border); background:var(--panel); border-radius:8px; list-style:none; }
+.settings-menu>summary::after { content:' ▾'; }
+.settings-menu>div { position:absolute; top:calc(100% + 8px); right:0; min-width:260px; z-index:60; padding:12px; background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:var(--overlay-shadow); display:grid; gap:4px; }
 .settings-menu>div { gap:12px; }
 .settings-menu label { display:grid; gap:5px; font-size:13px; }
 .settings-menu .clock-safety { display:flex; }
+.report-navigation { margin:0 0 14px; flex-wrap:wrap; overflow:visible; }
+.report-navigation .tab-button { min-height:38px; padding:8px 12px; font-size:13px; }
 .report-breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:18px 0; font-size:14px; }
 .report-breadcrumb>span { flex:1; color:var(--muted); }
 .compact-clock { margin-bottom:18px; flex-wrap:nowrap; padding:12px 16px; border-top-width:1px; }
@@ -1368,6 +1368,13 @@ summary { cursor:pointer; }
 @media(max-width:420px) { .compact-clock .clock-buttons { width:100%; justify-content:flex-start; } .reports-menu>nav { right:-60px; } .bank-map-heading { padding:22px 18px; } .department-name { font-size:15px; } .bank-departments { margin-top:60px; } }
 
 .office-status small { display:block; color:var(--muted); font-size:12px; margin-top:5px; }
+.competitor-rates { display:grid; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-2); }
+.competitor-rates>div { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.competitor-rates>div small { color:var(--muted); }
+.competitor-rates dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:0; }
+.competitor-rates dl>div { display:grid; gap:4px; }
+.competitor-rates dt { color:var(--muted); font-size:12px; }
+.competitor-rates dd { margin:0; font-size:20px; font-weight:650; }
 .department-workspace { scroll-margin-top:95px; }
 
 .compact-clock { position:sticky; top:0; }

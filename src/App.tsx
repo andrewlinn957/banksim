@@ -68,6 +68,22 @@ const tabs = [
   'Help',
 ];
 
+const tabLabels: Record<string, string> = {
+  Boardroom: 'Bank',
+  Performance: 'Performance',
+  Overview: 'Overview',
+  'Share Price': 'Share price',
+  Scenarios: 'Scenarios',
+  Accounts: 'Accounts',
+  Regulatory: 'Capital & liquidity',
+  Loans: 'Loans',
+  Costs: 'Costs',
+  Events: 'Events',
+  Reconciliations: 'Reconciliations',
+  'Past games': 'Past games',
+  Help: 'Help',
+};
+
 interface TabHelpLink {
   label: string;
   sectionId: string;
@@ -743,8 +759,11 @@ const App = () => {
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
-        <div className="masthead-actions"><details className="reports-menu"><summary>Reports</summary><nav aria-label="Reports and tools">{tabs.filter(t=>t!=='Boardroom').map(t=><button key={t} onClick={e=>{openReport(t);e.currentTarget.closest('details')?.removeAttribute('open');}}>{t==='Overview'?'Bank overview':t==='Performance'?'Quarterly & annual performance':t==='Loans'?'Loan portfolio':t==='Regulatory'?'Capital & liquidity':t}</button>)}</nav></details><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
+        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
+      <nav className="tabs report-navigation" aria-label="Bank reports and tools">
+        {tabs.map(tab=><button key={tab} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined} onClick={()=>tab==='Boardroom'?setActiveTab('Boardroom'):openReport(tab)}>{tabLabels[tab]??tab}</button>)}
+      </nav>
       <section className="time-console compact-clock" aria-label="Simulation time controls">
        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{bankState.time.date.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'})}</span></div>
        <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning||isTutorialOpen} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>

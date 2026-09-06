@@ -5,6 +5,7 @@ it('opens a usable paused management surface with permanent time controls and re
  const html=renderToStaticMarkup(<App/>);
  expect(html).toContain('Simulation time controls');
  expect(html).toContain('To quarter end');expect(html).toContain('To year end');
- expect(html).toContain('Reports and tools');expect(html).toContain('Manage a department');
+ expect(html).toContain('Bank reports and tools');expect(html).toContain('Manage a department');
+ expect(html).toContain('Capital &amp; liquidity');expect(html).not.toContain('<summary>Reports</summary>');
  expect(html).not.toContain('Your story starts here.');expect(html).not.toContain('actions-drawer');
 });
