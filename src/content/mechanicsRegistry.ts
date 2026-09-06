@@ -67,7 +67,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     category: 'Controls',
     title: 'Autopilot, Stop Rules, and Replay',
     plainDescription:
-      'Autopilot repeats the current action set for N months with optional stop rules and records full run history.',
+      'Auto advances individual months under standing pricing, underwriting and payout policies. One-off debt, equity and swap orders execute once. Quarter/year controls stop at reporting boundaries; safety interruption defaults on.',
     whyItMatters:
       'You can test strategy stability quickly and verify deterministic replay for the same timeline.',
     driverSummary: [
@@ -312,7 +312,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     driverSummary: [
       'Preview includes macro, funding, and run stresses.',
       'Recommendation score balances ratio improvements against earnings drag and board pressure.',
-      'Only top-ranked candidates are shown in the Actions panel.',
+      'Open Departments for standing policies, one-off transactions and an expandable stress preview.',
     ],
   },
   {

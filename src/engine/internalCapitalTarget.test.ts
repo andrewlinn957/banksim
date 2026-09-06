@@ -11,6 +11,11 @@ const findBalance = (state: typeof initialState, productType: AssetProductType |
 describe('Internal capital target and payout gating', () => {
   it('clips distributions earlier when volatility/stress are high, before MDA breach', () => {
     const engine = createSimulationEngine();
+    // Explicit stress-sensitive policy places the stressed bank below its internal
+    // target while leaving both banks above the regulatory distribution threshold.
+    const config = structuredClone(baseConfig);
+    config.riskLimits.capitalPolicy.internalTargetVolatilitySensitivity = .02;
+    config.riskLimits.capitalPolicy.internalTargetMaxBuffer = .05;
 
     const benignState = cloneBankState(initialState);
     const benignCash = findBalance(benignState, AssetProductType.CashReserves);
@@ -39,13 +44,15 @@ describe('Internal capital target and payout gating', () => {
     stressedState.behaviour.conductRiskScore = 1.6;
     stressedState.behaviour.fundingConfidenceState = 'stressed';
 
-    const benignStep = engine.step({ state: benignState, config: baseConfig, actions: [], shocks: [] });
-    const stressedStep = engine.step({ state: stressedState, config: baseConfig, actions: [], shocks: [] });
+    const benignStep = engine.step({ state: benignState, config, actions: [], shocks: [] });
+    const stressedStep = engine.step({ state: stressedState, config, actions: [], shocks: [] });
     const benign = benignStep.nextState;
     const stressed = stressedStep.nextState;
 
     expect(benign.risk.riskMetrics.mdaTriggered).toBe(false);
     expect(stressed.risk.riskMetrics.mdaTriggered).toBe(false);
+    expect(benign.risk.riskMetrics.internalCet1Headroom).toBeGreaterThan(0);
+    expect(stressed.risk.riskMetrics.internalCet1Headroom).toBeLessThan(0);
     expect(stressed.risk.riskMetrics.payoutBlockedByInternalTarget).toBe(true);
     expect(stressed.risk.riskMetrics.maxPayoutRatio).toBeLessThan(benign.risk.riskMetrics.maxPayoutRatio);
     expect(stressed.risk.riskMetrics.internalCet1Headroom).toBeLessThan(benign.risk.riskMetrics.internalCet1Headroom);

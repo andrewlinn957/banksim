@@ -237,7 +237,7 @@ const global: GlobalSimulationParameters = {
   operatingCostRatio: 0.02,
   maxDepositGrowthPerStep: 0.08,
   maxLoanGrowthPerStep: 0.05,
-  fixedOperatingCostPerMonth: 0.05e9,
+  fixedOperatingCostPerMonth: 0.018e9,
   initialPortfolioSeed: 123456789,
   competitorDepositReactionSpeed: 0.12,
   competitorCorporateDepositReactionSpeed: 0.16,
@@ -446,7 +446,8 @@ const behaviour: BehaviourParameters = {
     },
   },
   costModel: {
-    fixedCostPerMonth: 0.05e9,
+    // Fictional career cost base; servicing, origination and workouts are additional.
+    fixedCostPerMonth: 0.018e9,
     servicingCostRateAnnual: 0.0065,
     originationCostRate: 0.01,
     workoutCostRateOnDefaults: 0.035,

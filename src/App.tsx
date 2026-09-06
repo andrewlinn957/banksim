@@ -1,5 +1,6 @@
+import { attentionReason, clockAfterStep, monthsToPeriodEnd } from './game/management';
 import Boardroom from './components/Boardroom';
-import { BoardDecision, MANDATE_MONTHS } from './game/boardroom';
+import { BoardDecision } from './game/boardroom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
@@ -29,7 +30,7 @@ import CostsPanel from './components/CostsPanel';
 import ReconciliationPanel from './components/ReconciliationPanel';
 import { SimulationConfig } from './domain/config';
 import { calculateRiskMetrics, evaluateCompliance } from './engine/metrics';
-import { SimulationController, StopCondition, isRecurringAction } from './ui/simulationController';
+import { SimulationController } from './ui/simulationController';
 import AccountsPanel from './components/AccountsPanel';
 import ExogenousVariablesPanel from './components/ExogenousVariablesPanel';
 import { formatCurrency, formatPct, formatSignedPct } from './utils/formatters';
@@ -150,7 +151,6 @@ const App = () => {
     hedgeFixedRate: '',
     hedgeMaturityMonths: '24',
   });
-  const [campaign, setCampaign] = useState(true);
   const [selectedDecisions, setSelectedDecisions] = useState<string[]>([]);
   const [lastAttribution, setLastAttribution] = useState<StepAttribution | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
@@ -159,8 +159,15 @@ const App = () => {
   const [helpSectionFocus, setHelpSectionFocus] = useState<string | null>(null);
   const [highlightedEventIds, setHighlightedEventIds] = useState<string[]>([]);
   const [selectedAttributionLine, setSelectedAttributionLine] = useState<AttributionLineSelection | null>(null);
-  const [runHorizonMonths, setRunHorizonMonths] = useState<number>(1);
-  const [stopConditionMode, setStopConditionMode] = useState<'none' | StopCondition['kind']>('none');
+  const [autoRemaining, setAutoRemaining] = useState<number | null>(null);
+  const [clockSpeed, setClockSpeed] = useState(1500);
+  const [pauseReason, setPauseReason] = useState('Ready. Set your policy, then run a quarter.');
+  const [safetyPause, setSafetyPause] = useState(true);
+  const clockRunning = autoRemaining !== null;
+  const openDepartments = () => { setAutoRemaining(null); setPauseReason('Paused to review your standing instructions.'); setIsActionsOpen(true); };
+  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors || isActionsOpen || isTutorialOpen) return; setPauseReason(''); setAutoRemaining(months); };
+  const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
+
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [savedRuns, setSavedRuns] = useState<RunRecord[]>([]);
   const [currentTimeline, setCurrentTimeline] = useState<ActionTimelineEntry[]>([]);
@@ -230,6 +237,7 @@ const App = () => {
 
   useEffect(() => {
     if (!isActionsOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -243,9 +251,9 @@ const App = () => {
       if (!container) return;
 
       const focusableSelector =
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        'summary, a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-      const focusableElements = Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
+      const focusableElements = Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(el => el.getClientRects().length > 0);
       if (focusableElements.length === 0) return;
 
       const first = focusableElements[0];
@@ -271,11 +279,12 @@ const App = () => {
 
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+      if (opener?.isConnected) opener.focus();
     };
   }, [isActionsOpen]);
 
   const preview = useMemo<StepPreview | null>(() => {
-    if (parsedActionForm.hasErrors) return null;
+    if (parsedActionForm.hasErrors || (!isActionsOpen && !isTutorialOpen)) return null;
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
@@ -301,7 +310,7 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen]);
 
   const recommendations = useMemo(() => {
     controller.setConfig(simConfig);
@@ -338,17 +347,6 @@ const App = () => {
   );
   const contextualHelpLinks = tabHelpLinks[activeTab] ?? [];
 
-  const buildStopCondition = (): StopCondition | undefined => {
-    if (stopConditionMode === 'none') return undefined;
-    if (stopConditionMode === 'scoreTarget') {
-      return { kind: 'scoreTarget', scoreTargetPct: 1 };
-    }
-    if (stopConditionMode === 'nearBreach') {
-      return { kind: 'nearBreach', buffer: 0.05 };
-    }
-    return { kind: 'breach' };
-  };
-
   const milestoneEventsFromPayload = (payload: ReturnType<typeof getScenarioStepPayload>): SimulationEvent[] =>
     payload.milestones.map((milestone) => ({
       id: `milestone-${milestone.id}`,
@@ -359,15 +357,16 @@ const App = () => {
 
   const clearTransactions = () => {
     setActionForm(prev => ({ ...prev, issueLTDebtAmount: '', issueEquityAmount: '', hedgeDirection: 'none', hedgeNotional: '' }));
-    setSelectedDecisions([]);
+    setSelectedDecisions(prev => prev.filter(id => !['funding','capital','hedge'].includes(id)));
   };
   const backProposal = (decision: BoardDecision) => {
+    pauseClock();
     setActionForm(prev => ({ ...prev, ...decision.changes }));
     setSelectedDecisions(prev => [...prev.filter(id => id !== decision.id && !(['growth', 'quality'].includes(id) && ['growth', 'quality'].includes(decision.id))), decision.id]);
   };
-  const mandateEnded = campaign && bankState.time.step - stateHistory[0].time.step >= MANDATE_MONTHS;
-  const handleRunNextMonth = () => {
-    if (bankState.status.hasFailed || mandateEnded) return;
+  const handleRunNextMonth = (automatic = false) => {
+    if (!automatic) setAutoRemaining(null);
+    if (bankState.status.hasFailed) return;
     if (parsedActionForm.hasErrors) {
       setEventLog((prev) => [
         ...prev,
@@ -390,6 +389,11 @@ const App = () => {
 
     controller.setConfig(simConfig);
     const { nextState, events, diagnostics } = controller.step(bankState, actions, scenarioStep.shocks);
+    if (automatic) {
+      const clock = clockAfterStep(autoRemaining, nextState, simConfig, safetyPause);
+      setAutoRemaining(clock.remaining);
+      setPauseReason(clock.reason);
+    } else setPauseReason('Month closed. Review the position or continue your strategy.');
     const milestoneEvents = milestoneEventsFromPayload(scenarioStep);
 
     clearTransactions();
@@ -406,73 +410,19 @@ const App = () => {
     setCurrentSnapshots((prev) => [...prev, controller.createSnapshot(nextState)]);
   };
 
-  const handleRunMultipleMonths = () => {
-    if (bankState.status.hasFailed || mandateEnded) return;
-    if (parsedActionForm.hasErrors) {
-      setEventLog((prev) => [
-        ...prev,
-        {
-          id: `ui-${Date.now()}`,
-          severity: 'error',
-          message: 'Cannot run autopilot: fix action input validation errors first.',
-          timestamp: Date.now(),
-        },
-      ]);
-      return;
-    }
+  useEffect(() => {
+    if (!clockRunning || isActionsOpen || isTutorialOpen || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
+    const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
+    return () => window.clearTimeout(timer);
+  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, isTutorialOpen, parsedActionForm.hasErrors]);
 
-    const fixedActions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
-    controller.setConfig(simConfig);
-    const stopCondition = buildStopCondition();
-    const result = controller.runMonths({
-      state: bankState,
-      months: campaign ? Math.min(runHorizonMonths, MANDATE_MONTHS - (bankState.time.step - stateHistory[0].time.step)) : runHorizonMonths,
-      actions: fixedActions,
-      shocks: (stateAtStep, monthIndex) =>
-        getScenarioStepPayload({
-          scenarioId: activeScenarioId,
-          stepNumber: stateAtStep.time.step,
-          state: stateAtStep,
-          actions: fixedActions.filter(a => monthIndex === 0 || isRecurringAction(a)),
-        }).shocks,
-      stopCondition,
-      scenarioGoals: activeScenario?.goals,
-    });
-
-    let milestoneState = bankState;
-    const milestoneEvents: SimulationEvent[] = [];
-    result.records.forEach((record) => {
-      const payload = getScenarioStepPayload({
-        scenarioId: activeScenarioId,
-        stepNumber: milestoneState.time.step,
-        state: milestoneState,
-        actions: record.actions,
-      });
-      milestoneEvents.push(...milestoneEventsFromPayload(payload));
-      milestoneState = record.state;
-    });
-
-    const stepEvents = result.records.flatMap((record) => record.events);
-    const allEvents = [...stepEvents, ...milestoneEvents];
-    if (result.stoppedReason) {
-      allEvents.push({
-        id: `ui-stop-${Date.now()}`,
-        severity: 'warning',
-        message: `Autopilot stopped due to ${result.stoppedReason}.`,
-        timestamp: Date.now(),
-      });
-    }
-
-    clearTransactions();
-    setBankState(result.finalState);
-    setStateHistory((prev) => [...prev, ...result.records.map((record) => record.state)]);
-    setEventLog((prev) => [...prev, ...allEvents]);
-    setLastAttribution(result.records[result.records.length - 1]?.attribution ?? null);
-    setHighlightedEventIds([]);
-    setSelectedAttributionLine(null);
-    setCurrentTimeline((prev) => [...prev, ...result.timeline]);
-    setCurrentSnapshots((prev) => [...prev, ...result.snapshots.slice(1)]);
-  };
+  // Leave the bank paused when returning from another tab or opening a modal.
+  useEffect(() => {
+    const hide = () => { if (document.hidden) pauseClock(); };
+    document.addEventListener('visibilitychange', hide);
+    return () => document.removeEventListener('visibilitychange', hide);
+  }, []);
+  useEffect(() => { if (isActionsOpen || isTutorialOpen) setAutoRemaining(null); }, [isActionsOpen, isTutorialOpen]);
 
   const handleSaveCurrentRun = () => {
     if (currentTimeline.length === 0 || currentSnapshots.length === 0) return;
@@ -499,7 +449,8 @@ const App = () => {
 
   const handleStartScenario = (scenarioId: string | null = selectedScenarioId) => {
     if (bankState.time.step > stateHistory[0].time.step) handleSaveCurrentRun();
-    setCampaign(!scenarioId);
+    setAutoRemaining(null);
+    setPauseReason('New bank ready. Set a policy and give it time.');
     setSelectedDecisions([]);
     setActiveTab('Boardroom');
     const scenarioConfig = applyScenarioConfig(baseConfig, scenarioId);
@@ -692,7 +643,7 @@ const App = () => {
       title: 'Set a safe baseline',
       summary: 'Start by applying conservative pricing and underwriting so month 1 is stable.',
       instructions: [
-        'Open Actions and set balanced pricing around competitor rates.',
+        'Open Departments and set balanced pricing around competitor rates.',
         'Keep underwriting tightness above 0.4 and payout ratio low.',
         'Goal: establish a resilient starting point before experimentation.',
       ],
@@ -705,13 +656,13 @@ const App = () => {
       title: 'Run one month',
       summary: 'Execute one step to generate real metric movement and events.',
       instructions: [
-        'Use "Run next month" from the header or Actions drawer.',
+        'Close Departments, then use “1 month” in the time controls.',
         'The tutorial advances once month counter increases by 1.',
       ],
       ready: tutorialRunCompleted,
       readinessHint: 'Run one month to continue.',
-      primaryActionLabel: 'Open Actions',
-      onPrimaryAction: () => setIsActionsOpen(true),
+      primaryActionLabel: 'Run one month',
+      onPrimaryAction: () => { setIsActionsOpen(false); handleRunNextMonth(); },
     },
     {
       title: 'Read CET1 and LCR deltas',
@@ -831,10 +782,18 @@ const App = () => {
   return (
     <div className="app-shell">
       <header className="masthead">
-        <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>THE ART OF BANKING</small></span></button>
-        <div className="masthead-actions"><span className="muted">{bankState.time.date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span><span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>{bankState.status.hasFailed ? 'Mandate ended' : `Month ${bankState.time.step}`}</span><button className="button primary" onClick={() => setIsActionsOpen(true)}>Your plan ↗</button><button className="button ghost" onClick={() => setTheme(p => p === 'light' ? 'dark' : 'light')} aria-label="Toggle colour theme">{theme === 'light' ? 'Dark' : 'Light'}</button></div>
+        <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
+        <div className="masthead-actions"><span className="muted">{bankState.time.date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span><span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>{bankState.status.hasFailed ? 'Mandate ended' : `Month ${bankState.time.step}`}</span><button className="button primary" onClick={openDepartments}>Departments ↗</button><button className="button ghost" onClick={() => setTheme(p => p === 'light' ? 'dark' : 'light')} aria-label="Toggle colour theme">{theme === 'light' ? 'Dark' : 'Light'}</button></div>
       </header>
-      <details className="run-controls"><summary>Game controls · save, restart, tutorial and autopilot</summary><div className="run-controls-inner"><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh year</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><label>Autopilot <select aria-label="Autopilot months" value={runHorizonMonths} onChange={e => setRunHorizonMonths(Number(e.target.value))}>{[1,3,6,12].map(n => <option key={n} value={n}>{n} months</option>)}</select></label><label>Stop <select aria-label="Autopilot stop condition" value={stopConditionMode} onChange={e => setStopConditionMode(e.target.value as typeof stopConditionMode)}><option value="none">At horizon</option><option value="nearBreach">Near breach</option><option value="breach">On breach</option><option value="scoreTarget">At score target</option></select></label><button className="button primary" onClick={handleRunMultipleMonths} disabled={bankState.status.hasFailed || mandateEnded}>Run {runHorizonMonths} months</button></div></details>
+      <section className="time-console" aria-label="Simulation time controls">
+        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{clockRunning ? 'Running your standing policies' : 'Paused'}</span></div>
+        <div className="clock-buttons"><button className={`button ${clockRunning?'':'primary'}`} onClick={pauseClock} aria-label="Pause simulation">Ⅱ Pause</button><button className="button" onClick={() => handleRunNextMonth()} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>1 month ›</button><button className="button primary" onClick={() => startClock(monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,3))} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>Run to quarter end »</button><button className="button" onClick={() => startClock(monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,12))} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>Run to year end »</button><button className="button" onClick={() => startClock(Infinity)} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>▶ Auto</button></div>
+        <label className="clock-speed">Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label>
+        <label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label>
+        <div className="clock-status" role="status">{clockRunning ? `${Number.isFinite(autoRemaining) ? autoRemaining+' months remaining' : 'Running until you pause'} · Policies persist; queued transactions execute once.` : pauseReason}</div>
+      </section>
+      {attentionReason(bankState,simConfig) && !bankState.status.hasFailed && <div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={openDepartments}>Review policy</button><button className="button ghost" onClick={()=>setActiveTab('Regulatory')}>Inspect buffers →</button></div>}
+      <details className="run-controls"><summary>Game menu · save, restart and tutorial</summary><div className="run-controls-inner"><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button></div></details>
 
       {bankState.status.hasFailed && (
         <div className="alert danger">
@@ -854,22 +813,10 @@ const App = () => {
         </div>
       )}
 
-      <div className="tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab);
-              if (tab !== 'Help') {
-                setHelpSectionFocus(null);
-              }
-            }}
-            className={`tab-button ${activeTab === tab ? 'active' : ''}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <nav className="tabs" aria-label="Bank views">
+        {['Boardroom','Overview','Loans','Regulatory','Events'].map((tab,i)=><button key={tab} onClick={()=>{setActiveTab(tab);setHelpSectionFocus(null);}} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined}>{['Headquarters','Dashboard','Loan book','Risk & buffers','Events'][i]}</button>)}
+        <label className="report-menu">Reports & tools<select aria-label="Reports and tools" value={['Boardroom','Overview','Loans','Regulatory','Events'].includes(activeTab)?'':activeTab} onChange={e=>{if(e.target.value)setActiveTab(e.target.value);}}><option value="">Choose a report…</option>{tabs.filter(t=>!['Boardroom','Overview','Loans','Regulatory','Events'].includes(t)).map(t=><option key={t}>{t}</option>)}</select></label>
+      </nav>
 
       {activeTab !== 'Help' && contextualHelpLinks.length > 0 && (
         <div className="card help-context-strip">
@@ -887,7 +834,7 @@ const App = () => {
         </div>
       )}
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} selected={selectedDecisions} campaign={campaign} hasErrors={parsedActionForm.hasErrors} onDecision={backProposal} onRun={handleRunNextMonth} onPlan={() => setIsActionsOpen(true)} onRestart={() => handleStartScenario(null)} onContinue={() => setCampaign(false)} onNavigate={setActiveTab} />}
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} selected={selectedDecisions} hasErrors={parsedActionForm.hasErrors} onDecision={backProposal} onPlan={openDepartments} onNavigate={setActiveTab} />}
 
       {activeTab === 'Overview' && (
         <div className="section-grid">
@@ -973,7 +920,7 @@ const App = () => {
               <div className="eyebrow">What to expect</div>
               <p className="muted">
                 Starting a scenario reloads the bank with tailored settings and scheduled shocks. You can still tweak pricing and
-                funding in the Actions panel once the scenario is active.
+                funding in the Departments once the scenario is active.
               </p>
               <div className="muted" style={{ marginTop: 8 }}>
                 {activeScenarioId ? `Currently running: ${activeScenarioId}` : 'No scenario running; sandbox mode active.'}
@@ -1178,19 +1125,6 @@ const App = () => {
         </section>
       )}
 
-      <button
-        type="button"
-        className={`actions-handle ${isActionsOpen ? 'open' : ''}`}
-        onClick={() => setIsActionsOpen(true)}
-        aria-haspopup="dialog"
-        aria-controls="actions-panel"
-        aria-expanded={isActionsOpen}
-        aria-hidden={isActionsOpen}
-        tabIndex={isActionsOpen ? -1 : 0}
-      >
-        <span>Actions</span>
-      </button>
-
       <div
         className={`actions-drawer-overlay ${isActionsOpen ? 'open' : ''}`}
         onClick={() => setIsActionsOpen(false)}
@@ -1202,16 +1136,16 @@ const App = () => {
         className={`actions-drawer ${isActionsOpen ? 'open' : ''}`}
         role="dialog"
         aria-modal={isActionsOpen ? true : undefined}
-        aria-label="Actions panel"
+        aria-label="Bank departments"
         aria-hidden={!isActionsOpen}
       >
         <div ref={actionsDrawerContentRef} className="actions-drawer-content">
           <div className="actions-drawer-header">
             <div>
-              <div className="eyebrow">Actions</div>
-              <h2 style={{ marginTop: 6 }}>Next month levers</h2>
+              <div className="eyebrow">Bank departments · Time paused</div>
+              <h2 style={{ marginTop: 6 }}>Manage your bank</h2>
               <p className="muted" style={{ marginTop: 4 }}>
-                Adjust pricing, raise funding, and run the simulation from one place.
+                Set standing policies or queue a transaction. Open one department at a time.
               </p>
             </div>
             <button
@@ -1219,22 +1153,22 @@ const App = () => {
               className="button icon"
               type="button"
               onClick={() => setIsActionsOpen(false)}
-              aria-label="Close actions panel"
+              aria-label="Close departments"
             >
               ✕
             </button>
           </div>
 
           {guardrails.length > 0 && (
-            <MechanicGuardrails guardrails={guardrails} onNavigateHelp={openHelpSection} />
+            <details className="card"><summary>Policy checks · {guardrails.length} notices</summary><MechanicGuardrails guardrails={guardrails} onNavigateHelp={openHelpSection} /></details>
           )}
 
           <div className="card stack">
             <ActionsPanel
               state={actionForm}
               onChange={next => { setActionForm(next); setSelectedDecisions([]); }}
-              onSubmit={handleRunNextMonth}
-              disabled={bankState.status.hasFailed || mandateEnded}
+              onSubmit={() => setIsActionsOpen(false)}
+              disabled={bankState.status.hasFailed}
               errors={parsedActionForm.errors}
               hasValidationErrors={parsedActionForm.hasErrors}
               recommendations={recommendations}
@@ -1242,8 +1176,7 @@ const App = () => {
             />
           </div>
           <div className="card stack">
-            <div className="eyebrow">Preview</div>
-            <h3>Next-step impact (estimated)</h3>
+            <details><summary>Estimated next-month impact & stress paths</summary><p className="muted">A diagnostic estimate, not a forecast. Actual closing ratios remain visible on the bank dashboard.</p>
             {preview ? (
               <table className="data-table">
                 <tbody>
@@ -1279,7 +1212,7 @@ const App = () => {
               </table>
             ) : (
               <div className="muted">Enter valid inputs to preview next-step impacts.</div>
-            )}
+            )}</details>
           </div>
         </div>
       </aside>
