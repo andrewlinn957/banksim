@@ -71,7 +71,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     whyItMatters:
       'You can test strategy stability quickly and verify deterministic replay for the same timeline.',
     driverSummary: [
-      'Stop modes: none, near-breach, breach, score target.',
+      'Choose one month, quarter end, year end or continuous play. Safety pauses are enabled by default; configure them under Game.',
       'Saved runs keep snapshots plus action/shock timeline.',
       'Replay compares final metrics for deterministic consistency.',
     ],
@@ -312,7 +312,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     driverSummary: [
       'Preview includes macro, funding, and run stresses.',
       'Recommendation score balances ratio improvements against earnings drag and board pressure.',
-      'Open Departments for standing policies, one-off transactions and an expandable stress preview.',
+      'Select a department on the bank screen for standing policies, one-off orders and a next-close estimate.',
     ],
   },
   {
