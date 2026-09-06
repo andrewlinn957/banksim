@@ -25,8 +25,8 @@ describe('First-year mandate', () => {
   });
   it('renders the management surface with invalid-plan guidance and no forced monthly action', () => {
     const noop=()=>{};
-    const markup=renderToStaticMarkup(<Boardroom state={initialState} history={[initialState]} selected={[]} hasErrors onDecision={noop} onPlan={noop} onNavigate={noop}/>);
-    expect(markup).toContain('Your plan has an invalid input');expect(markup).toContain('Bank information layers');expect(markup).toContain('Open departments');expect(markup).not.toContain('Close month 1');
+    const markup=renderToStaticMarkup(<Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onClose={noop}/>);
+    expect(markup).toContain('invalid policy input');expect(markup).toContain('Manage a department');expect(markup.match(/class="department-building/g)).toHaveLength(4);expect(markup).not.toContain('Adopt proposal');expect(markup).not.toContain('history-card');
   });
 });
 

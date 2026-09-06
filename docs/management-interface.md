@@ -4,14 +4,19 @@ The player sets a policy, watches it develop, and intervenes when a constraint n
 
 ## Implemented interaction
 
-- Headquarters is a City of London bank viewport with customer, earnings and resilience information layers. Blue controls and light panels take their visual cue from city management games; the existing Threadneedle Street artwork anchors the location.
-- Permanent time controls offer pause, one month, quarter end, year end and continuous auto, with two playback speeds. The quarter/year buttons stop at the next career-period boundary. Auto is a sequence of individual monthly steps, so pause remains available between steps.
-- Policies persist. Equity, debt and swap orders clear after execution. Opening Departments, adopting a proposal, opening the tutorial or hiding the browser tab pauses time. Starting a fresh bank cancels playback.
-- Safety interruption defaults on. It stops after a month that falls below an internal/combined capital target, breaches own funds, approaches leverage requirements or reaches LCR 110%/NSFR 105%. These are player attention thresholds, not additional prudential rules. Failure always stops playback, including with safety interruption off.
-- Departments replaces the combined action form: Customers, Lending, Capital and Treasury. Only the selected department's fields are exposed. Standing instructions and one-off transactions are explained separately. All validation errors remain visible even if their field is in another department.
-- Decision proposals disclose concrete benefits and trade-offs before adoption. The first-year challenges are optional records, with no forced ending after twelve months.
-- Headquarters shows four measures, a signed period profit history and clickable explanations of funding, lending, earnings and capital. Detailed reporting, scenario tools and accounting reconciliations remain accessible from the reports menu.
-- Expensive stress previews run only while reviewing Departments or the tutorial. They are not computed for every animation tick.
+- The opening screen is the bank and four department entrances. Each displays a real balance or ratio and its operational status. No proposal feed, teaching cards, information-layer tabs, badge panel or history chart occupies the homepage.
+- Selecting Customers, Lending, Capital or Treasury opens its management workspace beside the bank. Current operational figures, consequences and editable policy controls appear together. On narrower screens the workspace follows the bank and receives focus; closing it returns focus to the selected department.
+- Lending shows gross principal, quarter approvals, undrawn commitments and Stage 2/3 share alongside loan prices and underwriting settings. Capital headroom is labelled in percentage points. Treasury uses actual wholesale maturities, not a forecast or all deposits treated as immediately due.
+- Reports are explicitly named as reports. The loan report offers a separate “Manage lending” link that opens the real lending controls. Performance history and optional first-year challenges live in Reports.
+- The time console has a horizon selector and Run/Pause. Game settings contain speed, safety interruptions, save, restart and tutorial. Auto is a sequence of monthly steps and can continue while a department remains visible. Opening a department or editing its policy pauses time; the player can restart to watch the results.
+- Pricing, underwriting and payout policies persist. Debt, equity and swap transactions execute once and clear. Each department can cancel its own queued transactions. Hedging and department-head advice are disclosed on demand.
+- The next-close estimate includes all policies and queued orders; it is explicitly not an isolated department effect. Expensive previews are skipped during playback.
+- Safety interruption remains on by default. Failure always stops playback. Attention notices route to the responsible capital or treasury department.
+- The first-year challenges remain optional records and do not end the career. Partial reporting periods state how many months have closed.
+
+## Validation boundary
+
+Department tests cover quarter opening/closing flows, missing history, gross loans including workouts, capital units and wholesale maturities. Render checks verify that a lending destination contains both its pipeline figures and actual lending inputs. Browser interaction QA is still unavailable because the approved browser environment rejected access to the test preview; no alternative browser was used to bypass that restriction.
 
 ## Design references
 

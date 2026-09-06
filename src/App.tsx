@@ -1,7 +1,10 @@
+import DepartmentOffice from './components/DepartmentOffice';
+import PerformanceReport from './components/PerformanceReport';
+import { Department } from './game/departments';
 import { attentionReason, clockAfterStep, monthsToPeriodEnd } from './game/management';
 import Boardroom from './components/Boardroom';
 import { BoardDecision } from './game/boardroom';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
 import { BankState } from './domain/bankState';
@@ -12,7 +15,7 @@ import {
   BalanceSheetSide,
 } from './domain/enums';
 import TopMetricsPanel from './components/TopMetricsPanel';
-import ActionsPanel, { ActionFormState } from './components/ActionsPanel';
+import { ActionFormState } from './components/ActionsPanel';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
 import {
@@ -43,7 +46,6 @@ import { AttributionLineSelection, StepAttribution } from './domain/attribution'
 import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
 import HelpLink from './components/HelpLink';
-import MechanicGuardrails from './components/MechanicGuardrails';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
 import { buildPreRunGuardrails } from './content/guardrails';
 import TutorialOverlay from './components/TutorialOverlay';
@@ -52,6 +54,7 @@ import { readTutorialCompleted, writeTutorialCompleted } from './content/tutoria
 const controller = new SimulationController(baseConfig);
 const tabs = [
   'Boardroom',
+  'Performance',
   'Overview',
   'Share Price',
   'Scenarios',
@@ -164,11 +167,16 @@ const App = () => {
   const [pauseReason, setPauseReason] = useState('Ready. Set your policy, then run a quarter.');
   const [safetyPause, setSafetyPause] = useState(true);
   const clockRunning = autoRemaining !== null;
-  const openDepartments = () => { setAutoRemaining(null); setPauseReason('Paused to review your standing instructions.'); setIsActionsOpen(true); };
-  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors || isActionsOpen || isTutorialOpen) return; setPauseReason(''); setAutoRemaining(months); };
+  const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=simConfig.riskLimits.minLeverageRatio*1.05 ? 'Capital':'Treasury';
+  const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
+  const openReport = (tab: string) => { setIsActionsOpen(false); setActiveTab(tab); };
+
+  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors || isTutorialOpen) return; setPauseReason(''); setAutoRemaining(months); };
   const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
+  const [runPeriod, setRunPeriod] = useState('quarter');
   const [savedRuns, setSavedRuns] = useState<RunRecord[]>([]);
   const [currentTimeline, setCurrentTimeline] = useState<ActionTimelineEntry[]>([]);
   const [currentSnapshots, setCurrentSnapshots] = useState<RunSnapshot[]>([
@@ -182,8 +190,6 @@ const App = () => {
   const [tutorialRiskPreparedStep, setTutorialRiskPreparedStep] = useState<number | null>(null);
   const [tutorialSawGuardrail, setTutorialSawGuardrail] = useState(false);
   const [tutorialMitigationApplied, setTutorialMitigationApplied] = useState(false);
-  const actionsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
-  const actionsDrawerContentRef = useRef<HTMLDivElement | null>(null);
 
   const totalEquity = useMemo(
     () =>
@@ -235,56 +241,8 @@ const App = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (!isActionsOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsActionsOpen(false);
-        return;
-      }
-
-      if (e.key !== 'Tab') return;
-
-      const container = actionsDrawerContentRef.current;
-      if (!container) return;
-
-      const focusableSelector =
-        'summary, a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-      const focusableElements = Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(el => el.getClientRects().length > 0);
-      if (focusableElements.length === 0) return;
-
-      const first = focusableElements[0];
-      const last = focusableElements[focusableElements.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-
-      if (e.shiftKey) {
-        if (!active || active === first || !container.contains(active)) {
-          e.preventDefault();
-          last.focus();
-        }
-        return;
-      }
-
-      if (!active || active === last || !container.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    actionsCloseButtonRef.current?.focus();
-
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      if (opener?.isConnected) opener.focus();
-    };
-  }, [isActionsOpen]);
-
   const preview = useMemo<StepPreview | null>(() => {
-    if (parsedActionForm.hasErrors || (!isActionsOpen && !isTutorialOpen)) return null;
+    if (parsedActionForm.hasErrors || clockRunning || (!(isActionsOpen && activeTab==='Boardroom') && !isTutorialOpen)) return null;
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
@@ -310,7 +268,7 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen, activeTab, clockRunning]);
 
   const recommendations = useMemo(() => {
     controller.setConfig(simConfig);
@@ -411,7 +369,7 @@ const App = () => {
   };
 
   useEffect(() => {
-    if (!clockRunning || isActionsOpen || isTutorialOpen || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
+    if (!clockRunning || isTutorialOpen || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
     const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
     return () => window.clearTimeout(timer);
   }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, isTutorialOpen, parsedActionForm.hasErrors]);
@@ -422,7 +380,8 @@ const App = () => {
     document.addEventListener('visibilitychange', hide);
     return () => document.removeEventListener('visibilitychange', hide);
   }, []);
-  useEffect(() => { if (isActionsOpen || isTutorialOpen) setAutoRemaining(null); }, [isActionsOpen, isTutorialOpen]);
+  useEffect(() => { if (isActionsOpen) { setAutoRemaining(null); setActiveTab('Boardroom'); } }, [isActionsOpen]);
+  useEffect(() => { if (isTutorialOpen) setAutoRemaining(null); }, [isTutorialOpen]);
 
   const handleSaveCurrentRun = () => {
     if (currentTimeline.length === 0 || currentSnapshots.length === 0) return;
@@ -453,6 +412,7 @@ const App = () => {
     setPauseReason('New bank ready. Set a policy and give it time.');
     setSelectedDecisions([]);
     setActiveTab('Boardroom');
+    setIsActionsOpen(false);
     const scenarioConfig = applyScenarioConfig(baseConfig, scenarioId);
     const scenarioState = getScenarioInitialState(scenarioId, scenarioConfig);
     const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
@@ -656,7 +616,7 @@ const App = () => {
       title: 'Run one month',
       summary: 'Execute one step to generate real metric movement and events.',
       instructions: [
-        'Close Departments, then use “1 month” in the time controls.',
+        'Use the tutorial’s “Run one month” button.',
         'The tutorial advances once month counter increases by 1.',
       ],
       ready: tutorialRunCompleted,
@@ -685,8 +645,8 @@ const App = () => {
       ],
       ready: tutorialRiskRunCompleted,
       readinessHint: 'Apply risky setup and run one month.',
-      primaryActionLabel: 'Apply risky setup',
-      onPrimaryAction: applyTutorialRiskSetup,
+      primaryActionLabel: tutorialRiskPreparedStep===bankState.time.step?'Run risky month':'Apply risky setup',
+      onPrimaryAction: () => { if(tutorialRiskPreparedStep===bankState.time.step) {setIsActionsOpen(false);handleRunNextMonth();} else applyTutorialRiskSetup(); },
     },
     {
       title: 'Mitigate the warning signal',
@@ -783,17 +743,15 @@ const App = () => {
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
-        <div className="masthead-actions"><span className="muted">{bankState.time.date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}</span><span className={`pill ${bankState.status.hasFailed ? 'danger' : 'success'}`}>{bankState.status.hasFailed ? 'Mandate ended' : `Month ${bankState.time.step}`}</span><button className="button primary" onClick={openDepartments}>Departments ↗</button><button className="button ghost" onClick={() => setTheme(p => p === 'light' ? 'dark' : 'light')} aria-label="Toggle colour theme">{theme === 'light' ? 'Dark' : 'Light'}</button></div>
+        <div className="masthead-actions"><details className="reports-menu"><summary>Reports</summary><nav aria-label="Reports and tools">{tabs.filter(t=>t!=='Boardroom').map(t=><button key={t} onClick={e=>{openReport(t);e.currentTarget.closest('details')?.removeAttribute('open');}}>{t==='Overview'?'Bank overview':t==='Performance'?'Quarterly & annual performance':t==='Loans'?'Loan portfolio':t==='Regulatory'?'Capital & liquidity':t}</button>)}</nav></details><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
-      <section className="time-console" aria-label="Simulation time controls">
-        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{clockRunning ? 'Running your standing policies' : 'Paused'}</span></div>
-        <div className="clock-buttons"><button className={`button ${clockRunning?'':'primary'}`} onClick={pauseClock} aria-label="Pause simulation">Ⅱ Pause</button><button className="button" onClick={() => handleRunNextMonth()} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>1 month ›</button><button className="button primary" onClick={() => startClock(monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,3))} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>Run to quarter end »</button><button className="button" onClick={() => startClock(monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,12))} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>Run to year end »</button><button className="button" onClick={() => startClock(Infinity)} disabled={bankState.status.hasFailed || parsedActionForm.hasErrors || clockRunning}>▶ Auto</button></div>
-        <label className="clock-speed">Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label>
-        <label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label>
-        <div className="clock-status" role="status">{clockRunning ? `${Number.isFinite(autoRemaining) ? autoRemaining+' months remaining' : 'Running until you pause'} · Policies persist; queued transactions execute once.` : pauseReason}</div>
+      <section className="time-console compact-clock" aria-label="Simulation time controls">
+       <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{bankState.time.date.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'})}</span></div>
+       <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning||isTutorialOpen} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
+       <div className="clock-status" role="status">{clockRunning?Number.isFinite(autoRemaining)?`Running · ${autoRemaining} months remaining`:'Running continuously':pauseReason}</div>
       </section>
-      {attentionReason(bankState,simConfig) && !bankState.status.hasFailed && <div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={openDepartments}>Review policy</button><button className="button ghost" onClick={()=>setActiveTab('Regulatory')}>Inspect buffers →</button></div>}
-      <details className="run-controls"><summary>Game menu · save, restart and tutorial</summary><div className="run-controls-inner"><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button></div></details>
+      {attentionReason(bankState,simConfig)&&!bankState.status.hasFailed&&<div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={()=>openDepartment(responsibleDepartment)}>Manage {responsibleDepartment.toLowerCase()} →</button></div>}
+
 
       {bankState.status.hasFailed && (
         <div className="alert danger">
@@ -813,10 +771,7 @@ const App = () => {
         </div>
       )}
 
-      <nav className="tabs" aria-label="Bank views">
-        {['Boardroom','Overview','Loans','Regulatory','Events'].map((tab,i)=><button key={tab} onClick={()=>{setActiveTab(tab);setHelpSectionFocus(null);}} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined}>{['Headquarters','Dashboard','Loan book','Risk & buffers','Events'][i]}</button>)}
-        <label className="report-menu">Reports & tools<select aria-label="Reports and tools" value={['Boardroom','Overview','Loans','Regulatory','Events'].includes(activeTab)?'':activeTab} onChange={e=>{if(e.target.value)setActiveTab(e.target.value);}}><option value="">Choose a report…</option>{tabs.filter(t=>!['Boardroom','Overview','Loans','Regulatory','Events'].includes(t)).map(t=><option key={t}>{t}</option>)}</select></label>
-      </nav>
+      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Scenarios'?'Scenario tools':activeTab==='Help'?'Reference library':`${activeTab} report`}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
 
       {activeTab !== 'Help' && contextualHelpLinks.length > 0 && (
         <div className="card help-context-strip">
@@ -834,7 +789,10 @@ const App = () => {
         </div>
       )}
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} selected={selectedDecisions} hasErrors={parsedActionForm.hasErrors} onDecision={backProposal} onPlan={openDepartments} onNavigate={setActiveTab} />}
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>
+        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null}/>
+      </Boardroom>}
+      {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
 
       {activeTab === 'Overview' && (
         <div className="section-grid">
@@ -1124,98 +1082,6 @@ const App = () => {
           />
         </section>
       )}
-
-      <div
-        className={`actions-drawer-overlay ${isActionsOpen ? 'open' : ''}`}
-        onClick={() => setIsActionsOpen(false)}
-        aria-hidden={!isActionsOpen}
-      />
-
-      <aside
-        id="actions-panel"
-        className={`actions-drawer ${isActionsOpen ? 'open' : ''}`}
-        role="dialog"
-        aria-modal={isActionsOpen ? true : undefined}
-        aria-label="Bank departments"
-        aria-hidden={!isActionsOpen}
-      >
-        <div ref={actionsDrawerContentRef} className="actions-drawer-content">
-          <div className="actions-drawer-header">
-            <div>
-              <div className="eyebrow">Bank departments · Time paused</div>
-              <h2 style={{ marginTop: 6 }}>Manage your bank</h2>
-              <p className="muted" style={{ marginTop: 4 }}>
-                Set standing policies or queue a transaction. Open one department at a time.
-              </p>
-            </div>
-            <button
-              ref={actionsCloseButtonRef}
-              className="button icon"
-              type="button"
-              onClick={() => setIsActionsOpen(false)}
-              aria-label="Close departments"
-            >
-              ✕
-            </button>
-          </div>
-
-          {guardrails.length > 0 && (
-            <details className="card"><summary>Policy checks · {guardrails.length} notices</summary><MechanicGuardrails guardrails={guardrails} onNavigateHelp={openHelpSection} /></details>
-          )}
-
-          <div className="card stack">
-            <ActionsPanel
-              state={actionForm}
-              onChange={next => { setActionForm(next); setSelectedDecisions([]); }}
-              onSubmit={() => setIsActionsOpen(false)}
-              disabled={bankState.status.hasFailed}
-              errors={parsedActionForm.errors}
-              hasValidationErrors={parsedActionForm.hasErrors}
-              recommendations={recommendations}
-              onNavigateHelp={openHelpSection}
-            />
-          </div>
-          <div className="card stack">
-            <details><summary>Estimated next-month impact & stress paths</summary><p className="muted">A diagnostic estimate, not a forecast. Actual closing ratios remain visible on the bank dashboard.</p>
-            {preview ? (
-              <table className="data-table">
-                <tbody>
-                  <tr>
-                    <td>CET1 ratio delta</td>
-                    <td className="numeric">{formatSignedPct(preview.deltas.cet1Ratio)}</td>
-                  </tr>
-                  <tr>
-                    <td>LCR delta</td>
-                    <td className="numeric">{formatSignedPct(preview.deltas.lcr)}</td>
-                  </tr>
-                  <tr>
-                    <td>NSFR delta</td>
-                    <td className="numeric">{formatSignedPct(preview.deltas.nsfr)}</td>
-                  </tr>
-                  <tr>
-                    <td>NIM delta</td>
-                    <td className="numeric">{formatSignedPct(preview.deltas.nim)}</td>
-                  </tr>
-                  <tr>
-                    <td>Stress CET1 ratio</td>
-                    <td className="numeric">{formatPct(preview.stressed.risk.riskMetrics.cet1Ratio)}</td>
-                  </tr>
-                  <tr>
-                    <td>Stress LCR</td>
-                    <td className="numeric">{formatPct(preview.stressed.risk.riskMetrics.lcr)}</td>
-                  </tr>
-                  <tr>
-                    <td>Regulatory share of stress paths breaching limits</td>
-                    <td className="numeric">{formatPct(preview.breachProbability)} ({preview.pathCount} paths)</td>
-                  </tr>
-                </tbody>
-              </table>
-            ) : (
-              <div className="muted">Enter valid inputs to preview next-step impacts.</div>
-            )}</details>
-          </div>
-        </div>
-      </aside>
 
       {tutorialStep && (
         <TutorialOverlay

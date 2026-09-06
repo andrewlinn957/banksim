@@ -6,13 +6,13 @@ The simulator models banking mechanics at a management-game level: deposits, loa
 
 Start at Headquarters: set standing policies in Customers, Lending, Capital and Treasury, then run to quarter end, year end or continuously on auto. The time controls remain visible and pause when buffers need attention. Quarterly and annual reports show the bank developing over time; first-year stars and badges are optional goals and do not end the career.
 
-The interface uses a generated Threadneedle Street bank illustration, city information layers, a signed profit timeline and focused department panels. See [management interface](docs/management-interface.md) and [career pacing](docs/career-pacing.md) for the design and calibration evidence. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge.
+The interface uses a generated Threadneedle Street bank illustration, four actionable department entrances and an adjacent management workspace. The profit timeline and first-year challenges live under Reports. See [management interface](docs/management-interface.md) and [career pacing](docs/career-pacing.md) for the design and calibration evidence. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge.
 
 See [model basis and remaining gaps](docs/model-basis.md) for the 2026 PRA assumptions and funded-loan IFRS 9 treatment, and [art direction](docs/art-direction.md) for the image prompt.
 
 ## Gameplay
 
-Each turn advances the bank by one month. The player can adjust rates, underwriting tightness, funding, equity issuance, dividends, cost actions, hedge actions, and related management levers.
+Each turn advances the bank by one month. The player sets rates, underwriting standards and payout policies, and can queue funding, equity and hedge transactions.
 
 The challenge is to keep the bank alive without simply hiding in a defensive posture. Growth can improve earnings and market confidence, but it consumes capital and liquidity. Pulling back can protect ratios, but it may weaken the franchise, reduce profit, and leave the bank behind competitors.
 
@@ -36,7 +36,6 @@ Policies continue until you change them. Debt, equity and swap transactions exec
 - tightening or loosening underwriting standards
 - issuing long-term debt or equity
 - changing dividend payouts
-- reducing operating costs
 - managing hedges and balance-sheet risk
 
 The game rewards understanding second-order effects. For example, raising deposit rates can stabilise funding but compress net interest margin. Cutting loan rates may improve growth but can attract weaker borrowers if underwriting is loose. Issuing equity can save a stressed bank but dilutes existing shareholders.
