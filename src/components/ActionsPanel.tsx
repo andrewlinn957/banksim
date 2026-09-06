@@ -1,8 +1,5 @@
-import { ChangeEvent, ReactNode } from 'react';
+import { useState } from 'react';
 import { Recommendation } from '../engine/recommendations';
-import HelpLink from './HelpLink';
-import InfoTooltip from './InfoTooltip';
-
 export interface ActionFormState {
   retailDepositRate: string;
   corporateDepositRate: string;
@@ -20,359 +17,34 @@ export interface ActionFormState {
   hedgeMaturityMonths: string;
 }
 
-interface Props {
-  state: ActionFormState;
-  onChange: (next: ActionFormState) => void;
-  onSubmit: () => void;
-  disabled?: boolean;
-  errors?: Partial<Record<keyof ActionFormState, string>>;
-  hasValidationErrors?: boolean;
-  recommendations?: Recommendation[];
-  onNavigateHelp?: (sectionId: string) => void;
-}
 
-interface FieldHelp {
-  sectionId: string;
-  tooltip: ReactNode;
-  linkLabel?: string;
-}
-
-const ActionsPanel = ({
-  state,
-  onChange,
-  onSubmit,
-  disabled,
-  errors,
-  hasValidationErrors,
-  recommendations = [],
-  onNavigateHelp,
-}: Props) => {
-  const handleChange = (field: keyof ActionFormState) => (e: ChangeEvent<HTMLInputElement>) => {
-    onChange({ ...state, [field]: e.target.value });
-  };
-
-  return (
-    <div className="stack">
-      <div className="muted">
-        Rates accept decimal/percent/bps (e.g. 0.025, 2.5%, 250bps). Amounts accept GBP, bn, m, k.
-      </div>
-      {disabled && <div className="alert danger">Scenario ended due to failure. Actions are disabled.</div>}
-      {!disabled && hasValidationErrors && (
-        <div className="alert danger">Fix highlighted inputs before running the next month.</div>
-      )}
-      <div className="form-row">
-        <LabeledInput
-          label="Retail deposit rate"
-          help={{
-            sectionId: 'deposit-behaviour',
-            tooltip:
-              'Higher rates support retention and growth; persistent underpricing raises churn and can degrade deposit quality.',
-          }}
-          value={state.retailDepositRate}
-          onChange={handleChange('retailDepositRate')}
-          placeholder="0.020"
-          disabled={disabled}
-          error={errors?.retailDepositRate}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Corporate deposit rate"
-          help={{
-            sectionId: 'deposit-behaviour',
-            tooltip:
-              'Corporate balances reprice faster and are less sticky in stress, so gaps to market rates can trigger quicker runoff.',
-          }}
-          value={state.corporateDepositRate}
-          onChange={handleChange('corporateDepositRate')}
-          placeholder="0.030"
-          disabled={disabled}
-          error={errors?.corporateDepositRate}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Mortgage rate"
-          help={{
-            sectionId: 'loan-pipeline',
-            tooltip:
-              'Loan pricing shifts demand and margin; high spreads can reduce volume, while low spreads can add risk-weighted assets quickly.',
-          }}
-          value={state.mortgageRate}
-          onChange={handleChange('mortgageRate')}
-          placeholder="0.055"
-          disabled={disabled}
-          error={errors?.mortgageRate}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Corporate loan rate"
-          help={{
-            sectionId: 'loan-pipeline',
-            tooltip:
-              'Corporate pricing affects pipeline conversion and credit selection pressure; aggressive terms can worsen later credit outcomes.',
-          }}
-          value={state.corporateLoanRate}
-          onChange={handleChange('corporateLoanRate')}
-          placeholder="0.065"
-          disabled={disabled}
-          error={errors?.corporateLoanRate}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Mortgage underwriting tightness (0-1)"
-          help={{
-            sectionId: 'loan-cohorts-and-ifrs9',
-            tooltip:
-              'Higher tightness reduces approvals and curbs new risk intake, but can sacrifice near-term volume and income.',
-          }}
-          value={state.mortgageUnderwritingTightness}
-          onChange={handleChange('mortgageUnderwritingTightness')}
-          placeholder="0.00"
-          disabled={disabled}
-          error={errors?.mortgageUnderwritingTightness}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Corporate underwriting tightness (0-1)"
-          help={{
-            sectionId: 'loan-cohorts-and-ifrs9',
-            tooltip:
-              'Tight underwriting slows risk accumulation and stage migration pressure, at the cost of reduced loan growth.',
-          }}
-          value={state.corporateUnderwritingTightness}
-          onChange={handleChange('corporateUnderwritingTightness')}
-          placeholder="0.00"
-          disabled={disabled}
-          error={errors?.corporateUnderwritingTightness}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Issue long-term wholesale debt (GBP)"
-          help={{
-            sectionId: 'funding-ladder-and-rollover',
-            tooltip:
-              'Issuing LT debt increases stable funding and can relieve rollover walls, but raises future funding costs.',
-          }}
-          value={state.issueLTDebtAmount}
-          onChange={handleChange('issueLTDebtAmount')}
-          placeholder="1000000000"
-          disabled={disabled}
-          error={errors?.issueLTDebtAmount}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Issue equity (GBP)"
-          help={{
-            sectionId: 'capital-policy-and-distributions',
-            tooltip:
-              'Equity raises bolster CET1 and leverage buffers immediately but can dilute existing shareholders through issuance discounts.',
-          }}
-          value={state.issueEquityAmount}
-          onChange={handleChange('issueEquityAmount')}
-          placeholder="500000000"
-          disabled={disabled}
-          error={errors?.issueEquityAmount}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Dividend payout ratio (0-1)"
-          help={{
-            sectionId: 'capital-policy-and-distributions',
-            tooltip:
-              'Requested payout is constrained by MDA and internal capital target logic; high requests can still be clipped to preserve resilience.',
-          }}
-          value={state.dividendPayoutRatio}
-          onChange={handleChange('dividendPayoutRatio')}
-          placeholder="0.30"
-          disabled={disabled}
-          error={errors?.dividendPayoutRatio}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <label className="field">
-          <FieldLabel
-            label="AT1 coupon policy"
-            help={{
-              sectionId: 'capital-policy-and-distributions',
-              tooltip:
-                'Auto mode skips coupons when CET1 buffers are weak; forcing payment supports signaling but reduces capital and liquidity.',
-            }}
-            onNavigateHelp={onNavigateHelp}
-          />
-          <select
-            value={state.at1CouponMode}
-            onChange={(e) =>
-              onChange({
-                ...state,
-                at1CouponMode: e.target.value as ActionFormState['at1CouponMode'],
-              })
-            }
-            disabled={disabled}
-          >
-            <option value="auto">Auto (buffer-aware)</option>
-            <option value="pay">Always pay</option>
-            <option value="skip">Always skip</option>
-          </select>
-        </label>
-        <label className="field">
-          <FieldLabel
-            label="Interest-rate hedge direction"
-            help={{
-              sectionId: 'actions-pricing-and-underwriting',
-              tooltip:
-                'Sets fixed-floating exposure direction for NII/EVE sensitivity management. Hedge effectiveness depends on notional, rate, and tenor.',
-            }}
-            onNavigateHelp={onNavigateHelp}
-          />
-          <select
-            value={state.hedgeDirection}
-            onChange={(e) =>
-              onChange({
-                ...state,
-                hedgeDirection: e.target.value as ActionFormState['hedgeDirection'],
-              })
-            }
-            disabled={disabled}
-          >
-            <option value="none">None</option>
-            <option value="payFixedReceiveFloat">Pay fixed / receive float</option>
-            <option value="receiveFixedPayFloat">Receive fixed / pay float</option>
-          </select>
-        </label>
-        <LabeledInput
-          label="Hedge notional (GBP)"
-          help={{
-            sectionId: 'actions-pricing-and-underwriting',
-            tooltip:
-              'Larger notionals shift risk more strongly but can increase carry costs or basis mismatch if over-sized versus balance-sheet exposure.',
-          }}
-          value={state.hedgeNotional}
-          onChange={handleChange('hedgeNotional')}
-          placeholder="2000000000"
-          disabled={disabled}
-          error={errors?.hedgeNotional}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Hedge fixed rate (off-market terms require upfront cash)"
-          help={{
-            sectionId: 'actions-pricing-and-underwriting',
-            tooltip:
-              'Fixed leg rate determines carry versus floating benchmark; poor entry levels can drag earnings even if volatility falls.',
-          }}
-          value={state.hedgeFixedRate}
-          onChange={handleChange('hedgeFixedRate')}
-          placeholder="3.5%"
-          disabled={disabled}
-          error={errors?.hedgeFixedRate}
-          onNavigateHelp={onNavigateHelp}
-        />
-        <LabeledInput
-          label="Hedge maturity (months)"
-          help={{
-            sectionId: 'actions-pricing-and-underwriting',
-            tooltip:
-              'Longer maturities lock exposure for more months; shorter tenors require more frequent roll decisions and execution.',
-          }}
-          value={state.hedgeMaturityMonths}
-          onChange={handleChange('hedgeMaturityMonths')}
-          placeholder="24"
-          disabled={disabled}
-          error={errors?.hedgeMaturityMonths}
-          onNavigateHelp={onNavigateHelp}
-        />
-      </div>
-      <button className="button primary" onClick={onSubmit} disabled={disabled || Boolean(hasValidationErrors)}>
-        Run next month
-      </button>
-      {recommendations.length > 0 && (
-        <div className="stack">
-          <div className="eyebrow">Recommendations</div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Rationale</th>
-                <th>Caveat</th>
-                <th className="numeric">Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recommendations.map((rec) => (
-                <tr key={rec.id}>
-                  <td>{rec.title}</td>
-                  <td>{rec.rationale}</td>
-                  <td>{rec.caveat}</td>
-                  <td className="numeric">{rec.confidence}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+export type Department = 'Customers' | 'Lending' | 'Capital' | 'Treasury';
+interface Props { state: ActionFormState; onChange: (s: ActionFormState) => void; onSubmit: () => void; disabled?: boolean; errors?: Partial<Record<keyof ActionFormState,string>>; hasValidationErrors?: boolean; recommendations?: Recommendation[]; onNavigateHelp?: (id:string)=>void; }
+const fields: Record<Department, [keyof ActionFormState,string,string][]> = {
+  Customers: [['retailDepositRate','Retail savings offer','A higher offer retains savers, but costs interest on existing deposits too.'],['corporateDepositRate','Business deposit offer','Business balances react faster to competing offers.']],
+  Lending: [['mortgageRate','New mortgage rate','Lower prices attract applications. Existing fixed-rate loans keep their coupons.'],['corporateLoanRate','New business loan rate','Better margins can reduce demand and attract riskier borrowers.'],['mortgageUnderwritingTightness','Mortgage selectivity (0–1)','0 accepts more applicants; 1 is most selective.'],['corporateUnderwritingTightness','Business selectivity (0–1)','Standards affect new vintages, not the loans already on your books.']],
+  Capital: [['dividendPayoutRatio','Share of profit paid out (0–1)','Retained earnings build capital. Prudential restrictions still apply.'],['issueEquityAmount','Raise equity once (£)','Executed next month, then cleared. New shares dilute existing owners.']],
+  Treasury: [['issueLTDebtAmount','Raise term debt once (£)','Executed next month, then cleared. Provides cash and stable funding, with future interest costs.'],['hedgeNotional','Swap notional (£)','Executed once when a direction is selected.'],['hedgeFixedRate','Fixed swap rate','Off-market terms require an upfront payment.'],['hedgeMaturityMonths','Swap term (months)','The swap remains on the books until maturity.']],
 };
-
-const LabeledInput = ({
-  label,
-  help,
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  error,
-  onNavigateHelp,
-}: {
-  label: string;
-  help?: FieldHelp;
-  value: string;
-  onChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  error?: string;
-  onNavigateHelp?: (sectionId: string) => void;
-}) => (
-  <label className="field">
-    <FieldLabel label={label} help={help} onNavigateHelp={onNavigateHelp} />
-    <input
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      disabled={disabled}
-      inputMode="decimal"
-    />
-    {error ? (
-      <span className="muted" style={{ color: 'var(--danger)' }}>
-        {error}
-      </span>
-    ) : null}
-  </label>
-);
-
-const FieldLabel = ({
-  label,
-  help,
-  onNavigateHelp,
-}: {
-  label: string;
-  help?: FieldHelp;
-  onNavigateHelp?: (sectionId: string) => void;
-}) => (
-  <span className="field-label-row">
-    <span className="field-label-text">{label}</span>
-    {help ? (
-      <InfoTooltip
-        label={`About ${label}`}
-        content={<span>{help.tooltip}</span>}
-      />
-    ) : null}
-    {help && onNavigateHelp ? (
-      <HelpLink
-        label={help.linkLabel ?? 'Open help'}
-        sectionId={help.sectionId}
-        onNavigate={onNavigateHelp}
-      />
-    ) : null}
-  </span>
-);
-
-export default ActionsPanel;
+const explanation: Record<Department,string> = {
+ Customers: 'Offer → customer retention → funding cost → earnings. Give a pricing policy several quarters to show its effect.',
+ Lending: 'Applications → approvals → drawdowns → interest → credit losses. Building a loan book takes years.',
+ Capital: 'Profit → retained earnings → capital headroom → room to lend. Equity issuance is an exceptional transaction.',
+ Treasury: 'Funding → cash buffer → resilience. Debt is funding, not loss-absorbing equity. Swaps exchange interest-rate exposure.',
+};
+export default function ActionsPanel({state,onChange,onSubmit,disabled,errors,hasValidationErrors,onNavigateHelp}:Props) {
+ const [department,setDepartment]=useState<Department>('Customers');
+ const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
+ return <div className="stack">
+  <nav className="department-tabs" aria-label="Policy departments">{(Object.keys(fields) as Department[]).map(d=><button key={d} className={`button ${d===department?'primary':''}`} aria-pressed={d===department} onClick={()=>setDepartment(d)}>{d}{fields[d].some(([k])=>errors?.[k])?' !':''}</button>)}</nav>
+  <p className="causal-strip">{explanation[department]}</p>
+  <div className="policy-persistence"><strong>Standing instructions</strong><span>Pricing, underwriting and payout settings persist until you change them. Funding and swap transactions execute once.</span></div>
+  {hasValidationErrors && <div role="alert" className="alert danger">Fix these inputs before advancing time: {Object.entries(errors??{}).map(([k,v])=><div key={k}>{k}: {v}</div>)}</div>}
+  <div className="policy-fields">{fields[department].map(([key,label,hint])=><label className="field" key={key}><strong>{label}</strong><input inputMode="decimal" value={state[key]} disabled={disabled} aria-invalid={!!errors?.[key]} onChange={e=>update(key,e.target.value)} placeholder={key.includes('Amount')?'e.g. 100m':'e.g. 3.5%'}/><small>{hint}</small>{errors?.[key]&&<span role="alert">{errors[key]}</span>}</label>)}</div>
+  {department==='Capital'&&<label className="field">AT1 coupons<select value={state.at1CouponMode} disabled={disabled} onChange={e=>update('at1CouponMode',e.target.value)}><option value="auto">Automatic, subject to buffers</option><option value="pay">Request payment</option><option value="skip">Skip payment</option></select></label>}
+  {department==='Treasury'&&<label className="field">Swap direction<select value={state.hedgeDirection} disabled={disabled} onChange={e=>update('hedgeDirection',e.target.value)}><option value="none">No swap queued</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select><button className="button ghost" disabled={disabled} onClick={()=>onChange({...state,issueLTDebtAmount:'',issueEquityAmount:'',hedgeDirection:'none',hedgeNotional:''})}>Clear queued transactions</button></label>}
+  <small>Rates accept % or bps. Amounts accept £, m and bn. Edits update your plan immediately; time stays paused.</small>
+  <button className="button primary" onClick={onSubmit} disabled={Boolean(hasValidationErrors)}>Done · return to bank</button>
+  <button className="button ghost" onClick={()=>onNavigateHelp?.(department==='Customers'?'deposit-behaviour':department==='Lending'?'loan-pipeline':department==='Capital'?'capital-policy-and-distributions':'funding-ladder-and-rollover')}>Explain this department</button>
+ </div>;
+}

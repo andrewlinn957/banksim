@@ -1840,13 +1840,16 @@ export const applyDepositBehaviour = (
 
   let franchiseDelta = 0;
 
-  state.financial.balanceSheet.items
+  const depositItems = state.financial.balanceSheet.items
     .filter(
       (i) =>
         PRODUCT_META[i.productType]?.behaviour?.affectsBehaviouralDepositFlow &&
         PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit
-    )
-    .forEach((item) => {
+    );
+  // Franchise is one bank-wide index. Weight by opening balances so adding a
+  // product line cannot multiply the speed of reputation damage or recovery.
+  const totalOpeningDeposits = depositItems.reduce((sum, item) => sum + Math.max(0, item.balance), 0);
+  depositItems.forEach((item) => {
       const meta = PRODUCT_META[item.productType];
       const byProduct = config.behaviour.depositByProduct?.[item.productType];
       const competitor =
@@ -1912,9 +1915,9 @@ export const applyDepositBehaviour = (
         1.05
       );
 
-      franchiseDelta +=
+      franchiseDelta += (totalOpeningDeposits > 0 ? Math.max(0, before) / totalOpeningDeposits : 0) * (
         -1 * (byProduct?.franchiseDecayRate ?? 0.5) * rateGap * durationMultiplier * dtMonths +
-        (byProduct?.franchiseRecoveryRate ?? 0.03) * Math.max(0, laggedRate - competitor) * dtMonths;
+        (byProduct?.franchiseRecoveryRate ?? 0.03) * Math.max(0, laggedRate - competitor) * dtMonths);
 
       events.push(
         createEvent(

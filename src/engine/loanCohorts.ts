@@ -469,10 +469,11 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
   return (outstandingPrincipal * r) / denom;
 };
 
-const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number; baseAnnualPd: number; gdpGrowthMoM: number; sicrThreshold: number }): LoanStage => {
-  // SICR is assessed relative to origination. A recession does not itself prove default.
+const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number; baseAnnualPd: number; sicrThreshold: number }): LoanStage => {
+  // SICR is assessed relative to origination, including macro effects in stressed PD.
+  // A single negative GDP observation does not move every borrower into lifetime ECL.
   if (args.currentStage === 'stage3') return 'stage3';
-  if (args.stressedAnnualPd >= Math.max(1e-6, args.baseAnnualPd) * args.sicrThreshold || args.gdpGrowthMoM <= -0.0025) return 'stage2';
+  if (args.stressedAnnualPd >= Math.max(1e-6, args.baseAnnualPd) * args.sicrThreshold) return 'stage2';
   if (args.currentStage === 'stage2' && args.stressedAnnualPd > Math.max(1e-6, args.baseAnnualPd) * 1.1) return 'stage2';
   return 'stage1';
 };
@@ -869,7 +870,6 @@ export const stepLoanCohorts = (args: {
           currentStage: cohort.stage,
           stressedAnnualPd: annualPd,
           baseAnnualPd: cohort.annualPd,
-          gdpGrowthMoM: state.market.gdpGrowthMoM,
           sicrThreshold,
         });
 

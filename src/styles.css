@@ -1382,3 +1382,94 @@ progress::-webkit-progress-bar { background:var(--border); border-radius:5px; } 
 .quarterly-reviews span { font-size:14px; font-weight:600; }
 @media(max-width:900px) { .quarterly-reviews { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:480px) { .quarterly-reviews { grid-template-columns:1fr; } }
+
+/* City management: a persistent time console, an information map and focused departments. */
+:root { --bg:#e8eff4; --bg-2:#e2ebf1; --bg-3:#f2f7fa; --text:#18364b; --muted:#4a6374; --dim:#5a7385; --accent:#0875a5; --accent-2:#06628d; --border:#c6d7e2; --border-strong:#93b2c5; --surface-tint:linear-gradient(180deg,#fff,#f3f8fb); --table-row-even:#f3f7fa; --table-row-hover:#e5f2fa; --positive:#167343; }
+[data-theme='dark'] { --bg:#0f2231; --bg-1:#152e40; --bg-2:#1c394e; --bg-3:#23465d; --panel:#172f42; --panel-strong:#1b394e; --text:#e8f3fa; --muted:#bed0dc; --dim:#a8c0cf; --accent:#70cef5; --accent-2:#9ddff8; --border:#34556c; --border-strong:#5e8198; --positive:#77daa7; --warning:#f1b14d; --danger:#ff8078; --surface-tint:linear-gradient(180deg,#18384d,#122c3e); }
+body { font-size:16px; }
+h2 { font-size:21px; } h3 { font-size:18px; }
+button,input,select { font:inherit; }
+button,summary { touch-action:manipulation; }
+button:focus-visible,summary:focus-visible,select:focus-visible,input:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.button { min-height:40px; font-size:14px; }
+.app-shell { max-width:1560px; padding:24px 32px 50px; }
+.masthead { margin-bottom:14px; }
+.brand-symbol { background:#0875a5; color:white; }
+.brand small { letter-spacing:.13em; font-size:10px; }
+.masthead-actions>.pill { display:none; }
+.time-console { position:sticky; top:0; z-index:40; display:flex; flex-wrap:wrap; align-items:center; gap:12px; background:var(--panel-strong); border:1px solid var(--border); border-top:4px solid var(--accent); border-radius:12px; padding:14px 18px 10px; box-shadow:0 6px 20px #15354b15; }
+.clock-date { min-width:130px; display:grid; font-size:16px; }
+.clock-date>span { font-size:12px; color:var(--muted); }
+.clock-buttons { display:flex; flex-wrap:wrap; gap:6px; }
+.clock-speed { display:flex; gap:6px; align-items:center; font-size:13px; }
+.clock-speed select { width:auto; padding:6px; }
+.clock-safety { display:flex; gap:7px; align-items:center; font-size:13px; }
+.clock-safety input { width:16px; height:16px; }
+.clock-status { flex-basis:100%; border-top:1px solid var(--border); padding-top:7px; font-size:13px; color:var(--muted); }
+.attention-banner { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:14px 18px; background:var(--panel); border:1px solid var(--warning); border-left:5px solid var(--warning); border-radius:10px; margin:12px 0; }
+.attention-banner>div { display:grid; gap:3px; flex:1; min-width:240px; }
+.attention-banner span { font-size:14px; }
+.tabs { align-items:center; gap:8px; flex-wrap:wrap; overflow:visible; margin-bottom:20px; }
+.tab-button { font-size:14px; min-height:44px; }
+.report-menu { display:flex; gap:10px; align-items:center; font-size:13px; margin-left:auto; }
+.report-menu select { max-width:170px; font-size:14px; }
+.help-context-strip { font-size:13px; box-shadow:none; padding:10px 16px; }
+.city-viewport { position:relative; min-height:420px; isolation:isolate; border-radius:18px; overflow:hidden; background:#102e3d url('./assets/bank-district.webp') center 52%/cover no-repeat; color:#fff; border:1px solid #567c8e; }
+.city-viewport::before { content:''; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,#062231ef 0%,#0622319c 35%,#06223105 70%),linear-gradient(0deg,#062231ab,transparent 35%); }
+.city-title { padding:30px 34px 12px; }
+.city-title h1 { font-size:clamp(26px,3vw,38px); letter-spacing:-.03em; margin:10px 0 4px; }
+.city-title p { margin:0; color:#c7e2ee; }
+.city-lenses { display:flex; gap:5px; margin:12px 34px; flex-wrap:wrap; }
+.city-lenses button { border:1px solid #a8d1e37a; border-radius:7px; padding:9px 12px; color:#d2eaf4; background:#092b3fd9; font-size:13px; cursor:pointer; }
+.city-lenses button.active { background:#d9f3ff; color:#123e54; border-color:#d9f3ff; }
+.city-inspector { margin:18px 34px 48px; width:325px; max-width:calc(100% - 68px); display:grid; gap:5px; }
+.city-inspector strong { font-size:32px; font-weight:650; line-height:1.2; }
+.city-inspector small { text-transform:uppercase; font-size:11px; letter-spacing:.12em; color:#bdddea; }
+.city-inspector p { font-size:14px; line-height:1.55; color:#deedf4; margin:4px 0 8px; }
+.city-inspector .button { justify-self:start; }
+.city-location { position:absolute; right:22px; bottom:15px; font-size:11px; letter-spacing:.03em; color:#d4e4eb; }
+.board-kpis { margin-top:0; border-radius:12px; }
+.board-kpi { min-height:123px; }
+.board-kpi strong { font-size:28px; }
+.board-kpi span,.board-kpi small { font-size:13px; }
+.management-grid { display:grid; grid-template-columns:minmax(0,1.9fr) minmax(270px,1fr); gap:18px; }
+.section-heading { flex-wrap:wrap; gap:12px; }
+.department-tabs { display:flex; flex-wrap:wrap; gap:6px; }
+.history-empty { padding:42px 20px; max-width:600px; color:var(--muted); }
+.history-empty strong { color:var(--text); font-size:20px; }
+.profit-timeline { min-height:190px; display:flex; gap:12px; overflow-x:auto; padding:22px 0 10px; align-items:flex-end; }
+.profit-period { flex:1; min-width:72px; display:grid; text-align:center; font-size:12px; }
+.profit-period>span { font-weight:650; margin-bottom:5px; }
+.profit-period>small { color:var(--muted); }
+.profit-track { height:90px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.profit-track>div { width:55%; background:var(--accent); border-radius:4px 4px 0 0; }
+.profit-track>div.negative { background:var(--danger); }
+.management-guide>button { display:grid; gap:5px; padding:14px 0; width:100%; text-align:left; background:none; color:var(--text); border:0; border-bottom:1px solid var(--border); cursor:pointer; }
+.management-guide>button span { font-size:13px; color:var(--muted); }
+.strategy-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.strategy-list details { padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-3); }
+.strategy-list details.selected { border-color:var(--accent); }
+.strategy-list summary { display:flex; justify-content:space-between; gap:10px; align-items:center; cursor:pointer; font-size:13px; }
+.strategy-list summary>span:first-child { display:grid; gap:5px; }
+.strategy-list summary small { color:var(--muted); }
+.strategy-list summary strong { font-size:16px; }
+.strategy-list p { font-size:14px; }
+summary { cursor:pointer; }
+.table-scroll { overflow-x:auto; }
+.actions-handle { display:none; }
+.actions-drawer { width:min(700px,100vw); max-width:100vw; }
+.actions-drawer-content { padding:24px; gap:16px; }
+.actions-drawer-header { padding:0; }
+.policy-fields { display:grid; gap:20px; }
+.policy-fields .field { gap:7px; }
+.policy-fields input { max-width:260px; font-size:18px; }
+.policy-fields small { font-size:13px; line-height:1.5; color:var(--muted); }
+.policy-persistence { display:grid; gap:5px; font-size:13px; color:var(--muted); }
+.causal-strip { padding:14px; border-left:3px solid var(--accent); background:var(--bg-3); margin:0; font-size:14px; }
+@media(max-width:1000px) { .time-console { position:relative; } .masthead-actions>.muted { display:none; } .report-menu { margin-left:0; } .management-grid { grid-template-columns:1fr; } }
+@media(max-width:600px) { .app-shell { padding:12px; } .masthead { flex-wrap:wrap; gap:10px; } .masthead-actions { margin-left:auto; } .brand small { font-size:8px; } .time-console { padding:12px; gap:9px; } .clock-buttons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; } .clock-buttons>.button:last-child { grid-column:1/-1; } .city-viewport { min-height:440px; background-position:61% center; } .city-viewport::before { background:linear-gradient(90deg,#082b3bec,#082b3b78); } .city-title { padding:24px 20px 8px; } .city-lenses { margin:12px 20px; } .city-inspector { margin:18px 20px 50px; max-width:calc(100% - 40px); } .city-location { left:20px; right:20px; } .strategy-list { grid-template-columns:1fr; } .board-kpi { padding:16px; } .board-kpi strong { font-size:23px; } .actions-drawer-content { padding:16px; } .tabs { gap:3px; } .tab-button { padding:8px 10px; } .report-menu { width:100%; } .report-menu select { flex:1; max-width:none; } }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none!important; animation:none!important; scroll-behavior:auto!important; } }
+.profit-track { height:140px; position:relative; border:0; }
+.profit-track::after { content:''; position:absolute; top:50%; width:100%; border-top:1px solid var(--border-strong); }
+.profit-track>div { position:absolute; bottom:50%; max-height:65px; }
+.profit-track>div.negative { bottom:auto; top:50%; border-radius:0 0 4px 4px; }

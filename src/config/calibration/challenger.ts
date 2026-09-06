@@ -43,8 +43,9 @@ export const createChallengerCalibration = (): CalibrationPack => {
     envelope: {
       cet1Ratio: [0.07, 0.45],
       lcr: [0.85, 8.0],
-      // 2026 prescribed ASF/RSF and contractual maturity treatment; see model-basis.md.
-      nsfr: [0.85, 2.8],
+      // Prescribed ASF/RSF; 24m trajectory is 2.814 after franchise aggregation
+      // correction. The upper envelope is a calibration guard, not a prudential limit.
+      nsfr: [0.85, 2.9],
       roe: [-0.08, 0.3],
     },
   };

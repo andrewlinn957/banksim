@@ -23,10 +23,10 @@ describe('First-year mandate', () => {
       for(const [key,value] of Object.entries(d.changes))if(key.endsWith('Rate'))expect(parseRateInput(value).error).toBeUndefined();
     }
   });
-  it('renders the monthly decision flow and disables the close action for invalid input', () => {
+  it('renders the management surface with invalid-plan guidance and no forced monthly action', () => {
     const noop=()=>{};
-    const markup=renderToStaticMarkup(<Boardroom state={initialState} history={[initialState]} selected={[]} campaign hasErrors onDecision={noop} onRun={noop} onPlan={noop} onRestart={noop} onContinue={noop} onNavigate={noop}/>);
-    expect(markup).toContain('Close month 1');expect(markup).toContain('disabled');expect(markup).toContain('Your plan has an invalid input');expect(markup).toContain('What’s on the agenda?');
+    const markup=renderToStaticMarkup(<Boardroom state={initialState} history={[initialState]} selected={[]} hasErrors onDecision={noop} onPlan={noop} onNavigate={noop}/>);
+    expect(markup).toContain('Your plan has an invalid input');expect(markup).toContain('Bank information layers');expect(markup).toContain('Open departments');expect(markup).not.toContain('Close month 1');
   });
 });
 

@@ -114,9 +114,14 @@ describe('Simulation correctness guardrails', () => {
     stressed.behaviour.conductRiskScore = 1.4;
     stressed.behaviour.fundingConfidenceState = 'stressed';
 
+    // Keep the fixture inside regulatory buffers but clearly below a conservative
+    // internal target, independently of the career cost calibration.
+    const warningConfig = structuredClone(baseConfig);
+    warningConfig.riskLimits.capitalPolicy.internalTargetBaseBuffer = .05;
+    warningConfig.riskLimits.capitalPolicy.internalTargetMaxBuffer = .06;
     const { events } = engine.step({
       state: stressed,
-      config: baseConfig,
+      config: warningConfig,
       actions: [{ type: 'setCapitalPolicy', dividendPayoutRatio: 0.9, at1CouponMode: 'auto' }],
       shocks: [],
     });

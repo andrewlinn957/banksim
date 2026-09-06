@@ -4,9 +4,9 @@ BankSim is a React/Vite banking simulator game. You run a UK bank month by month
 
 The simulator models banking mechanics at a management-game level: deposits, loan growth, funding, liquidity ratios, regulatory capital, credit losses, conduct risk, securities marks, scenario shocks, and an equity price signal.
 
-Start in the Boardroom: complete a twelve-month mandate, choose proposals with explicit commercial trade-offs, and inspect the results after every monthly close. Earn stars for shareholder return, consistent profits and franchise strength, subject to remaining within prudential minima. Quarterly badges give shorter goals; a capital recovery proposal appears when headroom runs short. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge. Then continue in the sandbox or start another year.
+Start at Headquarters: set standing policies in Customers, Lending, Capital and Treasury, then run to quarter end, year end or continuously on auto. The time controls remain visible and pause when buffers need attention. Quarterly and annual reports show the bank developing over time; first-year stars and badges are optional goals and do not end the career.
 
-The redesigned interface uses a generated Threadneedle Street bank illustration, clearer typography and responsive decision cards.
+The interface uses a generated Threadneedle Street bank illustration, city information layers, a signed profit timeline and focused department panels. See [management interface](docs/management-interface.md) and [career pacing](docs/career-pacing.md) for the design and calibration evidence. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge.
 
 See [model basis and remaining gaps](docs/model-basis.md) for the 2026 PRA assumptions and funded-loan IFRS 9 treatment, and [art direction](docs/art-direction.md) for the image prompt.
 
@@ -27,9 +27,9 @@ Your job is to manage a working bank through normal conditions and stress scenar
 
 The game ends on capital-minimum or actual cash failures. This is a gameplay condition, not a legal resolution assessment. Liquidity breaches prompt recovery warnings. Warnings and weak metrics do not always end the game immediately, but they usually make future turns harder.
 
-## Monthly Decisions
+## Standing policies and transactions
 
-Each month, you choose commercial and financial actions before advancing the simulation. Typical decisions include:
+Policies continue until you change them. Debt, equity and swap transactions execute once and clear from the plan. Typical decisions include:
 
 - setting retail and corporate deposit rates
 - setting mortgage and corporate lending rates
