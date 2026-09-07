@@ -57,13 +57,15 @@ const run = (config: SimulationConfig, months: number, managed: boolean) => {
     ].reduce((sum, product) => sum + balance(state, product), 0) / 1e9,
     cet1: state.risk.riskMetrics.cet1Ratio,
     leverage: state.risk.riskMetrics.leverageRatio,
+    lcr: state.risk.riskMetrics.lcr,
+    nsfr: state.risk.riskMetrics.nsfr,
     franchise: state.behaviour.depositFranchiseStrength,
   };
 };
 
 describe('temporary corporate demand calibration', () => {
-  it('compares corporate demand replacement rates', () => {
-    const outputs = [0.017, 0.020, 0.023, 0.026].map((rate) => {
+  it('compares higher corporate demand replacement rates', () => {
+    const outputs = [0.03, 0.035, 0.04, 0.045, 0.05].map((rate) => {
       const config = structuredClone(baseConfig);
       config.behaviour.loanPipelineByProduct![AssetProductType.CorporateLoans]!.baseDemandRateMonthly = rate;
       return {
@@ -72,7 +74,7 @@ describe('temporary corporate demand calibration', () => {
         passiveFiveYear: run(config, 60, false),
       };
     });
-    console.log('CORPORATE_DEMAND_SWEEP', JSON.stringify(outputs));
+    console.log('CORPORATE_DEMAND_SWEEP_HIGH', JSON.stringify(outputs));
     outputs.forEach((output) => expect(output.managedTenYear.failureMonth).toBe(null));
   }, 120000);
 });
