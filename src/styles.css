@@ -1369,6 +1369,37 @@ summary { cursor:pointer; }
 
 .office-status small { display:block; color:var(--muted); font-size:12px; margin-top:5px; }
 .capital-dashboard { margin-top:22px; }
+.nsfr-dashboard { display:grid; gap:18px; margin-top:22px; }
+.nsfr-top { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); gap:16px; align-items:start; }
+.nsfr-comparison { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(210px,1fr); gap:12px; align-items:center; }
+.nsfr-stack-chart { width:100%; display:block; }
+.nsfr-stack-chart text { fill:var(--text); font-size:14px; }
+.nsfr-stack-chart .nsfr-stack-value { fill:white; }
+.nsfr-comparison h4 { font-size:14px; margin:12px 0; }
+.nsfr-bottom { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,.95fr); gap:16px; align-items:start; }
+.nsfr-table table { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; }
+.nsfr-table th,.nsfr-table td { padding:10px 8px; border:1px solid var(--border); }
+.nsfr-table th { text-align:left; white-space:normal; line-height:1.4; }
+.nsfr-table tbody th { font-weight:400; }
+.nsfr-table td { text-align:right; white-space:nowrap; }
+.nsfr-table thead,.nsfr-table tfoot { background:var(--bg-2); font-weight:700; }
+.nsfr-table tbody tr:nth-child(even) { background:color-mix(in srgb,var(--bg-2) 35%,var(--panel)); }
+.nsfr-breakdowns { display:grid; gap:16px; }
+.nsfr-horizontal { display:grid; gap:14px; font-size:14px; }
+.nsfr-horizontal>div { display:grid; grid-template-columns:1fr 1fr auto; gap:9px; align-items:center; }
+.nsfr-bar-track { height:17px; background:var(--bg-2); }
+.nsfr-bar-track i { display:block; height:100%; border-radius:2px; }
+.nsfr-key { display:flex; gap:20px; font-size:14px; }
+.nsfr-key>span:first-child { color:#268e69; }.nsfr-key>span:last-child { color:#8060c5; }
+.nsfr-maturity { display:grid; gap:12px; font-size:13px; }
+.nsfr-maturity>div>strong { display:block; margin-bottom:5px; font-size:14px; }
+.nsfr-maturity>div>div { height:22px; position:relative; background:var(--bg-2); margin:3px 0; }
+.nsfr-maturity i { display:block; height:100%; opacity:.35; }
+.nsfr-maturity span { position:absolute; inset:2px 7px; text-align:right; font-variant-numeric:tabular-nums; }
+.nsfr-dashboard .muted { font-size:14px; line-height:1.55; }
+.nsfr-factor-note { margin:0; }
+@media(max-width:1400px) { .nsfr-bottom { grid-template-columns:repeat(2,minmax(0,1fr)); } .nsfr-breakdowns { grid-column:1/-1; grid-template-columns:repeat(2,minmax(0,1fr)); } .nsfr-comparison { grid-template-columns:1fr; } }
+@media(max-width:850px) { .nsfr-top,.nsfr-bottom,.nsfr-breakdowns { grid-template-columns:1fr; } }
 .lcr-dashboard { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); align-items:start; gap:16px; margin-top:22px; }
 .lcr-working-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
 .lcr-dashboard h4 { margin:16px 0 8px; font-size:15px; }
