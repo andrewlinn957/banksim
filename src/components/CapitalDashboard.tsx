@@ -67,6 +67,7 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
         </svg>
         {c.name==='CET1'&&<div className="capital-target-key">{targets.map((t,i)=><span key={t.name}><b style={{color:t.color}}>{i===0?'▼':'▲'}</b> {t.name} <strong>{formatPct(t.ratio)}</strong></span>)}</div>}
         <div className="capital-amounts"><div><b>{formatCurrency(c.amount)}</b><span>actual</span></div><div><b>{formatCurrency(c.requiredAmount)}</b><span>required</span></div><div><b className="capital-gap">{signedMoney(c.amount-c.requiredAmount)}</b><span>headroom</span></div></div>
+        <p className="capital-minimum">Minimum including Pillar 2A: <strong>{formatPct(c.minimum)}</strong> · {formatCurrency(c.minimum*d.rwa)}</p>
       </article>;
     })}</div>
     <div className="capital-detail-grid">
@@ -84,6 +85,7 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
       <section className="capital-card"><h3>Requirement breakdown</h3><div className="table-scroll"><table><thead><tr><th>CET1 requirement</th><th>% of RWA</th><th>Amount</th></tr></thead><tbody>{d.rows.map(r=><tr key={r.label}><td>{r.label}</td><td>{formatPct(r.ratio)}</td><td>{formatCurrency(r.ratio*d.rwa)}</td></tr>)}<tr className="total-row"><th>Total CET1 requirement</th><td>{formatPct(d.cards[0].requirement)}</td><td>{formatCurrency(d.cards[0].requiredAmount)}</td></tr></tbody></table></div>
         <div className="table-scroll"><table><tbody>{d.cards.slice(1).map(c=><tr key={c.name}><th>{c.name} requirement</th><td>{formatPct(c.requirement)}</td><td>{formatCurrency(c.requiredAmount)}</td></tr>)}</tbody></table></div>
         <p className="muted">Requirements include combined buffers. CET1 used to cover other capital minima is shown explicitly; Tier 1 also covers the total capital minimum while no Tier 2 is issued.</p>
+        <p className="capital-payout"><strong>Bank policy payout cap: {formatPct(state.risk.riskMetrics.maxPayoutRatio)}</strong><br/>Maximum share of positive profit available for distributions under bank policy. This is not the PRA maximum distributable amount calculation.</p>
       </section>
     </div>
   </div>;

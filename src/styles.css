@@ -1406,6 +1406,14 @@ summary { cursor:pointer; }
 .capital-detail-grid .table-scroll { margin-bottom:18px; }
 .capital-detail-grid .muted { font-size:14px; line-height:1.5; }
 .capital-target-key { display:grid; gap:6px; font-size:13px; margin:-4px 0 16px; color:var(--muted); }
+.capital-history,.risk-appetite-editor { margin-top:20px; }
+.history-toggles { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
+.history-legend { display:flex; flex-wrap:wrap; gap:16px; font-size:14px; margin:18px 0; }
+.history-legend i { display:inline-block; width:22px; border-top:3px solid; margin-right:6px; vertical-align:middle; }
+.appetite-fields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; }
+.appetite-fields input { width:100%; }
+.capital-minimum,.capital-payout { font-size:14px; color:var(--muted); line-height:1.6; border-top:1px solid var(--border); padding-top:14px; }
+@media(max-width:760px) { .appetite-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .capital-target-key strong { color:var(--text); margin-left:5px; }
 .capital-composition text { font-size:16px; }
 @media(max-width:1150px) { .capital-cards { grid-template-columns:1fr; } .capital-detail-grid { grid-template-columns:1fr; } .capital-bullet { max-height:80px; } }
