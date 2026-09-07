@@ -532,7 +532,7 @@ const App = () => {
       issueLTDebtAmount: '',
       issueEquityAmount: '',
       dividendPayoutRatio: '0.70',
-      at1CouponMode: 'pay',
+      at1CouponMode: 'auto',
       hedgeDirection: 'none',
       hedgeNotional: '',
       hedgeFixedRate: '',
@@ -1181,7 +1181,6 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     'corporateDepositRate',
     'mortgageRate',
     'corporateLoanRate',
-    'hedgeFixedRate',
   ];
   rateFields.forEach((field) => {
     const parsed = parseRateInput(state[field]);
@@ -1246,13 +1245,8 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     }
   }
 
-  if (state.hedgeDirection !== 'none') {
-    if ((values.hedgeNotional ?? 0) <= 0) {
-      errors.hedgeNotional = 'Hedge notional must be greater than zero';
-    }
-    if (values.hedgeFixedRate === undefined) {
-      errors.hedgeFixedRate = 'Provide a fixed rate for hedge entry';
-    }
+  if (state.hedgeDirection !== 'none' && (values.hedgeNotional ?? 0) <= 0) {
+    errors.hedgeNotional = 'Hedge notional must be greater than zero';
   }
 
   return {
@@ -1341,19 +1335,18 @@ const buildActionsFromParsed = (
   actions.push({
     type: 'setCapitalPolicy',
     dividendPayoutRatio: payoutRatio,
-    at1CouponMode: formState.at1CouponMode,
+    at1CouponMode: 'auto',
   });
   if (
     formState.hedgeDirection !== 'none' &&
     values.hedgeNotional !== undefined &&
-    values.hedgeNotional > 0 &&
-    values.hedgeFixedRate !== undefined
+    values.hedgeNotional > 0
   ) {
     actions.push({
       type: 'enterHedge',
       direction: formState.hedgeDirection,
       notional: values.hedgeNotional,
-      fixedRate: values.hedgeFixedRate,
+      fixedRate: currentState.market.riskFreeShort,
       maturityMonths: values.hedgeMaturityMonths ? Math.max(1, Math.round(values.hedgeMaturityMonths)) : undefined,
     });
   }

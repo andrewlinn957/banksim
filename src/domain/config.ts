@@ -85,6 +85,20 @@ export interface LoanPipelineParameters {
   underwritingSensitivity: number;
   drawdownRateMonthly: number;
   cancellationRateMonthly: number;
+  /** External market stock available to this product before macro scaling. */
+  referenceMarketSize?: number;
+  /** Bank share of the reference market at neutral pricing and underwriting. */
+  referenceBankShare?: number;
+  neutralGdpGrowthMonthly?: number;
+  neutralUnemploymentRate?: number;
+  neutralBorrowerRate?: number;
+  neutralCreditSpread?: number;
+  gdpMarketSensitivity?: number;
+  unemploymentMarketSensitivity?: number;
+  borrowingCostMarketSensitivity?: number;
+  creditSpreadMarketSensitivity?: number;
+  minAddressableMarketMultiplier?: number;
+  maxAddressableMarketMultiplier?: number;
 }
 
 export interface AdverseSelectionLifecycleParameters {

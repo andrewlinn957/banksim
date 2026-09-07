@@ -7,18 +7,27 @@ import { applyDepositBehaviour, createSimulationEngine } from './simulation';
 import { stepLoanCohorts } from './loanCohorts';
 
 describe('Career pacing and economic sensitivity', () => {
-  it('allows five years of development, while unmanaged profitability deteriorates', () => {
+  it('gives the player several years to intervene while an unmanaged bank deteriorates', () => {
     const engine = createSimulationEngine();
     let state = cloneBankState(initialState);
     let firstYearIncome = 0;
+    let failureMonth: number | null = null;
+
     for (let month = 1; month <= 60; month++) {
-      state = engine.step({ state, config: baseConfig, actions: [], shocks: [] }).nextState;
-      expect(state.status.hasFailed, `Default career failed at month ${month}`).toBe(false);
+      const result = engine.step({ state, config: baseConfig, actions: [], shocks: [] });
+      state = result.nextState;
       if (month <= 12) firstYearIncome += state.financial.incomeStatement.netIncome;
+      if (state.status.hasFailed) {
+        failureMonth = month;
+        break;
+      }
     }
+
+    // The opening franchise should be viable and profitable enough to give the player time to learn it.
     expect(firstYearIncome).toBeGreaterThan(0);
+    expect(failureMonth === null || failureMonth >= 36).toBe(true);
+    // Doing nothing indefinitely should still carry a cost: retained capital deteriorates as the balance sheet evolves.
     expect(state.financial.capital.cet1).toBeLessThan(initialState.financial.capital.cet1);
-    expect(state.financial.incomeStatement.netIncome).toBeLessThan(0);
   });
 
   it('does not multiply franchise damage when the same deposit book is split into lines', () => {

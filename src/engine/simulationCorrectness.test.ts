@@ -98,7 +98,7 @@ describe('Simulation correctness guardrails', () => {
     expect(lineAfter.interestRate).toBeCloseTo(expectedBlendedRate, 10);
   });
 
-  it('emits regulatory warnings once per step even with pre/post metric passes', () => {
+  it('emits internal warnings once per step and suppresses removed concentration limits', () => {
     const engine = createSimulationEngine();
     const stressed = cloneBankState(initialState);
     const cash = stressed.financial.balanceSheet.items.find((line) => line.productType === AssetProductType.CashReserves);
@@ -134,7 +134,7 @@ describe('Simulation correctness guardrails', () => {
     );
 
     expect(internalTargetWarnings.length).toBe(1);
-    expect(concentrationWarnings.length).toBe(1);
+    expect(concentrationWarnings.length).toBe(0);
   });
 
   it('normalises non-integer step length and advances dates by calendar month', () => {

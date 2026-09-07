@@ -64,7 +64,18 @@ export const rebalanceCash = (state: BankState): void => {
   cash.balance = Math.max(0, liabilities + equity - assetsExCash);
 };
 
+const calibrateAddressableMarketShares = (state: BankState, config: SimulationConfig): void => {
+  [AssetProductType.Mortgages, AssetProductType.CorporateLoans].forEach((productType) => {
+    const pipeline = config.behaviour.loanPipelineByProduct?.[productType];
+    const marketSize = pipeline?.referenceMarketSize;
+    if (!pipeline || !marketSize || marketSize <= 0) return;
+    const openingBook = state.financial.balanceSheet.items.find((line) => line.productType === productType)?.balance ?? 0;
+    pipeline.referenceBankShare = Math.max(0, Math.min(1, openingBook / marketSize));
+  });
+};
+
 export const refreshRiskState = (state: BankState, config: SimulationConfig): void => {
+  calibrateAddressableMarketShares(state, config);
   state.financial.provisionStock = calculateProvisionTargetFromCohorts({ state, config });
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
