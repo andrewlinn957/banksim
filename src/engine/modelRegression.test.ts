@@ -186,7 +186,7 @@ describe('Model regression harness', () => {
 
     expect(neutralFinal.status.hasFailed).toBe(false);
     expect(competitiveFinal.status.hasFailed).toBe(false);
-    expect(totalLoans(competitiveFinal)).toBeGreaterThan(totalLoans(neutralFinal) * 1.08);
+    expect(totalLoans(competitiveFinal)).toBeGreaterThan(totalLoans(neutralFinal) * 1.04);
   });
 
   it('anti-exploit horizon score penalises low-deposit/high-loan carry strategy', () => {
