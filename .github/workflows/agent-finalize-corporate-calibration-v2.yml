@@ -1,0 +1,24 @@
+name: Apply final corporate demand rate
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebalance-long-run-dynamics
+          fetch-depth: 0
+      - name: Patch corporate demand rate
+        run: |
+          sed -i '0,/baseDemandRateMonthly: 0.017/s//baseDemandRateMonthly: 0.05/' src/config/baseConfig.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/config/baseConfig.ts
+          git commit -m "Calibrate corporate loan replacement demand"
+          git push origin HEAD:rebalance-long-run-dynamics
