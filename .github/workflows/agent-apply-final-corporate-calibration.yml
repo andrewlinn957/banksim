@@ -1,0 +1,42 @@
+name: Apply final corporate calibration
+
+on:
+  push:
+    branches:
+      - rebalance-long-run-dynamics
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebalance-long-run-dynamics
+          fetch-depth: 0
+      - name: Apply calibrated corporate demand parameters
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/config/baseConfig.ts')
+          text = path.read_text()
+          old = '''    [AssetProductType.CorporateLoans]: {
+      baseDemandRateMonthly: 0.05,
+      pricingSensitivity: 25,
+'''
+          new = '''    [AssetProductType.CorporateLoans]: {
+      baseDemandRateMonthly: 0.026,
+      pricingSensitivity: 65,
+'''
+          if old not in text:
+              raise SystemExit('corporate calibration block not found')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/agent-apply-final-corporate-calibration.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Finalize corporate loan replacement calibration"
+          git push origin HEAD:rebalance-long-run-dynamics
