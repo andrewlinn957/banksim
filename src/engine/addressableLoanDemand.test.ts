@@ -9,6 +9,12 @@ const item = (state: typeof initialState, product: AssetProductType) =>
   state.financial.balanceSheet.items.find((row) => row.productType === product)!;
 
 describe('Addressable loan demand', () => {
+  it('pins the calibrated neutral corporate replacement rate and pricing capture', () => {
+    const corporate = baseConfig.behaviour.loanPipelineByProduct?.[AssetProductType.CorporateLoans];
+    expect(corporate?.baseDemandRateMonthly).toBe(0.026);
+    expect(corporate?.pricingSensitivity).toBe(65);
+  });
+
   it('does not collapse just because the bank current corporate book is smaller', () => {
     const full = cloneBankState(initialState);
     const small = cloneBankState(initialState);
