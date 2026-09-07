@@ -54,28 +54,39 @@ const run = (config: SimulationConfig, start: BankState, months: number, managed
   };
 };
 
-const overrideCorporate = (config: SimulationConfig, pricingSensitivity: number) => {
+const overrideCorporate = (config: SimulationConfig, baseDemandRateMonthly: number, pricingSensitivity: number) => {
   const cloned = structuredClone(config);
   const corporate = cloned.behaviour.loanPipelineByProduct![AssetProductType.CorporateLoans]!;
-  corporate.baseDemandRateMonthly = 0.03;
+  corporate.baseDemandRateMonthly = baseDemandRateMonthly;
   corporate.pricingSensitivity = pricingSensitivity;
   return cloned;
 };
 
 describe('temporary corporate pricing-capture calibration', () => {
-  it('balances passive runway against an aggressive managed pricing strategy', () => {
+  it('tests lower neutral demand with stronger deliberate price capture', () => {
     const challenger = calibrationPacks.find((pack) => pack.id === 'challenger');
     if (!challenger) throw new Error('Missing challenger pack');
-    const outputs = [40, 50, 60, 70].map((pricingSensitivity) => {
-      const config = overrideCorporate(baseConfig, pricingSensitivity);
+    const candidates = [
+      { baseDemandRateMonthly: 0.026, pricingSensitivity: 65, discount: 0.015 },
+      { baseDemandRateMonthly: 0.024, pricingSensitivity: 75, discount: 0.015 },
+      { baseDemandRateMonthly: 0.022, pricingSensitivity: 85, discount: 0.016 },
+      { baseDemandRateMonthly: 0.020, pricingSensitivity: 100, discount: 0.015 },
+    ];
+    const outputs = candidates.map((candidate) => {
+      const config = overrideCorporate(baseConfig, candidate.baseDemandRateMonthly, candidate.pricingSensitivity);
       return {
-        pricingSensitivity,
-        managedTenYearAt120bpDiscount: run(config, initialState, 120, true, 0.012),
+        ...candidate,
+        managedTenYear: run(config, initialState, 120, true, candidate.discount),
         passiveFiveYear: run(config, initialState, 60, false),
-        challengerTwoYear: run(overrideCorporate(challenger.config, pricingSensitivity), challenger.initialState, 24, false),
+        challengerTwoYear: run(
+          overrideCorporate(challenger.config, candidate.baseDemandRateMonthly, candidate.pricingSensitivity),
+          challenger.initialState,
+          24,
+          false
+        ),
       };
     });
-    console.log('CORPORATE_CAPTURE_SWEEP_REFINED', JSON.stringify(outputs));
-    outputs.forEach((output) => expect(output.managedTenYearAt120bpDiscount.failureMonth).toBe(null));
+    console.log('CORPORATE_CAPTURE_SWEEP_LOWER_BASE', JSON.stringify(outputs));
+    outputs.forEach((output) => expect(output.managedTenYear.failureMonth).toBe(null));
   }, 120000);
 });
