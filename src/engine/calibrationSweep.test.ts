@@ -15,62 +15,43 @@ const deposits = (state: BankState) =>
   balance(state, LiabilityProductType.RetailSavingsDeposits) +
   balance(state, LiabilityProductType.CorporateOperatingDeposits) +
   balance(state, LiabilityProductType.CorporateNonOperatingDeposits);
-const buckets = (state: BankState) =>
-  Object.values(state.loanCohorts ?? {}).reduce((sum, value) => sum + (value?.length ?? 0), 0) +
-  Object.values(state.workoutPipelines ?? {}).reduce((sum, value) => sum + (value?.length ?? 0), 0);
 
-const applyFlatDepositCalibration = (config: SimulationConfig) => {
+const applyFlatDeposits = (config: SimulationConfig, tighter = false) => {
   Object.assign(config.behaviour.depositByProduct![LiabilityProductType.RetailTransactionalDeposits]!, {
-    baselineGrowthMonthly: 0.002,
-    baseChurnMonthly: 0.0035,
-    policyRateBeta: 0.02,
-    competitorSensitivity: 0.45,
+    baselineGrowthMonthly: 0.002, baseChurnMonthly: tighter ? 0.004 : 0.0035, policyRateBeta: 0.02, competitorSensitivity: 0.45,
   });
   Object.assign(config.behaviour.depositByProduct![LiabilityProductType.RetailSavingsDeposits]!, {
-    baselineGrowthMonthly: 0.0023,
-    baseChurnMonthly: 0.002,
-    policyRateBeta: 0,
-    competitorSensitivity: 0.4,
+    baselineGrowthMonthly: tighter ? 0.002 : 0.0023, baseChurnMonthly: 0.002, policyRateBeta: 0, competitorSensitivity: 0.4,
   });
   Object.assign(config.behaviour.depositByProduct![LiabilityProductType.CorporateOperatingDeposits]!, {
-    baselineGrowthMonthly: 0.0015,
-    baseChurnMonthly: 0.003,
-    policyRateBeta: 0,
-    competitorSensitivity: 0.75,
+    baselineGrowthMonthly: tighter ? 0.0012 : 0.0015, baseChurnMonthly: 0.003, policyRateBeta: 0, competitorSensitivity: 0.75,
   });
   Object.assign(config.behaviour.depositByProduct![LiabilityProductType.CorporateNonOperatingDeposits]!, {
-    baselineGrowthMonthly: 0.001,
-    baseChurnMonthly: 0.006,
-    policyRateBeta: 0,
-    competitorSensitivity: 0.8,
+    baselineGrowthMonthly: 0.001, baseChurnMonthly: tighter ? 0.007 : 0.006, policyRateBeta: 0, competitorSensitivity: 0.8,
   });
 };
 
-const configureBalancedCandidate = (config: SimulationConfig) => {
-  applyFlatDepositCalibration(config);
-  config.global.fixedOperatingCostPerMonth = 0.014e9;
-  config.behaviour.costModel!.fixedCostPerMonth = 0.014e9;
+const configure = (config: SimulationConfig, mortgageShare: number, corporateShare: number, fixedCost = 0.014e9, tighterDeposits = false) => {
+  applyFlatDeposits(config, tighterDeposits);
+  config.global.fixedOperatingCostPerMonth = fixedCost;
+  config.behaviour.costModel!.fixedCostPerMonth = fixedCost;
+  config.behaviour.loanPipelineByProduct![AssetProductType.Mortgages]!.referenceBankShare = mortgageShare;
+  config.behaviour.loanPipelineByProduct![AssetProductType.CorporateLoans]!.referenceBankShare = corporateShare;
 };
 
-const summary = (state: BankState, failureMonth: number | null, equityRaised = 0) => {
-  const mortgages = balance(state, AssetProductType.Mortgages) / 1e9;
-  const corporate = balance(state, AssetProductType.CorporateLoans) / 1e9;
-  return {
-    failureMonth,
-    mortgages,
-    corporate,
-    loans: mortgages + corporate,
-    deposits: deposits(state) / 1e9,
-    cash: balance(state, AssetProductType.CashReserves) / 1e9,
-    cet1: state.risk.riskMetrics.cet1Ratio,
-    leverage: state.risk.riskMetrics.leverageRatio,
-    lcr: state.risk.riskMetrics.lcr,
-    nsfr: state.risk.riskMetrics.nsfr,
-    netIncome: state.financial.incomeStatement.netIncome / 1e6,
-    equityRaised: equityRaised / 1e9,
-    bucketCount: buckets(state),
-  };
-};
+const summary = (state: BankState, failureMonth: number | null, equityRaised = 0) => ({
+  failureMonth,
+  mortgages: balance(state, AssetProductType.Mortgages) / 1e9,
+  corporate: balance(state, AssetProductType.CorporateLoans) / 1e9,
+  deposits: deposits(state) / 1e9,
+  cash: balance(state, AssetProductType.CashReserves) / 1e9,
+  cet1: state.risk.riskMetrics.cet1Ratio,
+  leverage: state.risk.riskMetrics.leverageRatio,
+  lcr: state.risk.riskMetrics.lcr,
+  nsfr: state.risk.riskMetrics.nsfr,
+  netIncome: state.financial.incomeStatement.netIncome / 1e6,
+  equityRaised: equityRaised / 1e9,
+});
 
 const run = (config: SimulationConfig, months: number, managed: boolean) => {
   const engine = createSimulationEngine();
@@ -93,9 +74,9 @@ const run = (config: SimulationConfig, months: number, managed: boolean) => {
       }
       if (month % 12 === 1) {
         const cash = balance(state, AssetProductType.CashReserves);
-        const depositOffset = cash < 1.5e9 ? 0.0025 : cash > 3.5e9 ? -0.0025 : 0;
-        const retail = Math.max(0, state.market.competitorRetailDepositRate + depositOffset);
-        const corporate = Math.max(0, (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) + depositOffset);
+        const offset = cash < 1.5e9 ? 0.0025 : cash > 3.5e9 ? -0.0025 : 0;
+        const retail = Math.max(0, state.market.competitorRetailDepositRate + offset);
+        const corporate = Math.max(0, (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) + offset);
         actions.push(
           { type: 'adjustRate', productType: LiabilityProductType.RetailTransactionalDeposits, newRate: retail },
           { type: 'adjustRate', productType: LiabilityProductType.RetailSavingsDeposits, newRate: retail },
@@ -111,50 +92,24 @@ const run = (config: SimulationConfig, months: number, managed: boolean) => {
   return summary(state, failureMonth, equityRaised);
 };
 
-const runControlProbe = (label: string, actionsForMonth: (state: BankState, month: number) => PlayerAction[]) => {
-  const engine = createSimulationEngine();
-  const config = structuredClone(baseConfig);
-  configureBalancedCandidate(config);
-  let state = cloneBankState(initialState);
-  for (let month = 1; month <= 12 && !state.status.hasFailed; month++) {
-    state = engine.step({ state, config, actions: actionsForMonth(state, month), shocks: [] }).nextState;
-  }
-  return { label, ...summary(state, state.status.hasFailed ? state.time.step : null) };
-};
+const variants = [
+  ['s0303-c0086', 0.00303, 0.0086, 0.014e9, false],
+  ['s0035-c012', 0.0035, 0.012, 0.014e9, false],
+  ['s0040-c014', 0.0040, 0.014, 0.014e9, false],
+  ['s0035-c012-cost13', 0.0035, 0.012, 0.013e9, false],
+  ['s0035-c012-tightdep', 0.0035, 0.012, 0.014e9, true],
+] as const;
 
-describe('temporary addressable-market calibration sweep', () => {
-  it('prints base and balanced five/ten-year trajectories', () => {
-    for (const [name, configure] of [
-      ['base-addressable', (_config: SimulationConfig) => {}],
-      ['balanced-addressable', configureBalancedCandidate],
-    ] as const) {
+describe('temporary addressable market share sweep', () => {
+  it('prints five-year passive and ten-year managed trajectories', () => {
+    for (const [name, mortgageShare, corporateShare, cost, tighter] of variants) {
       const config = structuredClone(baseConfig);
-      configure(config);
-      console.log('ADDRESSABLE_SWEEP', JSON.stringify({
+      configure(config, mortgageShare, corporateShare, cost, tighter);
+      console.log('MARKET_SHARE_SWEEP', JSON.stringify({
         variant: name,
-        fiveYear: run(config, 60, false),
-        tenYear: run(config, 120, false),
-        managedFiveYear: run(config, 60, true),
+        passiveFiveYear: run(config, 60, false),
         managedTenYear: run(config, 120, true),
       }));
     }
   }, 120000);
-
-  it('prints decision-surface probes for low-value controls', () => {
-    const probes = [
-      runControlProbe('capital-auto', () => [{ type: 'setCapitalPolicy', dividendPayoutRatio: 0.3, at1CouponMode: 'auto' }]),
-      runControlProbe('capital-pay-at1', () => [{ type: 'setCapitalPolicy', dividendPayoutRatio: 0.3, at1CouponMode: 'pay' }]),
-      runControlProbe('capital-skip-at1', () => [{ type: 'setCapitalPolicy', dividendPayoutRatio: 0.3, at1CouponMode: 'skip' }]),
-      runControlProbe('one-term-debt-500m', (_state, month) => month === 1 ? [{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingLT, amount: 0.5e9 }] : []),
-      runControlProbe('one-equity-250m', (_state, month) => month === 1 ? [{ type: 'issueEquity', amount: 0.25e9 }] : []),
-      runControlProbe('one-market-swap-1bn', (state, month) => month === 1 ? [{
-        type: 'enterHedge',
-        direction: state.risk.riskMetrics.niiSensitivity100bp > 0 ? 'receiveFixedPayFloat' : 'payFixedReceiveFloat',
-        notional: 1e9,
-        fixedRate: state.market.riskFreeShort,
-        maturityMonths: 24,
-      }] : []),
-    ];
-    console.log('CONTROL_PROBES', JSON.stringify(probes));
-  }, 60000);
 });
