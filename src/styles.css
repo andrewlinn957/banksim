@@ -1395,12 +1395,19 @@ summary { cursor:pointer; }
 .capital-legend { list-style:none; display:flex; flex-wrap:wrap; gap:14px; padding:0; margin:10px 0 0; font-size:14px; }
 .capital-legend i { width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:7px; }
 .capital-detail-grid table { font-size:14px; width:100%; }
-.capital-detail-grid th,.capital-detail-grid td { padding:10px 8px; }
-.capital-detail-grid td { text-align:right; white-space:nowrap; }
+.capital-detail-grid table { border-collapse:separate; border-spacing:0; table-layout:fixed; border:1px solid var(--border); border-radius:8px; overflow:hidden; font-variant-numeric:tabular-nums; }
+.capital-detail-grid th,.capital-detail-grid td { padding:12px 14px; border-bottom:1px solid var(--border); text-align:right; width:22%; }
+.capital-detail-grid th:first-child,.capital-detail-grid td:first-child { text-align:left; width:56%; white-space:normal; line-height:1.45; }
+.capital-detail-grid td:not(:first-child),.capital-detail-grid th:not(:first-child) { white-space:nowrap; }
+.capital-detail-grid thead { background:var(--bg-2); }
+.capital-detail-grid tbody tr:nth-child(even) { background:color-mix(in srgb,var(--bg-2) 45%,var(--panel)); }
+.capital-detail-grid tbody tr:last-child>* { border-bottom:0; }
+.capital-detail-grid .total-row>* { background:var(--bg-2); border-top:2px solid var(--border); font-weight:700; }
 .capital-detail-grid .table-scroll { margin-bottom:18px; }
 .capital-detail-grid .muted { font-size:14px; line-height:1.5; }
-.capital-targets { background:var(--bg-2); border-radius:8px; padding:14px; font-size:14px; }
-.capital-targets p { margin:8px 0 0; }
+.capital-target-key { display:grid; gap:6px; font-size:13px; margin:-4px 0 16px; color:var(--muted); }
+.capital-target-key strong { color:var(--text); margin-left:5px; }
+.capital-composition text { font-size:16px; }
 @media(max-width:1150px) { .capital-cards { grid-template-columns:1fr; } .capital-detail-grid { grid-template-columns:1fr; } .capital-bullet { max-height:80px; } }
 @media(max-width:600px) { .capital-card { padding:15px; } .capital-ratios,.capital-amounts { gap:7px; } .capital-ratios>div+div,.capital-amounts>div+div { padding-left:7px; } .capital-composition { min-width:560px; } .capital-detail-grid>.capital-card:first-child { overflow-x:auto; } }
 .competitor-rates { display:grid; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--bg-2); }
