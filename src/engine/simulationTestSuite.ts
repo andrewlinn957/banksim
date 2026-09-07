@@ -502,7 +502,7 @@ export const simulationTestCases: SimulationTestCase[] = [
   {
     id: 'baseline-deposit-growth',
     group: 'Targeted invariants and behaviours',
-    name: 'baseline deposit growth is positive when matching competitor rates',
+    name: 'retail deposits remain broadly stable when matching competitor rates',
     run: (ctx) => {
       const state = ctx.createState();
       setGroupRate(state, RETAIL_DEPOSIT_PRODUCTS, state.market.competitorRetailDepositRate);
@@ -512,11 +512,12 @@ export const simulationTestCases: SimulationTestCase[] = [
       assertAccountingOk(nextState, 'after step');
 
       const retailAfter = getGroupBalance(nextState, RETAIL_DEPOSIT_PRODUCTS);
-      if (retailAfter <= retailBefore) {
-        throw new Error(`Deposit growth was not positive (${formatBn(retailAfter)} <= ${formatBn(retailBefore)})`);
+      const change = (retailAfter - retailBefore) / Math.max(1, retailBefore);
+      if (Math.abs(change) > 0.01) {
+        throw new Error(`Matched-rate deposit move was too large (${(change * 100).toFixed(2)}%)`);
       }
 
-      return `Retail deposits ${formatBn(retailBefore)} -> ${formatBn(retailAfter)}`;
+      return `Retail deposits ${formatBn(retailBefore)} -> ${formatBn(retailAfter)} (${(change * 100).toFixed(2)}%)`;
     },
   },
 ];

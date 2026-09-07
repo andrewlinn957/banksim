@@ -973,7 +973,7 @@ export const stepLoanCohorts = (args: {
       });
 
       if (renewalAdds.length > 0) {
-        cohorts.push(...compactRenewalAdds(renewalAds));
+        cohorts.push(...compactRenewalAdds(renewalAdds));
       }
       cleanCohorts(cohorts);
     });
