@@ -1,6 +1,6 @@
 import { MarketState } from '../domain/market';
 import { SimulationConfig } from '../domain/config';
-import { formatPct, formatSignedPct, formatNumber, formatMultiple, formatCurrency } from '../utils/formatters';
+import { formatPct, formatSignedPct, formatMultiple } from '../utils/formatters';
 
 interface Props {
   market: MarketState;
@@ -26,44 +26,30 @@ const Metric = ({ label, value, helper }: { label: string; value: string; helper
   </div>
 );
 
-const Row = ({ label, value }: { label: string; value: string }) => (
+const Row = ({ label, value }: RowItem) => (
   <tr>
     <td>{label}</td>
-    <td className="align-right" style={{ fontWeight: 600 }}>
-      {value}
-    </td>
+    <td className="align-right" style={{ fontWeight: 600 }}>{value}</td>
   </tr>
 );
 
 const maybeRate = (value: number | undefined, digits: number = 2): string =>
   value === undefined ? 'N/A' : formatPct(value, digits);
 
-const selectMacroMetrics = (market: MarketState): MetricItem[] => {
-  const { gdpGrowthMoM, inflationRate, unemploymentRate, baseRate, creditSpread, macroModel } = market;
-  const { gdpRegime, rngSeed, factors } = macroModel;
-
-  return [
-    { label: 'Regime', value: gdpRegime, helper: 'Can be either normal or recession.' },
-    { label: 'GDP (MoM)', value: formatSignedPct(gdpGrowthMoM), helper: 'Monthly GDP growth.' },
-    { label: 'Inflation (YoY)', value: formatPct(inflationRate), helper: 'Sticky CPI-like process.' },
-    { label: 'Unemployment', value: formatPct(unemploymentRate) },
-    { label: 'Bank Rate', value: formatPct(baseRate), helper: 'Policy rule with inertia.' },
-    { label: 'Macro Credit Spread', value: formatPct(creditSpread), helper: 'Wider in financial stress / weak labour.' },
-    { label: 'Demand', value: formatNumber(factors.D), helper: '(+) means positive demand shock' },
-    { label: 'Supply)', value: formatNumber(factors.S), helper: '(+) means positive supply shock' },
-    { label: 'Financial Conditions', value: formatNumber(factors.F), helper: '(+) means tighter conditions' },
-    { label: 'R* (Neutral real)', value: formatNumber(factors.R) },
-    { label: 'RNG Seed', value: `${rngSeed}`, helper: 'Deterministic path for reproducibility.' },
-  ];
-};
+const selectMacroMetrics = (market: MarketState): MetricItem[] => [
+  { label: 'Regime', value: market.macroModel.gdpRegime, helper: 'Normal or recession.' },
+  { label: 'GDP (MoM)', value: formatSignedPct(market.gdpGrowthMoM), helper: 'Current monthly activity signal.' },
+  { label: 'Inflation (YoY)', value: formatPct(market.inflationRate) },
+  { label: 'Unemployment', value: formatPct(market.unemploymentRate) },
+  { label: 'Bank Rate', value: formatPct(market.baseRate) },
+  { label: 'Credit spread', value: formatPct(market.creditSpread), helper: 'Wider spreads tighten corporate credit conditions.' },
+];
 
 const selectGiltRows = (market: MarketState): RowItem[] => {
   const { yields } = market.giltCurve;
-
   return [
     { label: '1Y', value: formatPct(yields.y1) },
     { label: '2Y', value: formatPct(yields.y2) },
-    { label: '3Y', value: formatPct(yields.y3) },
     { label: '5Y', value: formatPct(yields.y5) },
     { label: '10Y', value: formatPct(yields.y10) },
     { label: '20Y', value: formatPct(yields.y20) },
@@ -71,150 +57,66 @@ const selectGiltRows = (market: MarketState): RowItem[] => {
   ];
 };
 
-const selectFundingRows = (market: MarketState): RowItem[] => {
-  const {
-    competitorMortgageRate,
-    competitorRetailDepositRate,
-    competitorCorporateDepositRate,
-    wholesaleFundingSpread,
-    seniorDebtSpread,
-    giltRepoHaircut,
-    corpBondRepoHaircut,
-    riskFreeLong,
-    corporateLoanSpread,
-  } = market;
+const selectMarketRows = (market: MarketState): RowItem[] => [
+  { label: 'Competitor mortgage rate', value: formatPct(market.competitorMortgageRate) },
+  { label: 'Competitor corporate loan rate', value: formatPct(market.riskFreeLong + market.corporateLoanSpread) },
+  { label: 'Competitor retail deposit rate', value: formatPct(market.competitorRetailDepositRate) },
+  { label: 'Competitor corporate deposit rate', value: maybeRate(market.competitorCorporateDepositRate) },
+  { label: 'Short-term wholesale funding spread', value: formatPct(market.wholesaleFundingSpread) },
+  { label: 'Long-term wholesale funding spread', value: formatPct(market.seniorDebtSpread) },
+];
 
-  return [
-    { label: 'Competitor Mortgage Rate', value: formatPct(competitorMortgageRate) },
-    {
-      label: 'Competitor Corporate Loan Rate',
-      value: formatPct(riskFreeLong + corporateLoanSpread),
-    },
-    { label: 'Competitor retail deposit rate', value: formatPct(competitorRetailDepositRate) },
-    { label: 'Competitor corporate deposit rate', value: maybeRate(competitorCorporateDepositRate) },
-    { label: 'ST Wholesale funding spread (over 1y gilt)', value: formatPct(wholesaleFundingSpread) },
-    { label: 'LT wholesale funding spread (over 30y gilt)', value: formatPct(seniorDebtSpread) },
-    { label: 'Gilt repo haircut', value: formatPct(giltRepoHaircut) },
-    { label: 'Corp bond repo haircut', value: formatPct(corpBondRepoHaircut) },
-  ];
-};
-
-const selectSimulationRows = (config: SimulationConfig): RowItem[] => {
-  const { global, riskLimits, behaviour } = config;
-  const costModel = behaviour.costModel;
-
-  return [
-    { label: 'Tax rate', value: formatPct(global.taxRate) },
-    { label: 'Servicing cost rate (annual)', value: formatPct(costModel?.servicingCostRateAnnual ?? global.operatingCostRatio) },
-    { label: 'Fixed operating cost (monthly)', value: formatCurrency(costModel?.fixedCostPerMonth ?? global.fixedOperatingCostPerMonth ?? 0) },
-    { label: 'Origination cost rate', value: formatPct(costModel?.originationCostRate ?? 0) },
-    { label: 'Workout cost rate on defaults', value: formatPct(costModel?.workoutCostRateOnDefaults ?? 0) },
-    { label: 'Max deposit growth (per step)', value: formatPct(global.maxDepositGrowthPerStep) },
-    { label: 'Max loan growth (per step)', value: formatPct(global.maxLoanGrowthPerStep) },
-    { label: 'Min CET1 ratio', value: formatPct(riskLimits.minCet1Ratio) },
-    { label: 'Pillar 2A rate (firm-specific)', value: formatPct(riskLimits.pillar2A?.totalRatio ?? 0) },
-    { label: 'Pillar 2A fixed add-on', value: formatCurrency(riskLimits.pillar2A?.fixedAmount ?? 0) },
-    { label: 'PRA buffer', value: formatPct(riskLimits.praBufferRatio ?? 0) },
-    { label: 'Min leverage ratio', value: formatPct(riskLimits.minLeverageRatio) },
-    { label: 'Min LCR', value: formatMultiple(riskLimits.minLcr) },
-    { label: 'Min NSFR', value: formatMultiple(riskLimits.minNsfr) },
-    {
-      label: 'Combined buffer rate (above own-funds minima)',
-      value: formatPct(
-        riskLimits.capitalBufferStack.conservationBuffer +
-          riskLimits.capitalBufferStack.countercyclicalBuffer +
-          riskLimits.capitalBufferStack.systemicBuffer
-      ),
-    },
-    {
-      label: 'AT1 discretionary threshold',
-      value: formatPct(riskLimits.capitalPolicy.at1DiscretionaryCet1Threshold),
-    },
-    { label: 'Single sector concentration limit', value: formatPct(riskLimits.concentration.maxSingleSectorShare) },
-    {
-      label: 'Single geography concentration limit',
-      value: formatPct(riskLimits.concentration.maxSingleGeographyShare),
-    },
-  ];
-};
+const selectRequirements = (config: SimulationConfig): RowItem[] => [
+  { label: 'Minimum CET1 ratio', value: formatPct(config.riskLimits.minCet1Ratio) },
+  { label: 'Minimum leverage ratio', value: formatPct(config.riskLimits.minLeverageRatio) },
+  { label: 'Minimum LCR', value: formatMultiple(config.riskLimits.minLcr) },
+  { label: 'Minimum NSFR', value: formatMultiple(config.riskLimits.minNsfr) },
+];
 
 const ExogenousVariablesPanel = ({ market, config }: Props) => {
   const macroMetrics = selectMacroMetrics(market);
   const giltRows = selectGiltRows(market);
-  const fundingRows = selectFundingRows(market);
-  const simulationRows = selectSimulationRows(config);
+  const marketRows = selectMarketRows(market);
+  const requirements = selectRequirements(config);
 
   return (
     <div className="grid-two">
       <div className="card stack">
         <div>
-          <div className="eyebrow">Exogenous variables</div>
-          <h3>UK Macro State</h3>
+          <div className="eyebrow">Economic environment</div>
+          <h3>UK macro state</h3>
           <p className="muted" style={{ marginTop: 4 }}>
-            Structural factors (D/S/F/R) drive GDP, inflation, unemployment, policy rate, the curve, and spreads.
+            Activity, labour markets and borrowing conditions feed loan demand, credit risk, rates and funding costs.
           </p>
         </div>
-
         <div className="grid-metrics">
-          {macroMetrics.map((metric) => (
-            <Metric key={metric.label} {...metric} />
-          ))}
+          {macroMetrics.map((metric) => <Metric key={metric.label} {...metric} />)}
         </div>
       </div>
 
       <div className="card stack">
         <div>
           <div className="eyebrow">Risk-free curve</div>
-          <h3>Gilt Curve</h3>
-          <p className="muted" style={{ marginTop: 4 }}>
-            1y/5y/20y anchors are fit each month and other tenors are interpolated
-          </p>
+          <h3>Gilt curve</h3>
         </div>
-
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Tenor</th>
-              <th className="align-right">Yield</th>
-            </tr>
-          </thead>
-          <tbody>
-            {giltRows.map((row) => (
-              <Row key={row.label} {...row} />
-            ))}
-          </tbody>
-        </table>
-
+        <table className="data-table"><tbody>{giltRows.map((row) => <Row key={row.label} {...row} />)}</tbody></table>
       </div>
 
       <div className="card stack">
         <div>
-          <div className="eyebrow">Funding environment</div>
-          <h3>Spreads, Haircuts, Competition</h3>
+          <div className="eyebrow">Market pricing</div>
+          <h3>Competition and funding</h3>
         </div>
-
-        <table className="data-table">
-          <tbody>
-            {fundingRows.map((row) => (
-              <Row key={row.label} {...row} />
-            ))}
-          </tbody>
-        </table>
+        <table className="data-table"><tbody>{marketRows.map((row) => <Row key={row.label} {...row} />)}</tbody></table>
       </div>
 
       <div className="card stack">
         <div>
-          <div className="eyebrow">Model inputs</div>
-          <h3>Simulation Parameters</h3>
+          <div className="eyebrow">Regulatory reference</div>
+          <h3>Core minimums</h3>
+          <p className="muted" style={{ marginTop: 4 }}>Detailed capital and liquidity requirements remain in the Regulatory report.</p>
         </div>
-
-        <table className="data-table">
-          <tbody>
-            {simulationRows.map((row) => (
-              <Row key={row.label} {...row} />
-            ))}
-          </tbody>
-        </table>
+        <table className="data-table"><tbody>{requirements.map((row) => <Row key={row.label} {...row} />)}</tbody></table>
       </div>
     </div>
   );
