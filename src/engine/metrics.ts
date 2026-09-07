@@ -32,7 +32,7 @@ const isRecessionRegime = (state: BankState): boolean =>
   state.market.gdpGrowthMoM < 0 ||
   state.market.unemploymentRate > 0.075;
 
-export const computeHqla = (items: BalanceSheetItem[]): number => {
+export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
   let level1 = 0, level2a = 0, level2b = 0;
   for (const i of items) {
     if (i.side !== BalanceSheetSide.Asset) continue;
@@ -43,8 +43,10 @@ export const computeHqla = (items: BalanceSheetItem[]): number => {
   }
   const a = Math.min(level2a, level1 * 2 / 3);
   const b = Math.min(level2b, (level1 + a) * .15 / .85, Math.max(0, level1 * 2 / 3 - a));
-  return level1 + a + b;
+  return { level1, level2a, level2b, eligibleLevel2a:a, eligibleLevel2b:b, capDeduction:level2a+level2b-a-b, total:level1+a+b };
 };
+
+export const computeHqla = (items: BalanceSheetItem[]): number => computeHqlaComposition(items).total;
 
 interface LiquidityDynamicsFactors {
   depositOutflowMultiplier: number;
