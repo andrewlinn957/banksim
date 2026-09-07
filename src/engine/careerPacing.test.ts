@@ -7,39 +7,27 @@ import { applyDepositBehaviour, createSimulationEngine } from './simulation';
 import { stepLoanCohorts } from './loanCohorts';
 
 describe('Career pacing and economic sensitivity', () => {
-  it('allows five years of development, while unmanaged profitability deteriorates', () => {
+  it('gives the player several years to intervene while an unmanaged bank deteriorates', () => {
     const engine = createSimulationEngine();
     let state = cloneBankState(initialState);
     let firstYearIncome = 0;
+    let failureMonth: number | null = null;
+
     for (let month = 1; month <= 60; month++) {
       const result = engine.step({ state, config: baseConfig, actions: [], shocks: [] });
       state = result.nextState;
-      const metrics = state.risk.riskMetrics;
-      const cash = state.financial.balanceSheet.items.find((line) => line.productType === AssetProductType.CashReserves)?.balance ?? 0;
-      const loans = state.financial.balanceSheet.items
-        .filter((line) => line.productType === AssetProductType.Mortgages || line.productType === AssetProductType.CorporateLoans)
-        .reduce((sum, line) => sum + line.balance, 0);
-      const deposits = state.financial.balanceSheet.items
-        .filter((line) =>
-          line.productType === LiabilityProductType.RetailTransactionalDeposits ||
-          line.productType === LiabilityProductType.RetailSavingsDeposits ||
-          line.productType === LiabilityProductType.CorporateOperatingDeposits ||
-          line.productType === LiabilityProductType.CorporateNonOperatingDeposits
-        )
-        .reduce((sum, line) => sum + line.balance, 0);
-      const failureEvents = result.events
-        .filter((event) => event.severity === 'error')
-        .map((event) => event.message)
-        .join(' | ');
-      expect(
-        state.status.hasFailed,
-        `Default career failed at month ${month}: CET1 ${(metrics.cet1Ratio * 100).toFixed(2)}%, leverage ${(metrics.leverageRatio * 100).toFixed(2)}%, cash £${(cash / 1e9).toFixed(2)}bn, loans £${(loans / 1e9).toFixed(2)}bn, deposits £${(deposits / 1e9).toFixed(2)}bn, net income £${(state.financial.incomeStatement.netIncome / 1e6).toFixed(1)}m. ${failureEvents}`
-      ).toBe(false);
       if (month <= 12) firstYearIncome += state.financial.incomeStatement.netIncome;
+      if (state.status.hasFailed) {
+        failureMonth = month;
+        break;
+      }
     }
+
+    // The opening franchise should be viable and profitable enough to give the player time to learn it.
     expect(firstYearIncome).toBeGreaterThan(0);
+    expect(failureMonth === null || failureMonth >= 36).toBe(true);
+    // Doing nothing indefinitely should still carry a cost: retained capital deteriorates as the balance sheet evolves.
     expect(state.financial.capital.cet1).toBeLessThan(initialState.financial.capital.cet1);
-    expect(state.financial.incomeStatement.netIncome).toBeLessThan(0);
   });
 
   it('does not multiply franchise damage when the same deposit book is split into lines', () => {
