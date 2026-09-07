@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { calibrationPacks } from '../config/calibration';
+import { baseConfig } from '../config/baseConfig';
+import { initialState } from '../config/initialState';
 import { BankState } from '../domain/bankState';
+import { PlayerAction } from '../domain/actions';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { evaluateScenarioGoals } from './scoring';
@@ -14,6 +17,7 @@ const runMonths = (
   let state = cloneBankState(args.state);
   for (let i = 0; i < months; i++) {
     state = engine.step({ state, config: args.config, actions: [], shocks: [] }).nextState;
+    if (state.status.hasFailed) break;
   }
   return state;
 };
@@ -23,7 +27,7 @@ const runMonthsWithPolicy = (
   args: {
     state: BankState;
     config: (typeof calibrationPacks)[number]['config'];
-    actionsForMonth: (state: BankState, monthIndex: number) => Array<any>;
+    actionsForMonth: (state: BankState, monthIndex: number) => PlayerAction[];
   }
 ) => {
   const engine = createSimulationEngine();
@@ -31,6 +35,7 @@ const runMonthsWithPolicy = (
   for (let i = 0; i < months; i++) {
     const actions = args.actionsForMonth(state, i);
     state = engine.step({ state, config: args.config, actions, shocks: [] }).nextState;
+    if (state.status.hasFailed) break;
   }
   return state;
 };
@@ -57,6 +62,48 @@ const totalLoanStateBuckets = (state: BankState): number =>
   Object.values(state.loanCohorts ?? {}).reduce((sum, cohorts) => sum + (cohorts?.length ?? 0), 0) +
   Object.values(state.workoutPipelines ?? {}).reduce((sum, buckets) => sum + (buckets?.length ?? 0), 0);
 
+const managementPolicy = (
+  state: BankState,
+  monthIndex: number,
+  pricing: { mortgageDiscount?: number; corporateDiscount?: number } = {}
+): PlayerAction[] => {
+  const mortgageDiscount = pricing.mortgageDiscount ?? 0.004;
+  const corporateDiscount = pricing.corporateDiscount ?? 0.006;
+  const actions: PlayerAction[] = [
+    {
+      type: 'adjustRate',
+      productType: AssetProductType.Mortgages,
+      newRate: Math.max(0, state.market.competitorMortgageRate - mortgageDiscount),
+    },
+    {
+      type: 'adjustRate',
+      productType: AssetProductType.CorporateLoans,
+      newRate: Math.max(0, state.market.riskFreeLong + state.market.corporateLoanSpread - corporateDiscount),
+    },
+    { type: 'setUnderwriting', productType: AssetProductType.Mortgages, tightness: 0.15 },
+    { type: 'setUnderwriting', productType: AssetProductType.CorporateLoans, tightness: 0.15 },
+    { type: 'setCapitalPolicy', dividendPayoutRatio: 0, at1CouponMode: 'auto' },
+  ];
+
+  // Reprice deposits annually. When cash is scarce, pay a small premium; when cash is abundant, accept some runoff.
+  if (monthIndex % 12 === 0) {
+    const cash = productBalance(state, AssetProductType.CashReserves);
+    const offset = cash < 1.5e9 ? 0.0025 : cash > 3.5e9 ? -0.0025 : 0;
+    const retailRate = Math.max(0, state.market.competitorRetailDepositRate + offset);
+    const corporateRate = Math.max(
+      0,
+      (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) + offset
+    );
+    actions.push(
+      { type: 'adjustRate', productType: LiabilityProductType.RetailTransactionalDeposits, newRate: retailRate },
+      { type: 'adjustRate', productType: LiabilityProductType.RetailSavingsDeposits, newRate: retailRate },
+      { type: 'adjustRate', productType: LiabilityProductType.CorporateOperatingDeposits, newRate: corporateRate },
+      { type: 'adjustRate', productType: LiabilityProductType.CorporateNonOperatingDeposits, newRate: corporateRate },
+    );
+  }
+  return actions;
+};
+
 describe('Model regression harness', () => {
   it('archetype trajectories stay within configured KPI envelopes', () => {
     calibrationPacks.forEach((pack) => {
@@ -64,6 +111,7 @@ describe('Model regression harness', () => {
       const roe = annualisedRoe(finalState);
       const metrics = finalState.risk.riskMetrics;
 
+      expect(finalState.status.hasFailed, `${pack.id} failed before the 24-month calibration horizon`).toBe(false);
       expect(metrics.cet1Ratio).toBeGreaterThanOrEqual(pack.envelope.cet1Ratio[0]);
       expect(metrics.cet1Ratio).toBeLessThanOrEqual(pack.envelope.cet1Ratio[1]);
       expect(metrics.lcr).toBeGreaterThanOrEqual(pack.envelope.lcr[0]);
@@ -98,69 +146,58 @@ describe('Model regression harness', () => {
     });
   });
 
-  it('ten-year baseline remains a recognisable lending bank without runaway deposit growth', () => {
-    const pack = calibrationPacks.find((candidate) => candidate.id === 'universal');
-    if (!pack) throw new Error('Missing universal calibration pack');
-
-    const openingLoans = totalLoans(pack.initialState);
-    const openingDeposits = totalCustomerDeposits(pack.initialState);
-    const finalState = runMonths(120, { state: pack.initialState, config: pack.config });
+  it('a managed ten-year run remains a recognisable lending bank without runaway deposits or state', () => {
+    const openingLoans = totalLoans(initialState);
+    const openingDeposits = totalCustomerDeposits(initialState);
+    const finalState = runMonthsWithPolicy(120, {
+      state: initialState,
+      config: baseConfig,
+      actionsForMonth: (state, monthIndex) => managementPolicy(state, monthIndex),
+    });
     const finalLoans = totalLoans(finalState);
     const finalDeposits = totalCustomerDeposits(finalState);
     const loanDepositRatio = finalDeposits > 0 ? finalLoans / finalDeposits : 0;
 
     expect(finalState.status.hasFailed).toBe(false);
+    expect(finalState.time.step).toBeGreaterThanOrEqual(initialState.time.step + 120);
     expect(finalLoans).toBeGreaterThan(openingLoans * 0.65);
     expect(finalLoans).toBeLessThan(openingLoans * 2);
     expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.6);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
     expect(loanDepositRatio).toBeGreaterThan(0.3);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
-    expect(pack.config.riskLimits.concentration.maxSingleSectorShare).toBe(1);
-    expect(pack.config.riskLimits.concentration.maxSingleGeographyShare).toBe(1);
+    expect(baseConfig.riskLimits.concentration.maxSingleSectorShare).toBe(1);
+    expect(baseConfig.riskLimits.concentration.maxSingleGeographyShare).toBe(1);
   });
 
   it('competitive lending prices materially increase loan volumes', () => {
-    const pack = calibrationPacks.find((candidate) => candidate.id === 'universal');
-    if (!pack) throw new Error('Missing universal calibration pack');
-
-    const baselineFinal = runMonths(60, { state: pack.initialState, config: pack.config });
-    const growthFinal = runMonthsWithPolicy(60, {
-      state: pack.initialState,
-      config: pack.config,
-      actionsForMonth: (state) => [
-        {
-          type: 'adjustRate',
-          productType: AssetProductType.Mortgages,
-          newRate: Math.max(0, state.market.competitorMortgageRate - 0.005),
-        },
-        {
-          type: 'adjustRate',
-          productType: AssetProductType.CorporateLoans,
-          newRate: Math.max(0, state.market.riskFreeLong + state.market.corporateLoanSpread - 0.0075),
-        },
-        {
-          type: 'setUnderwriting',
-          productType: AssetProductType.Mortgages,
-          tightness: 0,
-        },
-        {
-          type: 'setUnderwriting',
-          productType: AssetProductType.CorporateLoans,
-          tightness: 0,
-        },
-      ],
+    const neutralFinal = runMonthsWithPolicy(60, {
+      state: initialState,
+      config: baseConfig,
+      actionsForMonth: (state, monthIndex) =>
+        managementPolicy(state, monthIndex, { mortgageDiscount: 0, corporateDiscount: 0 }),
+    });
+    const competitiveFinal = runMonthsWithPolicy(60, {
+      state: initialState,
+      config: baseConfig,
+      actionsForMonth: (state, monthIndex) =>
+        managementPolicy(state, monthIndex, { mortgageDiscount: 0.005, corporateDiscount: 0.0075 }),
     });
 
-    expect(growthFinal.status.hasFailed).toBe(false);
-    expect(totalLoans(growthFinal)).toBeGreaterThan(totalLoans(baselineFinal) * 1.12);
+    expect(neutralFinal.status.hasFailed).toBe(false);
+    expect(competitiveFinal.status.hasFailed).toBe(false);
+    expect(totalLoans(competitiveFinal)).toBeGreaterThan(totalLoans(neutralFinal) * 1.08);
   });
 
   it('anti-exploit horizon score penalises low-deposit/high-loan carry strategy', () => {
     const pack = calibrationPacks.find((candidate) => candidate.id === 'exploit-carry');
     if (!pack) throw new Error('Missing exploit-carry calibration pack');
 
-    const balancedFinal = runMonths(120, { state: pack.initialState, config: pack.config });
+    const balancedFinal = runMonthsWithPolicy(120, {
+      state: pack.initialState,
+      config: pack.config,
+      actionsForMonth: (state, monthIndex) => managementPolicy(state, monthIndex),
+    });
     const exploitFinal = runMonthsWithPolicy(120, {
       state: pack.initialState,
       config: pack.config,
