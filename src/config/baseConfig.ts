@@ -388,7 +388,7 @@ const behaviour: BehaviourParameters = {
       maxAddressableMarketMultiplier: 1.45,
     },
     [AssetProductType.CorporateLoans]: {
-      baseDemandRateMonthly: 0.017,
+      baseDemandRateMonthly: 0.05,
       pricingSensitivity: 25,
       macroSensitivity: 1.8,
       baseApprovalRate: 0.72,
