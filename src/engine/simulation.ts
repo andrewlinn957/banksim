@@ -2045,15 +2045,35 @@ export const applyLoanBehaviour = (
 
       if (pipelineParams) {
         const pipeline = ensureLoanPipelineState(state, productType);
-        const macroSignal =
-          state.market.gdpGrowthMoM -
-          0.6 * Math.max(0, state.market.unemploymentRate - 0.05) -
-          0.4 * Math.max(0, state.market.creditSpread - 0.01);
-        const demandScalar = Math.max(
+        // Demand comes from an external addressable market rather than the bank's current book.
+        // This prevents a shrinking portfolio from mechanically destroying its own future origination pool.
+        const referenceMarketSize = Math.max(
           0,
-          1 + pipelineParams.pricingSensitivity * pricingGap + pipelineParams.macroSensitivity * macroSignal
+          pipelineParams.referenceMarketSize ?? Math.max(0, item.balance)
         );
-        const demand = Math.max(0, item.balance) * pipelineParams.baseDemandRateMonthly * dtMonths * demandScalar;
+        const referenceBankShare = clamp(pipelineParams.referenceBankShare ?? 1, 0, 1);
+        const neutralGdp = pipelineParams.neutralGdpGrowthMonthly ?? 0.0015;
+        const neutralUnemployment = pipelineParams.neutralUnemploymentRate ?? 0.045;
+        const neutralBorrowerRate = pipelineParams.neutralBorrowerRate ?? benchmark;
+        const neutralCreditSpread = pipelineParams.neutralCreditSpread ?? 0.012;
+        const macroMarketMultiplier = clamp(
+          1 +
+            (pipelineParams.gdpMarketSensitivity ?? pipelineParams.macroSensitivity) *
+              (state.market.gdpGrowthMoM - neutralGdp) -
+            (pipelineParams.unemploymentMarketSensitivity ?? 0) *
+              (state.market.unemploymentRate - neutralUnemployment) -
+            (pipelineParams.borrowingCostMarketSensitivity ?? 0) *
+              (benchmark - neutralBorrowerRate) -
+            (pipelineParams.creditSpreadMarketSensitivity ?? 0) *
+              (state.market.creditSpread - neutralCreditSpread),
+          pipelineParams.minAddressableMarketMultiplier ?? 0.5,
+          pipelineParams.maxAddressableMarketMultiplier ?? 1.5
+        );
+        const addressableMarket = referenceMarketSize * macroMarketMultiplier;
+        const neutralBankOpportunity = addressableMarket * referenceBankShare;
+        const pricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);
+        const demand =
+          neutralBankOpportunity * pipelineParams.baseDemandRateMonthly * dtMonths * pricingCapture;
 
         const approvalRate = clamp(
           pipelineParams.baseApprovalRate +
