@@ -1,0 +1,46 @@
+name: Apply long-run base calibration
+
+on:
+  push:
+    branches:
+      - rebalance-long-run-dynamics
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rebalance-long-run-dynamics
+          fetch-depth: 0
+      - name: Apply calibrated deposit and cost settings
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/config/baseConfig.ts')
+          t = p.read_text()
+          replacements = [
+            ('fixedOperatingCostPerMonth: 0.018e9,', 'fixedOperatingCostPerMonth: 0.014e9,'),
+            ('policyRateBeta: 0.04,\n      competitorSensitivity: 0.55,', 'policyRateBeta: 0.02,\n      competitorSensitivity: 0.45,'),
+            ('baselineGrowthMonthly: 0.0022,\n      baseChurnMonthly: 0.002,\n      policyRateBeta: 0.06,\n      competitorSensitivity: 0.85,', 'baselineGrowthMonthly: 0.0023,\n      baseChurnMonthly: 0.002,\n      policyRateBeta: 0,\n      competitorSensitivity: 0.4,'),
+            ('baselineGrowthMonthly: 0.0013,\n      baseChurnMonthly: 0.003,\n      policyRateBeta: 0.035,\n      competitorSensitivity: 0.95,', 'baselineGrowthMonthly: 0.0015,\n      baseChurnMonthly: 0.003,\n      policyRateBeta: 0,\n      competitorSensitivity: 0.75,'),
+            ('baselineGrowthMonthly: 0.0008,\n      baseChurnMonthly: 0.006,\n      policyRateBeta: 0.025,\n      competitorSensitivity: 1.2,', 'baselineGrowthMonthly: 0.001,\n      baseChurnMonthly: 0.006,\n      policyRateBeta: 0,\n      competitorSensitivity: 0.8,'),
+            ('fixedCostPerMonth: 0.018e9,', 'fixedCostPerMonth: 0.014e9,'),
+          ]
+          for old, new in replacements:
+            if old not in t:
+              raise SystemExit(f'Expected baseConfig snippet missing: {old!r}')
+            t = t.replace(old, new, 1)
+          p.write_text(t)
+          Path('.github/workflows/agent-base-calibration.yml').unlink()
+          PY
+      - name: Commit calibration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Calibrate deposit growth and operating costs"
+          git push origin HEAD:rebalance-long-run-dynamics
