@@ -68,7 +68,7 @@ const managementPolicy = (
   pricing: { mortgageDiscount?: number; corporateDiscount?: number } = {}
 ): PlayerAction[] => {
   const mortgageDiscount = pricing.mortgageDiscount ?? 0.004;
-  const corporateDiscount = pricing.corporateDiscount ?? 0.006;
+  const corporateDiscount = pricing.corporateDiscount ?? 0.015;
   const actions: PlayerAction[] = [
     {
       type: 'adjustRate',
