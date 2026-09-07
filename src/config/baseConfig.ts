@@ -48,7 +48,7 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
       initialCouponDispersionBps: 50,
       initialPdMultiplierRange: { min: 0.8, max: 1.25 },
       initialLgdMultiplierRange: { min: 0.9, max: 1.1 },
-      initialMinBucketOutstanding: 1e6,
+      initialMinBucketOutstanding: 20e6,
     },
   },
   [AssetProductType.CorporateLoans]: {
@@ -67,7 +67,7 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
       initialCouponDispersionBps: 75,
       initialPdMultiplierRange: { min: 0.85, max: 1.4 },
       initialLgdMultiplierRange: { min: 0.9, max: 1.15 },
-      initialMinBucketOutstanding: 1e6,
+      initialMinBucketOutstanding: 40e6,
     },
   },
   [AssetProductType.ReverseRepo]: {
@@ -239,12 +239,12 @@ const global: GlobalSimulationParameters = {
   maxLoanGrowthPerStep: 0.05,
   fixedOperatingCostPerMonth: 0.018e9,
   initialPortfolioSeed: 123456789,
-  competitorDepositReactionSpeed: 0.12,
-  competitorCorporateDepositReactionSpeed: 0.16,
-  competitorMortgageReactionSpeed: 0.08,
-  competitorCorporateLoanSpreadReactionSpeed: 0.1,
-  competitorReactionStressBoost: 0.9,
-  competitorReactionMeanReversion: 0.03,
+  competitorDepositReactionSpeed: 0.035,
+  competitorCorporateDepositReactionSpeed: 0.045,
+  competitorMortgageReactionSpeed: 0.035,
+  competitorCorporateLoanSpreadReactionSpeed: 0.04,
+  competitorReactionStressBoost: 0.5,
+  competitorReactionMeanReversion: 0.08,
 };
 
 const riskLimits = {
@@ -279,9 +279,10 @@ const riskLimits = {
     payoutRestrictionSlope: 0.04,
     at1InternalTargetHeadroom: 0.005,
   },
+  // Concentration is retained as a reported/stress metric, but there is no hard limit for now.
   concentration: {
-    maxSingleSectorShare: 0.45,
-    maxSingleGeographyShare: 0.4,
+    maxSingleSectorShare: 1,
+    maxSingleGeographyShare: 1,
   },
   boardPressure: {
     earningsVolatilityTolerance: 0.6e9,
@@ -291,7 +292,7 @@ const riskLimits = {
 };
 
 const behaviour: BehaviourParameters = {
-  depositBaselineGrowthMonthly: 0.002,
+  depositBaselineGrowthMonthly: 0.001,
   loanBaselineGrowthMonthly: 0,
   minDepositGrowthPerStep: -0.1,
   minLoanGrowthPerStep: -0.02,
@@ -299,9 +300,9 @@ const behaviour: BehaviourParameters = {
   horizonRiskPenaltyWeight: 0.35,
   depositByProduct: {
     [LiabilityProductType.RetailTransactionalDeposits]: {
-      baselineGrowthMonthly: 0.0018,
+      baselineGrowthMonthly: 0.0016,
       baseChurnMonthly: 0.0035,
-      policyRateBeta: 0.12,
+      policyRateBeta: 0.03,
       competitorSensitivity: 0.55,
       passThroughLag: 0.45,
       underpricingConvexity: 20,
@@ -315,9 +316,9 @@ const behaviour: BehaviourParameters = {
       mixMigrationDurationSensitivity: 0.06,
     },
     [LiabilityProductType.RetailSavingsDeposits]: {
-      baselineGrowthMonthly: 0.0024,
-      baseChurnMonthly: 0.002,
-      policyRateBeta: 0.2,
+      baselineGrowthMonthly: 0.0012,
+      baseChurnMonthly: 0.0025,
+      policyRateBeta: 0.05,
       competitorSensitivity: 0.85,
       passThroughLag: 0.7,
       underpricingConvexity: 26,
@@ -332,8 +333,8 @@ const behaviour: BehaviourParameters = {
     },
     [LiabilityProductType.CorporateOperatingDeposits]: {
       baselineGrowthMonthly: 0.0012,
-      baseChurnMonthly: 0.0045,
-      policyRateBeta: 0.1,
+      baseChurnMonthly: 0.003,
+      policyRateBeta: 0.03,
       competitorSensitivity: 0.95,
       passThroughLag: 0.4,
       underpricingConvexity: 28,
@@ -348,8 +349,8 @@ const behaviour: BehaviourParameters = {
     },
     [LiabilityProductType.CorporateNonOperatingDeposits]: {
       baselineGrowthMonthly: 0.0008,
-      baseChurnMonthly: 0.0075,
-      policyRateBeta: 0.08,
+      baseChurnMonthly: 0.006,
+      policyRateBeta: 0.02,
       competitorSensitivity: 1.2,
       passThroughLag: 0.25,
       underpricingConvexity: 32,
@@ -365,22 +366,22 @@ const behaviour: BehaviourParameters = {
   },
   loanPipelineByProduct: {
     [AssetProductType.Mortgages]: {
-      baseDemandRateMonthly: 0.0075,
-      pricingSensitivity: 2.4,
+      baseDemandRateMonthly: 0.0125,
+      pricingSensitivity: 60,
       macroSensitivity: 1.2,
       baseApprovalRate: 0.82,
       underwritingSensitivity: 0.5,
-      drawdownRateMonthly: 0.45,
+      drawdownRateMonthly: 0.5,
       cancellationRateMonthly: 0.08,
     },
     [AssetProductType.CorporateLoans]: {
-      baseDemandRateMonthly: 0.009,
-      pricingSensitivity: 1.9,
+      baseDemandRateMonthly: 0.024,
+      pricingSensitivity: 45,
       macroSensitivity: 1.8,
-      baseApprovalRate: 0.68,
+      baseApprovalRate: 0.72,
       underwritingSensitivity: 0.65,
-      drawdownRateMonthly: 0.5,
-      cancellationRateMonthly: 0.12,
+      drawdownRateMonthly: 0.55,
+      cancellationRateMonthly: 0.1,
     },
   },
   creditRiskDynamics: {
@@ -422,23 +423,23 @@ const behaviour: BehaviourParameters = {
     refinanceByProduct: {
       [AssetProductType.Mortgages]: {
         minSeasoningMonths: 12,
-        basePrepayRateMonthly: 0.004,
-        incentiveSensitivity: 9.0,
+        basePrepayRateMonthly: 0.0025,
+        incentiveSensitivity: 0.6,
         riskSelectivity: 0.65,
-        minPrepayRateMonthly: 0.001,
-        maxPrepayRateMonthly: 0.02,
+        minPrepayRateMonthly: 0.0008,
+        maxPrepayRateMonthly: 0.015,
       },
       [AssetProductType.CorporateLoans]: {
         minSeasoningMonths: 6,
-        basePrepayRateMonthly: 0.0025,
-        incentiveSensitivity: 6.5,
+        basePrepayRateMonthly: 0.0015,
+        incentiveSensitivity: 0.4,
         riskSelectivity: 0.5,
         minPrepayRateMonthly: 0.0005,
-        maxPrepayRateMonthly: 0.015,
+        maxPrepayRateMonthly: 0.012,
       },
     },
     workoutPipeline: {
-      baseResolutionLagMonths: 8,
+      baseResolutionLagMonths: 6,
       stressLagSensitivity: 10,
       baseRecoveryRateFloor: 0.15,
       macroRecoveryPenaltySensitivity: 2.2,
