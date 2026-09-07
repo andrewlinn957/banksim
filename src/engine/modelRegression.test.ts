@@ -148,6 +148,7 @@ describe('Model regression harness', () => {
 
   it('a managed ten-year run remains a recognisable lending bank without runaway deposits or state', () => {
     const openingLoans = totalLoans(initialState);
+    const openingCorporateLoans = productBalance(initialState, AssetProductType.CorporateLoans);
     const openingDeposits = totalCustomerDeposits(initialState);
     const finalState = runMonthsWithPolicy(120, {
       state: initialState,
@@ -155,6 +156,7 @@ describe('Model regression harness', () => {
       actionsForMonth: (state, monthIndex) => managementPolicy(state, monthIndex),
     });
     const finalLoans = totalLoans(finalState);
+    const finalCorporateLoans = productBalance(finalState, AssetProductType.CorporateLoans);
     const finalDeposits = totalCustomerDeposits(finalState);
     const loanDepositRatio = finalDeposits > 0 ? finalLoans / finalDeposits : 0;
 
@@ -162,6 +164,8 @@ describe('Model regression harness', () => {
     expect(finalState.time.step).toBeGreaterThanOrEqual(initialState.time.step + 120);
     expect(finalLoans).toBeGreaterThan(openingLoans * 0.65);
     expect(finalLoans).toBeLessThan(openingLoans * 2);
+    expect(finalCorporateLoans).toBeGreaterThan(openingCorporateLoans * 0.7);
+    expect(finalCorporateLoans).toBeLessThan(openingCorporateLoans * 1.3);
     expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.6);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
     expect(loanDepositRatio).toBeGreaterThan(0.3);
