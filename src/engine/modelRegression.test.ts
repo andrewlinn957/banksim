@@ -41,6 +41,22 @@ const annualisedRoe = (state: BankState): number => {
   return equity > 0 ? (state.financial.incomeStatement.netIncome * 12) / equity : 0;
 };
 
+const productBalance = (state: BankState, productType: AssetProductType | LiabilityProductType): number =>
+  state.financial.balanceSheet.items.find((line) => line.productType === productType)?.balance ?? 0;
+
+const totalLoans = (state: BankState): number =>
+  productBalance(state, AssetProductType.Mortgages) + productBalance(state, AssetProductType.CorporateLoans);
+
+const totalCustomerDeposits = (state: BankState): number =>
+  productBalance(state, LiabilityProductType.RetailTransactionalDeposits) +
+  productBalance(state, LiabilityProductType.RetailSavingsDeposits) +
+  productBalance(state, LiabilityProductType.CorporateOperatingDeposits) +
+  productBalance(state, LiabilityProductType.CorporateNonOperatingDeposits);
+
+const totalLoanStateBuckets = (state: BankState): number =>
+  Object.values(state.loanCohorts ?? {}).reduce((sum, cohorts) => sum + (cohorts?.length ?? 0), 0) +
+  Object.values(state.workoutPipelines ?? {}).reduce((sum, buckets) => sum + (buckets?.length ?? 0), 0);
+
 describe('Model regression harness', () => {
   it('archetype trajectories stay within configured KPI envelopes', () => {
     calibrationPacks.forEach((pack) => {
@@ -80,6 +96,64 @@ describe('Model regression harness', () => {
       expect(finalState.financial.capital.cet1).toBeGreaterThan(-200e9);
       expect(finalState.financial.balanceSheet.items.every((line) => Number.isFinite(line.balance))).toBe(true);
     });
+  });
+
+  it('ten-year baseline remains a recognisable lending bank without runaway deposit growth', () => {
+    const pack = calibrationPacks.find((candidate) => candidate.id === 'universal');
+    if (!pack) throw new Error('Missing universal calibration pack');
+
+    const openingLoans = totalLoans(pack.initialState);
+    const openingDeposits = totalCustomerDeposits(pack.initialState);
+    const finalState = runMonths(120, { state: pack.initialState, config: pack.config });
+    const finalLoans = totalLoans(finalState);
+    const finalDeposits = totalCustomerDeposits(finalState);
+    const loanDepositRatio = finalDeposits > 0 ? finalLoans / finalDeposits : 0;
+
+    expect(finalState.status.hasFailed).toBe(false);
+    expect(finalLoans).toBeGreaterThan(openingLoans * 0.65);
+    expect(finalLoans).toBeLessThan(openingLoans * 2);
+    expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.6);
+    expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
+    expect(loanDepositRatio).toBeGreaterThan(0.3);
+    expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
+    expect(pack.config.riskLimits.concentration.maxSingleSectorShare).toBe(1);
+    expect(pack.config.riskLimits.concentration.maxSingleGeographyShare).toBe(1);
+  });
+
+  it('competitive lending prices materially increase loan volumes', () => {
+    const pack = calibrationPacks.find((candidate) => candidate.id === 'universal');
+    if (!pack) throw new Error('Missing universal calibration pack');
+
+    const baselineFinal = runMonths(60, { state: pack.initialState, config: pack.config });
+    const growthFinal = runMonthsWithPolicy(60, {
+      state: pack.initialState,
+      config: pack.config,
+      actionsForMonth: (state) => [
+        {
+          type: 'adjustRate',
+          productType: AssetProductType.Mortgages,
+          newRate: Math.max(0, state.market.competitorMortgageRate - 0.005),
+        },
+        {
+          type: 'adjustRate',
+          productType: AssetProductType.CorporateLoans,
+          newRate: Math.max(0, state.market.riskFreeLong + state.market.corporateLoanSpread - 0.0075),
+        },
+        {
+          type: 'setUnderwriting',
+          productType: AssetProductType.Mortgages,
+          tightness: 0,
+        },
+        {
+          type: 'setUnderwriting',
+          productType: AssetProductType.CorporateLoans,
+          tightness: 0,
+        },
+      ],
+    });
+
+    expect(growthFinal.status.hasFailed).toBe(false);
+    expect(totalLoans(growthFinal)).toBeGreaterThan(totalLoans(baselineFinal) * 1.12);
   });
 
   it('anti-exploit horizon score penalises low-deposit/high-loan carry strategy', () => {
