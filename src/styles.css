@@ -1490,3 +1490,12 @@ summary { cursor:pointer; }
 .compact-clock { position:sticky; top:0; }
 @media(max-width:760px) { .department-workspace { scroll-margin-top:155px; } }
 @media(max-width:420px) { .department-workspace { scroll-margin-top:195px; } }
+
+.leverage-dashboard .capital-ratios strong { font-size:clamp(24px,2.4vw,36px); overflow-wrap:anywhere; }
+.leverage-dashboard .capital-detail-grid th:first-child { width:62%; }
+.leverage-dashboard .capital-detail-grid td { width:38%; white-space:normal; }
+.leverage-reconciliation { margin-top:16px; }
+.leverage-reconciliation table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.leverage-reconciliation th,.leverage-reconciliation td { padding:12px 14px; border-bottom:1px solid var(--border); text-align:left; }
+.leverage-reconciliation td,.leverage-reconciliation th:last-child { text-align:right; }
+.leverage-reconciliation thead,.leverage-reconciliation tfoot { background:var(--bg-2); font-weight:700; }
