@@ -68,7 +68,7 @@ const managementPolicy = (
   pricing: { mortgageDiscount?: number; corporateDiscount?: number } = {}
 ): PlayerAction[] => {
   const mortgageDiscount = pricing.mortgageDiscount ?? 0.004;
-  const corporateDiscount = pricing.corporateDiscount ?? 0.015;
+  const corporateDiscount = pricing.corporateDiscount ?? 0.006;
   const actions: PlayerAction[] = [
     {
       type: 'adjustRate',
@@ -153,7 +153,8 @@ describe('Model regression harness', () => {
     const finalState = runMonthsWithPolicy(120, {
       state: initialState,
       config: baseConfig,
-      actionsForMonth: (state, monthIndex) => managementPolicy(state, monthIndex),
+      actionsForMonth: (state, monthIndex) =>
+        managementPolicy(state, monthIndex, { corporateDiscount: 0.015 }),
     });
     const finalLoans = totalLoans(finalState);
     const finalCorporateLoans = productBalance(finalState, AssetProductType.CorporateLoans);
