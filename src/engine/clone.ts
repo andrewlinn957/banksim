@@ -34,6 +34,7 @@ const cloneCompliance = (c: ComplianceStatus): ComplianceStatus => ({ ...c });
 
 const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   ...b,
+  riskAppetite: b.riskAppetite ? { ...b.riskAppetite } : undefined,
   depositRateLagMemory: { ...(b.depositRateLagMemory ?? {}) },
   depositUnderpricingMonths: { ...(b.depositUnderpricingMonths ?? {}) },
   depositStabilityIndex: { ...(b.depositStabilityIndex ?? {}) },

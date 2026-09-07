@@ -315,7 +315,10 @@ const computeInternalCapitalTarget = (args: {
 
   const maxBuffer = Math.max(baseBuffer, limits.internalTargetMaxBuffer ?? baseBuffer);
   const dynamicBuffer = clamp(baseBuffer + incrementalBuffer, baseBuffer, maxBuffer);
-  const internalCet1TargetRatio = args.cet1Requirement + dynamicBuffer;
+  const chosen = args.state.behaviour.riskAppetite?.cet1;
+  const internalCet1TargetRatio = chosen !== undefined && Number.isFinite(chosen)
+    ? Math.max(args.cet1Requirement, chosen)
+    : args.cet1Requirement + dynamicBuffer;
   const internalCet1Headroom = args.cet1Ratio - internalCet1TargetRatio;
 
   return {
@@ -526,6 +529,11 @@ export const calculateRiskMetrics = ({
     cet1Ratio,
     cet1Requirement,
     minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
+    tier1Requirement: Math.max(minima.tier1,minima.total) + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,
+    totalCapitalRequirement: minima.total + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,
+    internalLeverageTargetRatio: Math.max(config.riskLimits.minLeverageRatio, state.behaviour.riskAppetite?.leverage ?? config.riskLimits.minLeverageRatio*1.05),
+    internalLcrTargetRatio: Math.max(config.riskLimits.minLcr, state.behaviour.riskAppetite?.lcr ?? config.riskLimits.minLcr*1.1),
+    internalNsfrTargetRatio: Math.max(config.riskLimits.minNsfr, state.behaviour.riskAppetite?.nsfr ?? config.riskLimits.minNsfr*1.05),
     praBufferTarget, praBufferBreached: cet1Ratio < praBufferTarget,
     cet1Headroom,
     leverageRatio,

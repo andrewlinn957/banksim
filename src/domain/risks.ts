@@ -7,6 +7,11 @@ export interface CapitalState {
 }
 
 export interface RiskMetrics {
+  internalLeverageTargetRatio?: number;
+  internalLcrTargetRatio?: number;
+  internalNsfrTargetRatio?: number;
+  tier1Requirement?: number;
+  totalCapitalRequirement?: number;
   rwa: number;
   tier1Ratio?: number;
   totalCapitalRatio?: number;

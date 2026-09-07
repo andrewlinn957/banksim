@@ -10,9 +10,11 @@ import { centralBankExclusion, committedExposure, commitmentLiquidity, eligibleC
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
 import CapitalDashboard from './CapitalDashboard';
+import CapitalHistory from './CapitalHistory';
+import RiskAppetiteEditor, { RiskAppetite } from './RiskAppetiteEditor';
 
 type Metric = 'capital' | 'rwa' | 'leverage' | 'lcr' | 'nsfr';
-interface Props { state: BankState; history: BankState[]; config: SimulationConfig; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; onNavigateHelp?: (id: string) => void; }
+interface Props { state: BankState; history: BankState[]; config: SimulationConfig; pendingRiskAppetite?:RiskAppetite|null; onRiskAppetite?:(t:RiskAppetite|null)=>void; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; onNavigateHelp?: (id: string) => void; }
 interface Row { label: string; value: number; factor?: number; ratio?: boolean; total?: boolean; }
 
 export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric): Row[] => {
@@ -66,7 +68,7 @@ export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric
   ];
 };
 
-export default function RegMetricsPanel({ state, history, config, onNavigateHelp }: Props) {
+export default function RegMetricsPanel({ state, history, config, onNavigateHelp, pendingRiskAppetite, onRiskAppetite }: Props) {
   const [metric, setMetric] = useState<Metric>('capital');
   const labels: Record<Metric, string> = { capital: 'Capital', rwa: 'Risk-weighted assets', leverage: 'Leverage', lcr: 'Liquidity coverage', nsfr: 'Stable funding' };
   const fields = { capital: 'cet1Ratio', rwa: 'rwa', leverage: 'leverageRatio', lcr: 'lcr', nsfr: 'nsfr' } as const;
@@ -77,6 +79,6 @@ export default function RegMetricsPanel({ state, history, config, onNavigateHelp
     {metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : <div className="regulatory-grid"><div className="table-wrap"><table><thead><tr><th>Contribution</th><th className="align-right">Effective factor</th><th className="align-right">Amount / ratio</th></tr></thead><tbody>{regulatoryRows(state, config, metric).map((r, n) => <tr key={n} className={r.total ? 'total-row' : ''}><td>{r.label}</td><td className="align-right">{r.factor === undefined ? '·' : formatPct(r.factor)}</td><td className="align-right">{r.ratio ? formatPct(r.value) : formatCurrency(r.value)}</td></tr>)}</tbody></table></div>
     <aside><h3>{labels[metric]} over time</h3><div style={{ height: 260 }}><TimeSeriesChart data={history.map(s => ({ step: s.time.step, value: s.risk.riskMetrics[fields[metric]] }))} xLabel="Month" /></div><div className="policy-note"><strong>Management stress estimates</strong><p>LCR {formatPct(state.risk.riskMetrics.managementLcr ?? state.risk.riskMetrics.lcr)} · NSFR {formatPct(state.risk.riskMetrics.managementNsfr ?? state.risk.riskMetrics.nsfr)}</p><p>These apply behavioural assumptions. They are not the reported prudential ratios.</p></div><p className="muted">Inside the combined buffer, bank policy suspends distributions. The policy payout cap is not a calculation of the PRA maximum distributable amount.</p></aside></div>
     }
-    {metric === 'capital' && <details className="department-advanced"><summary>CET1 history and detailed capital measures</summary><div style={{height:260}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.cet1Ratio}))} xLabel="Month"/></div><table><tbody>{regulatoryRows(state,config,'capital').map(r=><tr key={r.label}><td>{r.label}</td><td>{r.ratio?formatPct(r.value):formatCurrency(r.value)}</td></tr>)}</tbody></table></details>}
+    {metric === 'capital' && <><CapitalHistory history={history}/>{onRiskAppetite&&<RiskAppetiteEditor state={state} config={config} pending={pendingRiskAppetite} onQueue={onRiskAppetite}/>}</>}
   </section>;
 }

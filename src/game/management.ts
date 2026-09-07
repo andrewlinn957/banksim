@@ -6,8 +6,8 @@ export function attentionReason(s: BankState, config: SimulationConfig): string 
   const m = s.risk.riskMetrics;
   if (s.status.hasFailed) return 'The bank has failed. Review the final position.';
   if (m.cet1Ratio <= m.cet1Requirement || m.internalCet1Headroom < 0 || m.praBufferBreached) return 'Capital is below its buffer or internal target. Review distributions and capital before expanding.';
-  if (s.risk.compliance.ownFundsBreached || m.leverageRatio <= config.riskLimits.minLeverageRatio * 1.05) return 'Own funds or leverage need attention. Review capital.';
-  if (m.lcr <= config.riskLimits.minLcr * 1.1 || m.nsfr <= config.riskLimits.minNsfr * 1.05) return 'Liquidity or stable funding is running low. Review deposits and term funding.';
+  if (s.risk.compliance.ownFundsBreached || m.leverageRatio <= Math.max(config.riskLimits.minLeverageRatio,s.behaviour.riskAppetite?.leverage ?? config.riskLimits.minLeverageRatio * 1.05)) return 'Own funds or leverage are below the bank’s target. Review capital.';
+  if (m.lcr <= Math.max(config.riskLimits.minLcr,s.behaviour.riskAppetite?.lcr ?? config.riskLimits.minLcr * 1.1) || m.nsfr <= Math.max(config.riskLimits.minNsfr,s.behaviour.riskAppetite?.nsfr ?? config.riskLimits.minNsfr * 1.05)) return 'Liquidity or stable funding is below the bank’s target. Review deposits and term funding.';
   return null;
 }
 export const customerDeposits = (s: BankState) => s.financial.balanceSheet.items.filter(i => PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit).reduce((n,i) => n+i.balance,0);

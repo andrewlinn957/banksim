@@ -65,6 +65,7 @@ export interface SetCapitalPolicyAction {
 }
 
 export type PlayerAction =
+  | { type: 'setRiskAppetite'; targets: import('./bankState').BehaviouralState['riskAppetite'] | null }
   | AdjustRateAction
   | BuySellAssetAction
   | IssueDebtAction

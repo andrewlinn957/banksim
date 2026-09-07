@@ -11,7 +11,7 @@ import { buildRecommendations, Recommendation } from '../engine/recommendations'
 import { StepAttribution } from '../domain/attribution';
 import { isFeatureEnabled } from '../engine/featureFlags';
 
-export const isRecurringAction = (a: PlayerAction) => a.type === 'adjustRate' || a.type === 'setUnderwriting' || a.type === 'setCapitalPolicy';
+export const isRecurringAction = (a: PlayerAction) => a.type === 'adjustRate' || a.type === 'setUnderwriting' || a.type === 'setCapitalPolicy' || a.type === 'setRiskAppetite';
 
 export type StopConditionKind = 'breach' | 'nearBreach' | 'scoreTarget';
 

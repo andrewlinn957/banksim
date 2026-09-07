@@ -97,6 +97,15 @@ type ActionHandlerMap = HandlerMap<PlayerAction, ActionContext>;
 
 // Concrete implementations for each `PlayerAction` type.
 const actionHandlers: ActionHandlerMap = {
+  setRiskAppetite: (action, ctx) => {
+    const t = action.targets;
+    if(t && (!['cet1','leverage','lcr','nsfr'].every(k=>Number.isFinite(t[k as keyof typeof t]) && t[k as keyof typeof t]>0) || t.cet1>1 || t.leverage>1 || t.lcr>10 || t.nsfr>10)) {
+      ctx.events.push(createEvent('warning','Risk appetite targets must be positive finite ratios (capital up to 100%, liquidity up to 1,000%).'));
+      return;
+    }
+    ctx.state.behaviour.riskAppetite = t ? {...t} : undefined;
+    ctx.events.push(createEvent('info',t?'Board risk appetite updated. Prudential floors still apply.':'Board restored automatic risk appetite targets.'));
+  },
   adjustRate: (action: AdjustRateAction, ctx) => {
     const product = PRODUCT_META[action.productType];
     if (!product?.behaviour?.isLoan && !product?.behaviour?.isCustomerDeposit) { ctx.events.push(createEvent('warning', 'Only customer loan and deposit offer rates can be set directly.')); return; }

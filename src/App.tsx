@@ -1,4 +1,5 @@
 import DepartmentOffice from './components/DepartmentOffice';
+import RiskAppetiteEditor, { RiskAppetite } from './components/RiskAppetiteEditor';
 import PerformanceReport from './components/PerformanceReport';
 import { Department } from './game/departments';
 import { attentionReason, clockAfterStep, monthsToPeriodEnd } from './game/management';
@@ -140,6 +141,7 @@ const formatRateInputPct = (rate: number | null | undefined): string => {
 const App = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [simConfig, setSimConfig] = useState<SimulationConfig>(baseConfig);
+  const [pendingRiskAppetite, setPendingRiskAppetite] = useState<RiskAppetite|null|undefined>();
   const [bankState, setBankState] = useState<BankState>(initialState);
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
@@ -183,7 +185,7 @@ const App = () => {
   const [pauseReason, setPauseReason] = useState('Ready. Set your policy, then run a quarter.');
   const [safetyPause, setSafetyPause] = useState(true);
   const clockRunning = autoRemaining !== null;
-  const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=simConfig.riskLimits.minLeverageRatio*1.05 ? 'Capital':'Treasury';
+  const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=Math.max(simConfig.riskLimits.minLeverageRatio,bankState.behaviour.riskAppetite?.leverage??simConfig.riskLimits.minLeverageRatio*1.05) ? 'Capital':'Treasury';
   const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
   const openReport = (tab: string) => { setIsActionsOpen(false); setActiveTab(tab); };
 
@@ -260,6 +262,7 @@ const App = () => {
   const preview = useMemo<StepPreview | null>(() => {
     if (parsedActionForm.hasErrors || clockRunning || (!(isActionsOpen && activeTab==='Boardroom') && !isTutorialOpen)) return null;
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
+    if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
       stepNumber: bankState.time.step,
@@ -284,7 +287,7 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen, activeTab, clockRunning]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen, activeTab, clockRunning, pendingRiskAppetite]);
 
   const recommendations = useMemo(() => {
     controller.setConfig(simConfig);
@@ -330,6 +333,7 @@ const App = () => {
     }));
 
   const clearTransactions = () => {
+    setPendingRiskAppetite(undefined);
     setActionForm(prev => ({ ...prev, issueLTDebtAmount: '', issueEquityAmount: '', hedgeDirection: 'none', hedgeNotional: '' }));
     setSelectedDecisions(prev => prev.filter(id => !['funding','capital','hedge'].includes(id)));
   };
@@ -354,6 +358,7 @@ const App = () => {
       return;
     }
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
+    if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
       stepNumber: bankState.time.step,
@@ -388,7 +393,7 @@ const App = () => {
     if (!clockRunning || isTutorialOpen || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
     const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
     return () => window.clearTimeout(timer);
-  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, isTutorialOpen, parsedActionForm.hasErrors]);
+  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, isTutorialOpen, parsedActionForm.hasErrors, pendingRiskAppetite]);
 
   // Leave the bank paused when returning from another tab or opening a modal.
   useEffect(() => {
@@ -442,6 +447,7 @@ const App = () => {
     };
     controller.setConfig(scenarioConfig);
     setSimConfig(scenarioConfig);
+    setPendingRiskAppetite(undefined);
     setBankState(scenarioState);
     setStateHistory([scenarioState]);
     setEventLog([]);
@@ -810,6 +816,7 @@ const App = () => {
 
       {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null}/>
+        {activeDepartment==='Capital'&&<RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/>}
       </Boardroom>}
       {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
 
@@ -998,6 +1005,8 @@ const App = () => {
         state={bankState}
         history={stateHistory}
         config={simConfig}
+        pendingRiskAppetite={pendingRiskAppetite}
+        onRiskAppetite={t=>{pauseClock();setPendingRiskAppetite(t);}}
         attribution={lastAttribution}
         onNavigateHelp={openHelpSection}
         onAttributionLineSelect={(selection) => {

@@ -74,6 +74,7 @@ export interface SimulationTime {
 }
 
 export interface BehaviouralState {
+  riskAppetite?: { cet1: number; leverage: number; lcr: number; nsfr: number };
   depositFranchiseStrength: number;
   reputation: number;
   ratingNotchOffset: number;
