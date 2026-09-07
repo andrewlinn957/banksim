@@ -300,9 +300,9 @@ const behaviour: BehaviourParameters = {
   horizonRiskPenaltyWeight: 0.35,
   depositByProduct: {
     [LiabilityProductType.RetailTransactionalDeposits]: {
-      baselineGrowthMonthly: 0.0016,
+      baselineGrowthMonthly: 0.002,
       baseChurnMonthly: 0.0035,
-      policyRateBeta: 0.03,
+      policyRateBeta: 0.04,
       competitorSensitivity: 0.55,
       passThroughLag: 0.45,
       underpricingConvexity: 20,
@@ -316,9 +316,9 @@ const behaviour: BehaviourParameters = {
       mixMigrationDurationSensitivity: 0.06,
     },
     [LiabilityProductType.RetailSavingsDeposits]: {
-      baselineGrowthMonthly: 0.0012,
-      baseChurnMonthly: 0.0025,
-      policyRateBeta: 0.05,
+      baselineGrowthMonthly: 0.0022,
+      baseChurnMonthly: 0.002,
+      policyRateBeta: 0.06,
       competitorSensitivity: 0.85,
       passThroughLag: 0.7,
       underpricingConvexity: 26,
@@ -332,9 +332,9 @@ const behaviour: BehaviourParameters = {
       mixMigrationDurationSensitivity: 0.08,
     },
     [LiabilityProductType.CorporateOperatingDeposits]: {
-      baselineGrowthMonthly: 0.0012,
+      baselineGrowthMonthly: 0.0013,
       baseChurnMonthly: 0.003,
-      policyRateBeta: 0.03,
+      policyRateBeta: 0.035,
       competitorSensitivity: 0.95,
       passThroughLag: 0.4,
       underpricingConvexity: 28,
@@ -350,7 +350,7 @@ const behaviour: BehaviourParameters = {
     [LiabilityProductType.CorporateNonOperatingDeposits]: {
       baselineGrowthMonthly: 0.0008,
       baseChurnMonthly: 0.006,
-      policyRateBeta: 0.02,
+      policyRateBeta: 0.025,
       competitorSensitivity: 1.2,
       passThroughLag: 0.25,
       underpricingConvexity: 32,
@@ -366,8 +366,8 @@ const behaviour: BehaviourParameters = {
   },
   loanPipelineByProduct: {
     [AssetProductType.Mortgages]: {
-      baseDemandRateMonthly: 0.0125,
-      pricingSensitivity: 60,
+      baseDemandRateMonthly: 0.0105,
+      pricingSensitivity: 30,
       macroSensitivity: 1.2,
       baseApprovalRate: 0.82,
       underwritingSensitivity: 0.5,
@@ -375,8 +375,8 @@ const behaviour: BehaviourParameters = {
       cancellationRateMonthly: 0.08,
     },
     [AssetProductType.CorporateLoans]: {
-      baseDemandRateMonthly: 0.024,
-      pricingSensitivity: 45,
+      baseDemandRateMonthly: 0.017,
+      pricingSensitivity: 25,
       macroSensitivity: 1.8,
       baseApprovalRate: 0.72,
       underwritingSensitivity: 0.65,
