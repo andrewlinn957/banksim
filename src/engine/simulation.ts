@@ -666,7 +666,11 @@ const syncFundingLineFromLadder = (
   productType: FundingProduct
 ): void => {
   const buckets = getFundingLadderBuckets(state, productType);
-  const line = ensureLineItem(
+  const existingLine = findItem(state.financial.balanceSheet, productType);
+  // Do not manufacture dormant wholesale products merely because the lifecycle loop knows about them.
+  // Legacy saved games with an existing line, or products with real maturity buckets, still work normally.
+  if (!existingLine && buckets.length === 0) return;
+  const line = existingLine ?? ensureLineItem(
     state,
     BalanceSheetSide.Liability,
     productType,
