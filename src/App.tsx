@@ -15,7 +15,7 @@ import {
   LiabilityProductType,
   BalanceSheetSide,
 } from './domain/enums';
-import TopMetricsPanel from './components/TopMetricsPanel';
+import RiskDashboard from './components/RiskDashboard';
 import { ActionFormState } from './components/ActionsPanel';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
@@ -36,8 +36,7 @@ import { SimulationConfig } from './domain/config';
 import { calculateRiskMetrics, evaluateCompliance } from './engine/metrics';
 import { SimulationController } from './ui/simulationController';
 import AccountsPanel from './components/AccountsPanel';
-import ExogenousVariablesPanel from './components/ExogenousVariablesPanel';
-import { formatCurrency, formatPct, formatSignedPct } from './utils/formatters';
+import { formatCurrency, formatPct } from './utils/formatters';
 import { parseMoneyInput, parseRateInput } from './utils/parsers';
 import { evaluateScenarioGoals } from './engine/scoring';
 import { ScenarioMetricKey, ScenarioScore } from './domain/scoring';
@@ -46,7 +45,6 @@ import RunComparisonPanel from './components/RunComparisonPanel';
 import { AttributionLineSelection, StepAttribution } from './domain/attribution';
 import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
-import HelpLink from './components/HelpLink';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
 import { buildPreRunGuardrails } from './content/guardrails';
 import TutorialOverlay from './components/TutorialOverlay';
@@ -58,7 +56,6 @@ const tabs = [
   'Performance',
   'Overview',
   'Share Price',
-  'Scenarios',
   'Accounts',
   'Regulatory',
   'Loans',
@@ -72,55 +69,17 @@ const tabs = [
 const tabLabels: Record<string, string> = {
   Boardroom: 'Bank',
   Performance: 'Performance',
-  Overview: 'Overview',
+  Overview: 'Risk dashboard',
   'Share Price': 'Share price',
   Scenarios: 'Scenarios',
   Accounts: 'Accounts',
-  Regulatory: 'Capital & liquidity',
+  Regulatory: 'Regulatory metrics',
   Loans: 'Loans',
   Costs: 'Costs',
   Events: 'Events',
   Reconciliations: 'Reconciliations',
   'Past games': 'Past games',
   Help: 'Help',
-};
-
-interface TabHelpLink {
-  label: string;
-  sectionId: string;
-}
-
-const tabHelpLinks: Record<string, TabHelpLink[]> = {
-  Overview: [
-    { label: 'Monthly pipeline', sectionId: 'core-monthly-loop' },
-    { label: 'Risk limits', sectionId: 'risk-metrics-and-compliance' },
-    { label: 'Preview and recommendations', sectionId: 'preview-and-recommendations' },
-  ],
-  'Share Price': [{ label: 'Share price model', sectionId: 'share-price-model' }],
-  Scenarios: [
-    { label: 'Scenario system', sectionId: 'scenario-system' },
-    { label: 'Macro and spread engine', sectionId: 'market-and-curve-engine' },
-  ],
-  Accounts: [{ label: 'Attribution and reconciliation', sectionId: 'attribution-events-reconciliation' }],
-  Regulatory: [
-    { label: 'Capital breach limits', sectionId: 'risk-metrics-and-compliance' },
-    { label: 'Confidence states', sectionId: 'confidence-state-machine' },
-    { label: 'LCR and NSFR', sectionId: 'liquidity-ratios' },
-  ],
-  Loans: [
-    { label: 'Loan pipeline', sectionId: 'loan-pipeline' },
-    { label: 'Cohorts and IFRS9', sectionId: 'loan-cohorts-and-ifrs9' },
-  ],
-  Costs: [
-    { label: 'Capital distributions', sectionId: 'capital-policy-and-distributions' },
-    { label: 'Conduct risk', sectionId: 'conduct-risk' },
-  ],
-  Events: [
-    { label: 'Attribution and event links', sectionId: 'attribution-events-reconciliation' },
-    { label: 'Conduct events', sectionId: 'conduct-risk' },
-  ],
-  Reconciliations: [{ label: 'Reconciliation mechanics', sectionId: 'attribution-events-reconciliation' }],
-  'Past games': [{ label: 'Autopilot and replay', sectionId: 'autopilot-and-run-history' }],
 };
 
 interface TutorialStepView {
@@ -333,7 +292,6 @@ const App = () => {
       }),
     [bankState, parsedActionForm.hasErrors, parsedActionForm.values, preview, simConfig]
   );
-  const contextualHelpLinks = tabHelpLinks[activeTab] ?? [];
 
   const milestoneEventsFromPayload = (payload: ReturnType<typeof getScenarioStepPayload>): SimulationEvent[] =>
     payload.milestones.map((milestone) => ({
@@ -681,12 +639,12 @@ const App = () => {
       title: 'Read CET1 and LCR deltas',
       summary: 'Review why metrics moved before changing strategy.',
       instructions: [
-        'Go to Overview and inspect Last step attribution.',
+        'Go to Risk dashboard and inspect the last-close changes.',
         'Focus on CET1 and LCR lines to understand driver direction.',
       ],
       ready: tutorialReviewedDeltas,
-      readinessHint: 'Open Overview after running one month.',
-      primaryActionLabel: 'Go to Overview',
+      readinessHint: 'Open Risk dashboard after running one month.',
+      primaryActionLabel: 'Go to Risk dashboard',
       onPrimaryAction: () => setActiveTab('Overview'),
     },
     {
@@ -827,23 +785,8 @@ const App = () => {
         </div>
       )}
 
-      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Scenarios'?'Scenario tools':activeTab==='Help'?'Reference library':`${activeTab} report`}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
+      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
 
-      {activeTab !== 'Help' && contextualHelpLinks.length > 0 && (
-        <div className="card help-context-strip">
-          <div className="muted">Mechanics references</div>
-          <div className="help-context-links">
-            {contextualHelpLinks.map((link) => (
-              <HelpLink
-                key={`${activeTab}-${link.sectionId}`}
-                label={link.label}
-                sectionId={link.sectionId}
-                onNavigate={openHelpSection}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null}/>
@@ -852,65 +795,7 @@ const App = () => {
       {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
 
       {activeTab === 'Overview' && (
-        <div className="section-grid">
-          <div className="card">
-            <TopMetricsPanel
-              riskMetrics={bankState.risk.riskMetrics}
-              config={simConfig}
-              gdpGrowthMoM={bankState.market.gdpGrowthMoM}
-              inflationRate={bankState.market.inflationRate}
-              unemploymentRate={bankState.market.unemploymentRate}
-              baseRate={bankState.market.baseRate}
-              creditSpread={bankState.market.creditSpread}
-              equity={totalEquity}
-              assets={totalAssets}
-              sharePrice={bankState.equityMarket.sharePrice}
-              marketCap={bankState.equityMarket.marketCap}
-              epsTtm={bankState.equityMarket.epsTtm}
-              peMultiple={bankState.equityMarket.peMultiple}
-              roe={roe}
-              nim={nim}
-              depositFranchiseStrength={bankState.behaviour.depositFranchiseStrength}
-              depositFranchiseDeltaMoM={franchiseDeltaMoM}
-              onNavigateHelp={openHelpSection}
-            />
-          </div>
-          <ExogenousVariablesPanel market={bankState.market} config={simConfig} />
-          {lastAttribution && (
-            <div className="card stack">
-              <div className="eyebrow">Last step attribution</div>
-              <h3>Why metrics moved</h3>
-              <table className="data-table">
-                <tbody>
-                  <tr>
-                    <td>CET1 ratio</td>
-                    <td className="numeric">{formatSignedPct(lastAttribution.metrics.cet1Ratio.delta)}</td>
-                  </tr>
-                  <tr>
-                    <td>LCR</td>
-                    <td className="numeric">{formatSignedPct(lastAttribution.metrics.lcr.delta)}</td>
-                  </tr>
-                  <tr>
-                    <td>NSFR</td>
-                    <td className="numeric">{formatSignedPct(lastAttribution.metrics.nsfr.delta)}</td>
-                  </tr>
-                  <tr>
-                    <td>NIM</td>
-                    <td className="numeric">{formatSignedPct(lastAttribution.metrics.nim.delta)}</td>
-                  </tr>
-                  <tr>
-                    <td>Top CET1 driver</td>
-                    <td className="numeric">
-                      {lastAttribution.metrics.cet1Ratio.lines.find(
-                        (line) => line.id === lastAttribution.metrics.cet1Ratio.topPositiveDriverId
-                      )?.label ?? 'None'}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <RiskDashboard state={bankState} config={simConfig} attribution={lastAttribution} />
       )}
 
       {activeTab === 'Share Price' && (
@@ -1031,7 +916,7 @@ const App = () => {
 
       {activeTab === 'Regulatory' && (
         <section className="stack">
-      <h2>Regulatory Metrics</h2>
+      <h2>Regulatory metrics</h2>
       <RegMetricsPanel
         state={bankState}
         history={stateHistory}
@@ -1039,7 +924,6 @@ const App = () => {
         pendingRiskAppetite={pendingRiskAppetite}
         onRiskAppetite={t=>{pauseClock();setPendingRiskAppetite(t);}}
         attribution={lastAttribution}
-        onNavigateHelp={openHelpSection}
         onAttributionLineSelect={(selection) => {
           setHighlightedEventIds(selection.eventIds);
           setSelectedAttributionLine(selection);
@@ -1076,7 +960,6 @@ const App = () => {
           {selectedAttributionLine && (
             <AttributionMechanicExplainer
               selection={selectedAttributionLine}
-              onNavigateHelp={openHelpSection}
             />
           )}
           <EventLog
