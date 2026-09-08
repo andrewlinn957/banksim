@@ -1,103 +1,235 @@
 # BankSim
 
-BankSim is a React/Vite banking simulator game. You run a UK bank month by month, adjust commercial and balance-sheet levers, and try to survive scenario pressure while keeping the franchise profitable, liquid, and well capitalised.
+BankSim is a browser-based management game about running a small UK retail bank.
 
-The simulator models banking mechanics at a management-game level: deposits, loan growth, funding, liquidity ratios, regulatory capital, credit losses, conduct risk, securities marks, scenario shocks, and an equity price signal.
+You manage the bank month by month. You set deposit prices, lending policy, capital policy and Treasury strategy. The model then updates customer behaviour, loan growth, funding, profit, credit losses, capital, liquidity and market conditions.
 
-Start at Headquarters: set standing policies in Customers, Lending, Capital and Treasury, then run to quarter end, year end or continuously on auto. The time controls remain visible and pause when buffers need attention. Quarterly and annual reports show the bank developing over time; first-year stars and badges are optional goals and do not end the career.
+The aim is not simply to keep every regulatory ratio as high as possible. A good strategy must balance profitability, franchise growth, funding stability and resilience.
 
-The interface uses a generated Threadneedle Street bank illustration, four actionable department entrances and an adjacent management workspace. The profit timeline and first-year challenges live under Reports. See [management interface](docs/management-interface.md) and [career pacing](docs/career-pacing.md) for the design and calibration evidence. Try “The supervisory review” for a fictional Pillar 2A/PRA-buffer challenge.
+## The bank
 
-See [model basis and remaining gaps](docs/model-basis.md) for the 2026 PRA assumptions and funded-loan IFRS 9 treatment, and [art direction](docs/art-direction.md) for the image prompt.
+The default bank has about £14 billion of assets. It is funded mainly by customer deposits.
 
-## Gameplay
+Its main assets are:
 
-Each turn advances the bank by one month. The player sets rates, underwriting standards and payout policies, and can queue funding, equity and hedge transactions.
+- residential mortgages
+- personal loans and revolving credit
+- SME and business lending
+- cash and Bank of England reserves
+- UK gilts held for liquidity management
 
-The challenge is to keep the bank alive without simply hiding in a defensive posture. Growth can improve earnings and market confidence, but it consumes capital and liquidity. Pulling back can protect ratios, but it may weaken the franchise, reduce profit, and leave the bank behind competitors.
+Its main funding sources are:
 
-## Objective
+- retail current accounts
+- instant-access savings
+- fixed-term retail savings
+- SME and business deposits
+- long-term debt
 
-Your job is to manage a working bank through normal conditions and stress scenarios. A strong run usually balances four goals:
+The bank starts with CET1 and AT1 capital. You can issue new CET1 equity or Tier 2 capital during the game.
 
-- earn sustainable profit
-- maintain capital and liquidity buffers
-- preserve deposit and lending franchise strength
-- keep market confidence high enough to support the share price
+## What you control
 
-The game ends on capital-minimum or actual cash failures. This is a gameplay condition, not a legal resolution assessment. Liquidity breaches prompt recovery warnings. Warnings and weak metrics do not always end the game immediately, but they usually make future turns harder.
+### Customers
 
-## Standing policies and transactions
+Set the rates offered on:
 
-Policies continue until you change them. Debt, equity and swap transactions execute once and clear from the plan. Typical decisions include:
+- instant-access savings
+- fixed-term savings
+- SME and business deposits
 
-- setting retail and corporate deposit rates
-- setting mortgage and corporate lending rates
-- tightening or loosening underwriting standards
-- issuing long-term debt or equity
-- changing dividend payouts
-- managing hedges and balance-sheet risk
+For fixed-term savings, you also choose a term of one, two or three years.
 
-The game rewards understanding second-order effects. For example, raising deposit rates can stabilise funding but compress net interest margin. Cutting loan rates may improve growth but can attract weaker borrowers if underwriting is loose. Issuing equity can save a stressed bank but dilutes existing shareholders.
+Deposit pricing affects balance growth, churn, interest expense, deposit quality and funding confidence. Fixed-term deposits provide more stable funding, but they also create future maturity concentrations.
 
-## Scenarios
+### Lending
 
-Sandbox mode lets you experiment freely. Scenario mode gives the bank a defined macro path and objectives. Scenarios can alter interest rates, spreads, credit losses, funding pressure, deposit behaviour, market confidence, and sector stress.
+Manage three lending businesses:
 
-Scenario goals are scored against the run, so survival alone may not be enough. A good result usually requires handling the stress while still protecting franchise value and shareholder outcomes.
+- mortgages
+- personal credit
+- SME and business lending
 
-## Share Price
+For each book, you set price and lending selectivity. Mortgage policy also lets you set the maximum LTV and the initial fixed-rate period for new lending.
 
-The share price is a game signal, not a random ticker. It responds to profitability, capital strength, liquidity, credit quality, macro conditions, franchise momentum, and dilution.
+Loan pricing affects demand and margin. Selectivity affects approvals and credit quality. Mortgage LTV and fixed periods affect loss severity and interest-rate risk.
 
-The model uses earnings and common-equity book value as anchors. A profitable, well-capitalised bank can earn a stronger valuation multiple. A weak or failing bank is discounted sharply, and monthly price moves are capped so the game remains playable rather than swinging unrealistically from one turn to the next.
+### Treasury
 
-## Risk And Failure
+Manage the liquid-asset and funding position by setting:
 
-The most important constraints are:
+- the share of liquid assets held as gilts rather than reserves
+- gilt portfolio duration
+- long-term debt issuance
+- Bank of England secured funding through STR or ILTR
+- interest-rate swaps
 
-- CET1 ratio
-- leverage ratio
-- liquidity coverage ratio
-- net stable funding ratio
-- cash availability
-- accounting and balance-sheet invariants
+Treasury decisions affect liquidity, funding cost, collateral encumbrance, refinancing risk and interest-rate risk in the banking book.
 
-Some risks build gradually. Credit quality can deteriorate through the loan book. Deposit confidence can weaken. Funding costs can rise. Conduct issues can create losses. Concentrations can create warnings before they become a serious strategic problem.
+### Capital
 
-## Learning The Model
+Set the share of profit paid to shareholders and, when needed, raise:
 
-The in-app Help tab explains the main mechanics while you play. Events, attribution, reconciliations, and regulatory panels are meant to make the simulation inspectable rather than opaque. When a metric moves, the game should give you enough trail to understand why.
+- CET1 equity
+- Tier 2 capital
 
-The main tabs are:
+You can also set internal risk-appetite targets for CET1, leverage, LCR and NSFR.
 
-- `Overview`: headline financial, regulatory, and attribution metrics.
-- `Share Price`: market-cap, EPS, P/E, price-to-book, and fair-value signals.
-- `Scenarios`: scenario setup and objective tracking.
-- `Accounts`: balance sheet and income statement detail.
-- `Regulatory`: CET1, leverage, LCR, NSFR, and compliance diagnostics.
-- `Loans`: pipeline, cohorts, defaults, workouts, and credit migration.
-- `Costs`: operating cost, conduct risk, and payout controls.
-- `Events`: monthly model events and warning trail.
-- `Reconciliations`: accounting and cash-flow checks.
-- `Past games`: run history and comparisons.
-- `Help`: in-app mechanics reference.
+Retained profit builds CET1. Dividends reduce CET1 and cash. Tier 2 improves total capital but does not improve CET1 or the leverage ratio.
 
-## Model Areas
+## The monthly close
 
-Core simulation code lives under `src/engine`.
+Standing policies remain in force until you change them. One-off transactions execute once and then leave the queue.
 
-Important entry points:
+When you close a month, the simulation broadly does the following:
 
-- `src/engine/simulation.ts`: monthly simulation step.
-- `src/engine/metrics.ts`: regulatory and financial metrics.
-- `src/engine/loanCohorts.ts`: loan lifecycle, credit migration, defaults, and workouts.
-- `src/config/baseConfig.ts`: global model assumptions and tunable parameters.
-- `src/config/initialState.ts`: initial bank state.
-- `src/config/scenarios.ts`: scenario definitions and step payloads.
+1. Apply queued actions and standing policies.
+2. Update deposit flows and customer behaviour.
+3. Update loan demand, approvals, commitments and drawdowns.
+4. Process funding maturities and Treasury actions.
+5. Calculate income, expenses, provisions and credit losses.
+6. Update capital and liquidity measures.
+7. Apply market and scenario changes.
+8. Run compliance, accounting and cash checks.
 
-Domain types live under `src/domain`, UI components under `src/components`, and explanatory content under `src/content`.
+This order matters. A decision can improve one measure and weaken another. For example, a higher savings rate can improve funding while reducing net interest income.
 
-## Verification
+## Core mechanics
 
-Run `npm ci`, `npm test`, `npm run typecheck`, and `npm run build`. CI runs tests, source type checking and the production build.
+BankSim includes simplified models of:
+
+- deposit growth, churn and franchise strength
+- fixed-term deposit maturity ladders
+- loan demand, approvals and adverse selection
+- mortgage LTV and fixed-rate structure
+- IFRS 9 staging and expected credit loss
+- defaults, workouts and recoveries
+- CET1, Tier 1, total capital and leverage
+- LCR and NSFR
+- HQLA and collateral encumbrance
+- Bank of England secured funding
+- funding confidence and maturity risk
+- interest-rate risk in the banking book
+- securities valuation and OCI
+- dividend policy and capital issuance
+- conduct risk
+- macroeconomic and market scenarios
+- share-price and shareholder-value signals
+
+The model is deliberately inspectable. Important changes should be traceable through Accounts, Loans, Events, attribution views and Reconciliations.
+
+## Help
+
+The in-game **Help** tab is the player manual.
+
+It explains the current controls and their consequences in plain English. It uses short sections, bullets and equations where an equation helps explain the mechanic. It does not duplicate live regulatory dashboards.
+
+Examples include:
+
+```text
+Deposit price gap = your deposit rate - competitor deposit rate
+
+LTV = mortgage amount / property value
+
+LCR = HQLA / [Outflows - min(Inflows, 75% × Outflows)]
+
+NSFR = ASF / RSF
+
+CET1 ratio = adjusted CET1 / RWA
+
+Leverage ratio = Tier 1 capital / leverage exposure
+```
+
+## Scenarios and failure
+
+Sandbox mode lets you manage the bank without a fixed objective. Scenario mode can change the economic path, market conditions, customer behaviour and risk environment.
+
+Scenarios can include changes in:
+
+- Bank Rate and the gilt curve
+- unemployment and GDP
+- credit spreads
+- loan demand and defaults
+- deposit behaviour
+- funding confidence
+- liquidity pressure
+- sector stress
+
+The game can end after a capital-minimum breach or an actual cash failure. A liquidity-ratio breach does not automatically end the game, but it can reduce confidence and make later decisions harder.
+
+These are gameplay rules. They are not a legal or supervisory determination that a real bank would fail or enter resolution.
+
+## Technology
+
+BankSim is built with:
+
+- React
+- TypeScript
+- Vite
+- Chart.js
+- Vitest
+
+The game runs entirely in the browser.
+
+## Run locally
+
+Requirements: Node.js 20 or later.
+
+```bash
+npm ci
+npm run dev
+```
+
+For a production build:
+
+```bash
+npm run build
+npm run preview
+```
+
+## Tests
+
+Run the fast test suite:
+
+```bash
+npm run test:fast
+```
+
+Run the long-horizon regression suite:
+
+```bash
+npm run test:regression
+```
+
+Run type checking and a production build:
+
+```bash
+npm run typecheck
+npm run build
+```
+
+GitHub Actions runs the fast tests, regression tests, type check and production build. Merges to `main` are deployed through GitHub Pages.
+
+## Project structure
+
+- `src/engine/` — monthly simulation, prudential metrics, loan lifecycle, funding, Treasury and accounting logic
+- `src/config/` — starting bank, model parameters and scenarios
+- `src/domain/` — core state and product types
+- `src/components/` — React interface
+- `src/content/` — Help and explanatory content
+- `docs/` — design notes, model basis and supporting documentation
+
+Useful entry points:
+
+- `src/engine/simulation.ts` — monthly simulation step
+- `src/engine/metrics.ts` — capital, leverage, liquidity and risk measures
+- `src/engine/loanCohorts.ts` — loan lifecycle, IFRS 9 migration, defaults and workouts
+- `src/config/baseConfig.ts` — model parameters
+- `src/config/initialState.ts` — default bank
+- `src/config/scenarios.ts` — scenario definitions
+
+## Model scope
+
+BankSim is a management game and learning tool. It is not a regulatory calculator, accounting system or forecasting model for a real bank.
+
+The prudential and accounting mechanics are simplified representations designed to produce understandable management trade-offs. Where the game uses UK regulatory concepts, the implementation is intended to be directionally realistic rather than a substitute for the PRA Rulebook, UK CRR, supervisory guidance or professional advice.
