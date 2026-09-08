@@ -10,7 +10,7 @@ describe('buildMechanicsRegistry', () => {
     const entries = buildMechanicsRegistry(context);
     const ids = entries.map((entry) => entry.id);
 
-    expect(entries.length).toBeGreaterThanOrEqual(10);
+    expect(entries.length).toBeGreaterThanOrEqual(18);
     expect(new Set(ids).size).toBe(ids.length);
 
     entries.forEach((entry) => {
@@ -22,42 +22,64 @@ describe('buildMechanicsRegistry', () => {
     });
   });
 
-  it('injects dynamic threshold values from active config/state context', () => {
+  it('injects current thresholds in the same percentage format as the game', () => {
     const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
     const entries = buildMechanicsRegistry(context);
 
     const liquidity = entries.find((entry) => entry.id === 'liquidity-ratios');
-    expect(liquidity).toBeDefined();
     expect(liquidity?.thresholds).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: 'Min LCR', value: context.formatted.minLcr }),
-        expect.objectContaining({ label: 'Min NSFR', value: context.formatted.minNsfr }),
+        expect.objectContaining({ label: 'Minimum LCR', value: context.formatted.minLcr }),
+        expect.objectContaining({ label: 'Minimum NSFR', value: context.formatted.minNsfr }),
         expect.objectContaining({ label: 'Current LCR', value: context.formatted.currentLcr }),
         expect.objectContaining({ label: 'Current NSFR', value: context.formatted.currentNsfr }),
       ])
     );
 
     const capital = entries.find((entry) => entry.id === 'risk-metrics-and-compliance');
-    expect(capital).toBeDefined();
     expect(capital?.thresholds).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: 'Min CET1 ratio', value: context.formatted.minCet1Ratio }),
-        expect.objectContaining({ label: 'Min leverage ratio', value: context.formatted.minLeverageRatio }),
+        expect.objectContaining({ label: 'Minimum CET1 ratio', value: context.formatted.minCet1Ratio }),
+        expect.objectContaining({ label: 'Minimum leverage ratio', value: context.formatted.minLeverageRatio }),
         expect.objectContaining({
-          label: 'Combined CET1 requirement (MDA line)',
+          label: 'Combined CET1 requirement',
           value: context.formatted.combinedCet1Requirement,
         }),
       ])
     );
   });
 
-  it('contains anchors referenced by contextual help controls', () => {
+  it('covers every control added for the small UK retail-bank model', () => {
     const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
     const entries = buildMechanicsRegistry(context);
     const ids = new Set(entries.map((entry) => entry.id));
 
     [
+      'deposit-behaviour',
+      'term-savings',
+      'loan-pipeline',
+      'mortgage-structure',
+      'loan-cohorts-and-ifrs9',
+      'treasury-liquidity-portfolio',
+      'funding-ladder-and-rollover',
+      'boe-secured-funding',
+      'irrbb-and-swaps',
+      'capital-policy-and-distributions',
+      'tier2-and-equity',
+      'risk-metrics-and-compliance',
+      'liquidity-ratios',
+      'confidence-state-machine',
+    ].forEach((id) => expect(ids.has(id)).toBe(true));
+  });
+
+  it('keeps anchors that other tabs use for contextual help', () => {
+    const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
+    const ids = new Set(buildMechanicsRegistry(context).map((entry) => entry.id));
+
+    [
+      'core-monthly-loop',
       'actions-pricing-and-underwriting',
+      'autopilot-and-run-history',
       'deposit-behaviour',
       'loan-pipeline',
       'loan-cohorts-and-ifrs9',
@@ -66,10 +88,21 @@ describe('buildMechanicsRegistry', () => {
       'risk-metrics-and-compliance',
       'liquidity-ratios',
       'confidence-state-machine',
-      'attribution-events-reconciliation',
+      'conduct-risk',
+      'market-and-curve-engine',
+      'scenario-system',
       'board-pressure',
-    ].forEach((id) => {
-      expect(ids.has(id)).toBe(true);
-    });
+      'share-price-model',
+      'preview-and-recommendations',
+      'attribution-events-reconciliation',
+    ].forEach((id) => expect(ids.has(id)).toBe(true));
+  });
+
+  it('does not describe obsolete default-bank mechanics', () => {
+    const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
+    const text = JSON.stringify(buildMechanicsRegistry(context));
+    expect(text).not.toContain('Wholesale ST/LT funding');
+    expect(text).not.toContain('Select a department on the bank screen for standing policies, one-off orders and a next-close estimate.');
+    expect(text).not.toContain('generic repo');
   });
 });

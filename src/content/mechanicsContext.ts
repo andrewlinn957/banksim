@@ -3,8 +3,6 @@ import { SimulationConfig } from '../domain/config';
 
 const formatPct = (value: number, digits = 1): string => `${(value * 100).toFixed(digits)}%`;
 
-const formatMultiple = (value: number, digits = 2): string => `${value.toFixed(digits)}x`;
-
 export interface MechanicsDynamicContext {
   minCet1Ratio: number;
   minLeverageRatio: number;
@@ -76,28 +74,25 @@ export const buildMechanicsDynamicContext = (args: {
 
   const formatMaybePct = (value: number | undefined, digits = 1): string | undefined =>
     value === undefined ? undefined : formatPct(value, digits);
-  const formatMaybeMult = (value: number | undefined, digits = 2): string | undefined =>
-    value === undefined ? undefined : formatMultiple(value, digits);
 
   return {
     values,
     formatted: {
       minCet1Ratio: formatPct(values.minCet1Ratio),
       minLeverageRatio: formatPct(values.minLeverageRatio),
-      minLcr: formatMultiple(values.minLcr),
-      minNsfr: formatMultiple(values.minNsfr),
+      minLcr: formatPct(values.minLcr),
+      minNsfr: formatPct(values.minNsfr),
       combinedCet1Requirement: formatPct(values.combinedCet1Requirement),
       at1DiscretionaryCet1Threshold: formatPct(values.at1DiscretionaryCet1Threshold),
       confidenceStrongMinScore: formatPct(values.confidenceStrongMinScore),
       confidenceStableMinScore: formatPct(values.confidenceStableMinScore),
       confidenceWatchMinScore: formatPct(values.confidenceWatchMinScore),
-      confidenceHardLcrWatch: formatMaybeMult(values.confidenceHardLcrWatch) ?? 'N/A',
-      confidenceHardLcrStressed: formatMaybeMult(values.confidenceHardLcrStressed) ?? 'N/A',
+      confidenceHardLcrWatch: formatPct(values.confidenceHardLcrWatch),
+      confidenceHardLcrStressed: formatPct(values.confidenceHardLcrStressed),
       currentCet1Ratio: formatMaybePct(values.currentCet1Ratio),
       currentLeverageRatio: formatMaybePct(values.currentLeverageRatio),
-      currentLcr: formatMaybeMult(values.currentLcr),
-      currentNsfr: formatMaybeMult(values.currentNsfr),
+      currentLcr: formatMaybePct(values.currentLcr),
+      currentNsfr: formatMaybePct(values.currentNsfr),
     },
   };
 };
-

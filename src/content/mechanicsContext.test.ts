@@ -6,7 +6,6 @@ import { buildMechanicsDynamicContext } from './mechanicsContext';
 describe('buildMechanicsDynamicContext', () => {
   it('extracts and formats regulatory thresholds from config', () => {
     const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
-    const stack = baseConfig.riskLimits.capitalBufferStack;
     const combinedRequirement = initialState.risk.riskMetrics.cet1Requirement;
 
     expect(context.values.minCet1Ratio).toBe(baseConfig.riskLimits.minCet1Ratio);
@@ -17,8 +16,8 @@ describe('buildMechanicsDynamicContext', () => {
 
     expect(context.formatted.minCet1Ratio).toBe(`${(baseConfig.riskLimits.minCet1Ratio * 100).toFixed(1)}%`);
     expect(context.formatted.minLeverageRatio).toBe(`${(baseConfig.riskLimits.minLeverageRatio * 100).toFixed(1)}%`);
-    expect(context.formatted.minLcr).toBe(`${baseConfig.riskLimits.minLcr.toFixed(2)}x`);
-    expect(context.formatted.minNsfr).toBe(`${baseConfig.riskLimits.minNsfr.toFixed(2)}x`);
+    expect(context.formatted.minLcr).toBe(`${(baseConfig.riskLimits.minLcr * 100).toFixed(1)}%`);
+    expect(context.formatted.minNsfr).toBe(`${(baseConfig.riskLimits.minNsfr * 100).toFixed(1)}%`);
     expect(context.formatted.combinedCet1Requirement).toBe(`${(combinedRequirement * 100).toFixed(1)}%`);
   });
 
@@ -29,7 +28,7 @@ describe('buildMechanicsDynamicContext', () => {
     expect(withState.values.currentLcr).toBeCloseTo(initialState.risk.riskMetrics.lcr, 10);
     expect(withState.values.currentNsfr).toBeCloseTo(initialState.risk.riskMetrics.nsfr, 10);
     expect(withState.formatted.currentCet1Ratio).toBeDefined();
-    expect(withState.formatted.currentLcr).toBeDefined();
+    expect(withState.formatted.currentLcr).toBe(`${(initialState.risk.riskMetrics.lcr * 100).toFixed(1)}%`);
 
     const withoutState = buildMechanicsDynamicContext({ config: baseConfig });
     expect(withoutState.values.currentCet1Ratio).toBeUndefined();
