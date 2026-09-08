@@ -1,3 +1,4 @@
+import { ReactNode } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide } from '../domain/enums';
@@ -195,7 +196,7 @@ const RiskStripSection = ({
 }: {
   title: string;
   className: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) => (
   <section className="risk-command-panel">
     <div className="risk-panel-heading"><h3>{title}</h3></div>
