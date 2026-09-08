@@ -593,7 +593,10 @@ export const calculateRiskMetrics = ({
     osiiNextAssessmentStep: capitalBuffers.osiiNextAssessmentStep,
     osiiThresholdScheduleYear: capitalBuffers.osiiThresholdScheduleYear,
     minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
-    tier1Requirement: Math.max(minima.tier1,minima.total) + capitalBuffers.combinedBufferRate,
+    tier1Requirement:
+      (rwa > 0
+        ? Math.max(minima.tier1, minima.total - tier2 / rwa)
+        : Math.max(minima.tier1, minima.total)) + capitalBuffers.combinedBufferRate,
     totalCapitalRequirement: minima.total + capitalBuffers.combinedBufferRate,
     internalLeverageTargetRatio: Math.max(config.riskLimits.minLeverageRatio, state.behaviour.riskAppetite?.leverage ?? config.riskLimits.minLeverageRatio*1.05),
     internalLcrTargetRatio: Math.max(config.riskLimits.minLcr, state.behaviour.riskAppetite?.lcr ?? config.riskLimits.minLcr*1.1),

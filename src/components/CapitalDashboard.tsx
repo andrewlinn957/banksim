@@ -1,13 +1,14 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { eligibleCet1, ownFundsRequirements } from '../engine/prudential';
+import { eligibleTier2OwnFunds } from '../products/regulatory';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import Pillar2APanel from './Pillar2APanel';
 import CapitalBuffersPanel from './CapitalBuffersPanel';
 
 export function capitalDashboardData(state: BankState, config: SimulationConfig) {
   const rwa = state.risk.riskMetrics.rwa;
-  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
+  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = eligibleTier2OwnFunds(state);
   const minima = ownFundsRequirements(config.riskLimits, rwa, state.risk.riskMetrics.pillar2ARate ?? state.risk.pillar2A?.assessedRate ?? 0);
   const b = config.riskLimits.capitalBufferStack;
   const metrics = state.risk.riskMetrics;
@@ -15,6 +16,9 @@ export function capitalDashboardData(state: BankState, config: SimulationConfig)
   const countercyclicalBuffer = metrics.countercyclicalBufferRate ?? b.countercyclicalBuffer;
   const osiiBuffer = metrics.osiiBufferRate ?? b.systemicBuffer;
   const buffer = metrics.combinedBufferRate ?? conservationBuffer + countercyclicalBuffer + osiiBuffer;
+  const effectiveTier1Minimum = rwa > 0
+    ? Math.max(minima.tier1, minima.total - tier2 / rwa)
+    : Math.max(minima.tier1, minima.total);
   const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - (at1 + tier2) / rwa - minima.cet1) : 0;
   const rows = [
     { label: 'Pillar 1 CET1', ratio: config.riskLimits.minCet1Ratio },
@@ -26,7 +30,7 @@ export function capitalDashboardData(state: BankState, config: SimulationConfig)
   ];
   return { rwa, cet1, at1, tier2, rows, cards: [
     { name: 'CET1', amount: cet1, minimum: minima.cet1, requirement: minima.cet1 + substitution + buffer },
-    { name: 'Tier 1', amount: cet1 + at1, minimum: minima.tier1, requirement: Math.max(minima.tier1, minima.total) + buffer },
+    { name: 'Tier 1', amount: cet1 + at1, minimum: minima.tier1, requirement: effectiveTier1Minimum + buffer },
     { name: 'Total capital', amount: cet1 + at1 + tier2, minimum: minima.total, requirement: minima.total + buffer },
   ].map(c => ({ ...c, actual: rwa > 0 ? c.amount / rwa : NaN, requiredAmount: c.requirement * rwa })) };
 }
