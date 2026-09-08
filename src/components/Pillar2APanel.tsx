@@ -23,7 +23,7 @@ export default function Pillar2APanel({ state, config }: { state: BankState; con
   ] as const;
 
   return <section className="capital-card pillar2a-panel">
-    <header><div><h3>Pillar 2A annual SREP assessment</h3><p className="muted">The assessed variable P2A rate is reset annually from the bank's risk profile and then held until the next review. Its £ amount moves with current RWA.</p></div></header>
+    <header><div><h3>Pillar 2A SREP assessment</h3><p className="muted">The assessed variable P2A rate is reset every 24 months from the bank's risk profile and then held until the next review. Its £ amount moves with current RWA.</p></div></header>
     <div className="capital-ratios">
       <div><strong>{formatPct(effectiveRate)}</strong><span>Current P2A rate</span></div>
       <div><span>Current amount</span><b>{formatCurrency(currentAmount)}</b></div>
