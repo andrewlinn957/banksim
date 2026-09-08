@@ -481,10 +481,12 @@ const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number
   return 'stage1';
 };
 
-const getLoanBenchmarkRate = (state: BankState, productType: ProductType): number =>
-  productType === AssetProductType.Mortgages
-    ? state.market.competitorMortgageRate
-    : state.market.riskFreeLong + state.market.corporateLoanSpread;
+const getLoanBenchmarkRate = (state: BankState, productType: ProductType): number => {
+  const benchmark = PRODUCT_META[productType]?.behaviour?.loanBenchmark;
+  if (benchmark === 'mortgage') return state.market.competitorMortgageRate;
+  if (benchmark === 'consumer') return state.market.competitorConsumerLoanRate;
+  return state.market.riskFreeLong + state.market.corporateLoanSpread;
+};
 
 const calculateAdverseSelectionMultiplier = (args: {
   offeredRate: number;
@@ -1100,16 +1102,15 @@ const pickWeighted = <T extends string>(
 
 const defaultSectorMix = (productType: ProductType): Array<{ key: LoanSector; weight: number }> => {
   if (productType === AssetProductType.Mortgages) {
-    return [
-      { key: 'retailMortgage', weight: 0.9 },
-      { key: 'commercialRealEstate', weight: 0.05 },
-      { key: 'other', weight: 0.05 },
-    ];
+    return [{ key: 'retailMortgage', weight: 1 }];
+  }
+  if (productType === AssetProductType.ConsumerLoans) {
+    return [{ key: 'consumer', weight: 1 }];
   }
   return [
-    { key: 'largeCorporate', weight: 0.45 },
-    { key: 'sme', weight: 0.3 },
-    { key: 'commercialRealEstate', weight: 0.2 },
+    { key: 'sme', weight: 0.55 },
+    { key: 'commercialRealEstate', weight: 0.3 },
+    { key: 'largeCorporate', weight: 0.1 },
     { key: 'other', weight: 0.05 },
   ];
 };

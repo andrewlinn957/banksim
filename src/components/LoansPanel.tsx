@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { LoanPipelineState } from '../domain/bankState';
 import { AssetProductType, ProductType } from '../domain/enums';
-import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
+import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 
 interface Props {
@@ -17,17 +17,45 @@ const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.ConsumerLo
 type LoanPortfolioType = (typeof LOAN_PORTFOLIOS)[number];
 
 const PORTFOLIO_LABEL: Record<LoanPortfolioType, string> = {
-  [AssetProductType.Mortgages]: 'Mortgages',
-  [AssetProductType.ConsumerLoans]: 'Personal Credit',
-  [AssetProductType.CorporateLoans]: 'SME & Business',
+  [AssetProductType.Mortgages]: 'Residential mortgages',
+  [AssetProductType.ConsumerLoans]: 'Personal loans & revolving credit',
+  [AssetProductType.CorporateLoans]: 'SME & business lending',
 };
 
 const PD_THRESHOLDS = { greenMax: 0.005, amberMax: 0.02 };
 const LGD_THRESHOLDS = { greenMax: 0.25, amberMax: 0.45 };
 const PDXLGD_THRESHOLDS = { greenMax: 0.002, amberMax: 0.008 };
-const REMAINING_TERM_THRESHOLDS = { greenMax: 120, amberMax: 300 };
 const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
 const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
+
+const STAGE_LABEL: Record<LoanStage, string> = {
+  stage1: 'Stage 1',
+  stage2: 'Stage 2',
+  stage3: 'Stage 3',
+};
+
+const SECTOR_LABEL: Record<LoanSector, string> = {
+  retailMortgage: 'Residential mortgage',
+  consumer: 'Consumer',
+  commercialRealEstate: 'Commercial real estate',
+  sme: 'SME',
+  largeCorporate: 'Large corporate',
+  other: 'Other',
+};
+
+const GEOGRAPHY_LABEL: Record<LoanGeography, string> = {
+  london: 'London',
+  south: 'South',
+  midlands: 'Midlands',
+  north: 'North',
+  scotland: 'Scotland',
+  wales: 'Wales',
+  northernIreland: 'Northern Ireland',
+  other: 'Other',
+};
+
+const cohortSector = (cohort: LoanCohort): LoanSector => cohort.sector ?? 'other';
+const cohortGeography = (cohort: LoanCohort): LoanGeography => cohort.geography ?? 'other';
 
 type RagTone = 'rag-green' | 'rag-amber' | 'rag-red';
 const ragClass = (value: number, thresholds: { greenMax: number; amberMax: number }): RagTone => {
@@ -194,30 +222,30 @@ const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
     key: 'stage',
     label: 'Stage',
     filterUnit: 'raw',
-    placeholder: 'stage1|2|3',
+    placeholder: 'e.g. Stage 2',
     value: (cohort) => (cohort.stage === 'stage3' ? 3 : cohort.stage === 'stage2' ? 2 : 1),
-    display: (cohort) => cohort.stage,
-    cell: (cohort) => cohort.stage,
+    display: (cohort) => STAGE_LABEL[cohort.stage],
+    cell: (cohort) => STAGE_LABEL[cohort.stage],
   },
   {
     key: 'sector',
     label: 'Sector',
     filterUnit: 'raw',
-    placeholder: 'e.g. sme',
+    placeholder: 'e.g. SME',
     value: (cohort) =>
-      Math.max(0, SECTOR_ORDER.indexOf((cohort.sector ?? 'other') as (typeof SECTOR_ORDER)[number])),
-    display: (cohort) => cohort.sector ?? 'other',
-    cell: (cohort) => cohort.sector ?? 'other',
+      Math.max(0, SECTOR_ORDER.indexOf(cohortSector(cohort) as (typeof SECTOR_ORDER)[number])),
+    display: (cohort) => SECTOR_LABEL[cohortSector(cohort)],
+    cell: (cohort) => SECTOR_LABEL[cohortSector(cohort)],
   },
   {
     key: 'geography',
     label: 'Geography',
     filterUnit: 'raw',
-    placeholder: 'e.g. north',
+    placeholder: 'e.g. North',
     value: (cohort) =>
-      Math.max(0, GEOGRAPHY_ORDER.indexOf((cohort.geography ?? 'other') as (typeof GEOGRAPHY_ORDER)[number])),
-    display: (cohort) => cohort.geography ?? 'other',
-    cell: (cohort) => cohort.geography ?? 'other',
+      Math.max(0, GEOGRAPHY_ORDER.indexOf(cohortGeography(cohort) as (typeof GEOGRAPHY_ORDER)[number])),
+    display: (cohort) => GEOGRAPHY_LABEL[cohortGeography(cohort)],
+    cell: (cohort) => GEOGRAPHY_LABEL[cohortGeography(cohort)],
   },
   {
     key: 'ageMonths',
@@ -235,10 +263,7 @@ const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
     placeholder: 'e.g. < 60',
     value: (cohort) => remainingTermMonths(cohort),
     display: (cohort) => formatInt(remainingTermMonths(cohort)),
-    cell: (cohort) => {
-      const remaining = remainingTermMonths(cohort);
-      return <span className={`rag-badge ${ragClass(remaining, REMAINING_TERM_THRESHOLDS)}`}>{formatInt(remaining)}</span>;
-    },
+    cell: (cohort) => formatInt(remainingTermMonths(cohort)),
   },
   {
     key: 'outstandingPrincipal',
@@ -569,7 +594,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
         </div>
       </div>
       <div className="muted">
-        Total loans: <strong>{formatCurrency(totalLoans)}</strong>
+        Net loans: <strong>{formatCurrency(totalLoans)}</strong>
       </div>
       {pipeline && (
         <div className="grid-metrics">
@@ -582,7 +607,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
             <div className="metric-value">{formatCurrency(pipeline.approvedNotional)}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Committed undrawn</div>
+            <div className="metric-label">Approved, not yet drawn</div>
             <div className="metric-value">{formatCurrency(pipeline.committedNotional)}</div>
           </div>
         </div>
@@ -628,7 +653,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                   })
                 }
               >
-                Balance
+                Net carrying amount
                 {loanSummarySort?.key === 'balance' && (
                   <span className="table-sort-indicator">{loanSummarySort.direction === 'asc' ? '▲' : '▼'}</span>
                 )}
@@ -645,7 +670,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                   })
                 }
               >
-                Rate
+                Offer rate
                 {loanSummarySort?.key === 'rate' && (
                   <span className="table-sort-indicator">{loanSummarySort.direction === 'asc' ? '▲' : '▼'}</span>
                 )}
@@ -662,7 +687,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                   })
                 }
               >
-                Maturity
+                Maturity bucket
                 {loanSummarySort?.key === 'maturity' && (
                   <span className="table-sort-indicator">{loanSummarySort.direction === 'asc' ? '▲' : '▼'}</span>
                 )}
@@ -702,7 +727,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 className="table-filter-input"
                 value={loanSummaryFilters.maturity}
                 onChange={(e) => setLoanSummaryFilters((prev) => ({ ...prev, maturity: e.target.value }))}
-                placeholder="Filter maturity"
+                placeholder="Filter bucket"
                 aria-label="Filter maturity bucket"
               />
             </th>
@@ -757,7 +782,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 )}
               </div>
               <div className="metric-card">
-                <div className="metric-label">Outstanding</div>
+                <div className="metric-label">Performing cohort exposure</div>
                 <div className="metric-value">{formatCurrency(cohortSummary.totalOutstanding)}</div>
               </div>
               <div className="metric-card">
@@ -777,11 +802,11 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 <div className="metric-value">{formatRate(cohortSummary.weightedRisk)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-label">Sector concentration</div>
+                <div className="metric-label">Largest sector share</div>
                 <div className="metric-value">{formatRate(cohortSummary.sectorConcentration)}</div>
               </div>
               <div className="metric-card">
-                <div className="metric-label">Geography concentration</div>
+                <div className="metric-label">Largest geography share</div>
                 <div className="metric-value">{formatRate(cohortSummary.geographyConcentration)}</div>
               </div>
               <div className="metric-card">
@@ -805,7 +830,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 </div>
               </div>
               <div className="metric-card">
-                <div className="metric-label">Avg workout lag</div>
+                <div className="metric-label">WA workout lag</div>
                 <div className="metric-value">{workoutSummary.weightedMonths.toFixed(1)}m</div>
               </div>
             </div>
@@ -828,7 +853,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
               <thead>
                 <tr>
                   {COHORT_COLUMNS.map((column) => (
-                    <th key={column.key} className="numeric">
+                    <th key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
                       <button
                         type="button"
                         className="table-sort-button"
@@ -849,7 +874,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 </tr>
                 <tr className="table-filter-row">
                   {COHORT_COLUMNS.map((column) => (
-                    <th key={column.key} className="numeric">
+                    <th key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
                       <input
                         className="table-filter-input"
                         value={cohortFilters[column.key]}
@@ -872,7 +897,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                   visibleCohorts.map((cohort) => (
                     <tr key={`${cohort.productType}-${cohort.cohortId}`}>
                       {COHORT_COLUMNS.map((column) => (
-                        <td key={column.key} className="numeric">
+                        <td key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
                           {column.cell(cohort)}
                         </td>
                       ))}
