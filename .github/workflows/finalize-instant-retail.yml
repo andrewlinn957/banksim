@@ -1,0 +1,77 @@
+name: Finalize Instant retail consolidation
+
+on:
+  push:
+    branches: [consolidate-instant-retail]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: consolidate-instant-retail
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve blended economics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # Previous opening mix: £2bn current accounts @ 0.5% and £5bn savings @ 2.15%.
+          # Keep one £7bn Instant retail line while preserving the blended opening funding cost
+          # and, approximately, the weighted behaviour/liquidity characteristics.
+          weighted_rate = '0.016785714285714286'
+          weighted_stability = '1.0760714285714286'
+
+          p = Path('src/config/initialState.ts')
+          s = p.read_text()
+          s = s.replace("'Instant retail', 7.0e9, 0.0215, MaturityBucket.LessThan1Y", f"'Instant retail', 7.0e9, {weighted_rate}, MaturityBucket.LessThan1Y")
+          s = s.replace('[LiabilityProductType.RetailSavingsDeposits]: 0.0215,', f'[LiabilityProductType.RetailSavingsDeposits]: {weighted_rate},')
+          s = s.replace('[LiabilityProductType.RetailSavingsDeposits]: 1.0925,', f'[LiabilityProductType.RetailSavingsDeposits]: {weighted_stability},')
+          p.write_text(s)
+
+          p = Path('src/config/baseConfig.ts')
+          s = p.read_text()
+          s = s.replace('volumeElasticityToRate: 0.55,\n  },\n  [LiabilityProductType.RetailTermDeposits]', 'volumeElasticityToRate: 0.4642857142857143,\n  },\n  [LiabilityProductType.RetailTermDeposits]', 1)
+          s = s.replace('lcrOutflowRate: .1,\n    nsfrAsfFactor: .9,\n  },\n  [LiabilityProductType.RetailTermDeposits]', 'lcrOutflowRate: 0.08571428571428572,\n    nsfrAsfFactor: 0.9142857142857143,\n  },\n  [LiabilityProductType.RetailTermDeposits]', 1)
+          old = '''    [LiabilityProductType.RetailSavingsDeposits]: {\n      baselineGrowthMonthly: 0.0023,\n      baseChurnMonthly: 0.002,\n      policyRateBeta: 0,\n      competitorSensitivity: 0.4,\n      passThroughLag: 0.7,\n      underpricingConvexity: 26,\n      underpricingDurationSensitivity: 0.1,\n      franchiseDecayRate: 0.58,\n      franchiseRecoveryRate: 0.05,\n      reacquisitionDrag: 0.45,\n      stabilityDecayRate: 0.62,\n      stabilityRecoveryRate: 0.05,\n      mixMigrationRate: 0.06,\n      mixMigrationDurationSensitivity: 0.08,\n    },'''
+          new = '''    [LiabilityProductType.RetailSavingsDeposits]: {\n      // Blended Instant retail assumptions from the former 2/7 transactional + 5/7 savings mix.\n      baselineGrowthMonthly: 0.0022142857142857142,\n      baseChurnMonthly: 0.0024285714285714284,\n      policyRateBeta: 0.005714285714285714,\n      competitorSensitivity: 0.4142857142857143,\n      passThroughLag: 0.6285714285714286,\n      underpricingConvexity: 24.285714285714285,\n      underpricingDurationSensitivity: 0.09428571428571429,\n      franchiseDecayRate: 0.5571428571428572,\n      franchiseRecoveryRate: 0.047142857142857146,\n      reacquisitionDrag: 0.42142857142857143,\n      stabilityDecayRate: 0.5857142857142857,\n      stabilityRecoveryRate: 0.05285714285714286,\n      mixMigrationRate: 0,\n      mixMigrationDurationSensitivity: 0,\n    },'''
+          if old not in s:
+              raise SystemExit('Retail savings behaviour block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('src/content/mechanicsRegistry.ts')
+          s = p.read_text().replace("title: 'Instant savings and business deposits'", "title: 'Instant retail and business deposits'")
+          p.write_text(s)
+
+          p = Path('src/engine/smallRetailBank.test.ts')
+          s = p.read_text()
+          anchor = "    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.label).toBe('Instant retail');\n"
+          extra = anchor + "    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.interestRate).toBeCloseTo(0.0167857143, 8);\n"
+          if anchor not in s:
+              raise SystemExit('Instant retail test anchor not found')
+          s = s.replace(anchor, extra, 1)
+          p.write_text(s)
+          PY
+
+      - name: Show remaining current-account wording
+        run: |
+          grep -Rni --include='*.ts' --include='*.tsx' --include='*.md' -E 'current accounts?|instant[- ]access savings' src README.md docs player_guide.md 2>/dev/null || true
+
+      - name: Commit calibration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src README.md docs player_guide.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Preserve blended Instant retail economics"
+            git push origin HEAD:consolidate-instant-retail
+          fi
