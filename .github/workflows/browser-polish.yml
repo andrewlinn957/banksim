@@ -1,0 +1,121 @@
+name: Browser playthrough polish
+
+on:
+  push:
+    branches: [audit-small-uk-retail-bank]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-small-uk-retail-bank
+      - name: Apply browser findings
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def rep(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing pattern in {path}: {old[:120]!r}')
+              p.write_text(s.replace(old,new,1))
+
+          # Capital dashboard: Tier 2 is real regulatory capital, not just a liability line.
+          rep('src/components/CapitalDashboard.tsx',
+              "  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1;",
+              "  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);")
+          rep('src/components/CapitalDashboard.tsx',
+              "  const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - at1 / rwa - minima.cet1) : 0;",
+              "  const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - (at1 + tier2) / rwa - minima.cet1) : 0;")
+          rep('src/components/CapitalDashboard.tsx',
+              "  return { rwa, cet1, at1, rows, cards: [",
+              "  return { rwa, cet1, at1, tier2, rows, cards: [")
+          rep('src/components/CapitalDashboard.tsx',
+              "    { name: 'Total capital', amount: cet1 + at1, minimum: minima.total, requirement: minima.total + buffer },",
+              "    { name: 'Total capital', amount: cet1 + at1 + tier2, minimum: minima.total, requirement: minima.total + buffer },")
+          rep('src/components/CapitalDashboard.tsx',
+              "  const segments = [{ name: 'CET1', amount: d.cet1, color: '#15578d' }, { name: 'AT1', amount: d.at1, color: '#159de0' }, { name: 'Tier 2', amount: 0, color: '#8261c7' }];",
+              "  const segments = [{ name: 'CET1', amount: d.cet1, color: '#15578d' }, { name: 'AT1', amount: d.at1, color: '#159de0' }, { name: 'Tier 2', amount: d.tier2, color: '#8261c7' }];")
+          rep('src/components/CapitalDashboard.tsx',
+              "        <p className=\"capital-total\">Total capital held <strong>{formatCurrency(d.cet1+d.at1)} ({formatPct(d.cards[2].actual)})</strong></p>",
+              "        <p className=\"capital-total\">Total capital held <strong>{formatCurrency(d.cet1+d.at1+d.tier2)} ({formatPct(d.cards[2].actual)})</strong></p>")
+          rep('src/components/CapitalDashboard.tsx',
+              "aria-label={`Capital composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(d.at1)}, no Tier 2 issued. RWA ${formatCurrency(d.rwa)}. ${levels.map(l=>`${l.name} ${formatPct(l.ratio)}`).join('. ')}`}",
+              "aria-label={`Capital composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(d.at1)}, ${d.tier2 > 0 ? `Tier 2 ${formatCurrency(d.tier2)}` : 'no Tier 2 issued'}. RWA ${formatCurrency(d.rwa)}. ${levels.map(l=>`${l.name} ${formatPct(l.ratio)}`).join('. ')}`}")
+          rep('src/components/CapitalDashboard.tsx',
+              "{s.name==='Tier 2'?' · none issued':''}",
+              "{s.name==='Tier 2'&&s.amount===0?' · none issued':''}")
+          rep('src/components/CapitalDashboard.tsx',
+              "        <p className=\"muted\">Requirements include combined buffers. CET1 used to cover other capital minima is shown explicitly; Tier 1 also covers the total capital minimum while no Tier 2 is issued.</p>",
+              "        <p className=\"muted\">Requirements include combined buffers. CET1 used to cover other capital minima is shown explicitly; {d.tier2 > 0 ? 'Tier 2 can satisfy part of the total-capital minimum but does not improve CET1 or leverage.' : 'Tier 1 also covers the total-capital minimum while no Tier 2 is issued.'}</p>")
+          rep('src/components/RegMetricsPanel.tsx',
+              "    { label: 'Total capital ratio (no Tier 2 issued)', value: m.totalCapitalRatio ?? 0, ratio: true },",
+              "    { label: 'Total capital ratio', value: m.totalCapitalRatio ?? 0, ratio: true },")
+
+          # Loans report: personal credit is a first-class loan portfolio.
+          rep('src/components/LoansPanel.tsx',
+              "const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;",
+              "const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;")
+          rep('src/components/LoansPanel.tsx',
+              "  [AssetProductType.Mortgages]: 'Mortgages',\n  [AssetProductType.CorporateLoans]: 'Corporate Loans',",
+              "  [AssetProductType.Mortgages]: 'Mortgages',\n  [AssetProductType.ConsumerLoans]: 'Personal Credit',\n  [AssetProductType.CorporateLoans]: 'SME & Business',")
+          rep('src/components/LoansPanel.tsx',
+              "const SECTOR_ORDER = ['retailMortgage', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;",
+              "const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;")
+          rep('src/components/LoansPanel.tsx',
+              "  if (hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages)) return AssetProductType.Mortgages;\n  if (hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans)) return AssetProductType.CorporateLoans;",
+              "  if (hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages)) return AssetProductType.Mortgages;\n  if (hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans)) return AssetProductType.ConsumerLoans;\n  if (hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans)) return AssetProductType.CorporateLoans;")
+          rep('src/components/LoansPanel.tsx',
+              "  item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.CorporateLoans;",
+              "  item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.ConsumerLoans || item.productType === AssetProductType.CorporateLoans;")
+          rep('src/components/LoansPanel.tsx',
+              "  const corporateAvailable = useMemo(\n    () => hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans),\n    [items, loanCohorts]\n  );\n\n  useEffect(() => {\n    const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages ? mortgagesAvailable : corporateAvailable;\n    if (isSelectedAvailable) return;\n    setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));\n  }, [corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);",
+              "  const consumerAvailable = useMemo(\n    () => hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans),\n    [items, loanCohorts]\n  );\n  const corporateAvailable = useMemo(\n    () => hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans),\n    [items, loanCohorts]\n  );\n\n  useEffect(() => {\n    const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages\n      ? mortgagesAvailable\n      : selectedPortfolio === AssetProductType.ConsumerLoans\n        ? consumerAvailable\n        : corporateAvailable;\n    if (isSelectedAvailable) return;\n    setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));\n  }, [consumerAvailable, corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);")
+          mortgage_button = '''          <button\n            type="button"\n            className={`tab-button ${selectedPortfolio === AssetProductType.Mortgages ? 'active' : ''}`}\n            onClick={() => setSelectedPortfolio(AssetProductType.Mortgages)}\n            role="tab"\n            aria-selected={selectedPortfolio === AssetProductType.Mortgages}\n            disabled={!mortgagesAvailable}\n          >\n            {PORTFOLIO_LABEL[AssetProductType.Mortgages]}\n          </button>\n'''
+          consumer_button = mortgage_button + '''          <button\n            type="button"\n            className={`tab-button ${selectedPortfolio === AssetProductType.ConsumerLoans ? 'active' : ''}`}\n            onClick={() => setSelectedPortfolio(AssetProductType.ConsumerLoans)}\n            role="tab"\n            aria-selected={selectedPortfolio === AssetProductType.ConsumerLoans}\n            disabled={!consumerAvailable}\n          >\n            {PORTFOLIO_LABEL[AssetProductType.ConsumerLoans]}\n          </button>\n'''
+          rep('src/components/LoansPanel.tsx', mortgage_button, consumer_button)
+
+          # Hide dead zero ST wholesale line if an old saved state/engine helper materialises it.
+          rep('src/components/AccountsPanel.tsx',
+              "import { BalanceSheetSide, ProductType } from '../domain/enums';",
+              "import { BalanceSheetSide, LiabilityProductType, ProductType } from '../domain/enums';")
+          rep('src/components/AccountsPanel.tsx',
+              "  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);",
+              "  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability && !(i.productType === LiabilityProductType.WholesaleFundingST && Math.abs(i.balance) < 1));")
+
+          # Capital department: risk appetite remains available but is not permanently taking over the panel.
+          rep('src/App.tsx',
+              "        {activeDepartment==='Capital'&&<RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/>}",
+              "        {activeDepartment==='Capital'&&<details className=\"department-advanced risk-appetite-disclosure\"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}")
+
+          # Avoid visually noisy negative zero in statements.
+          p=Path('src/utils/formatters.ts'); s=p.read_text()
+          old="export const formatCurrency = (v: number, fallback = 'N/A'): string =>\n  Number.isFinite(v) ? `£${(v / 1e9).toFixed(2)}bn` : fallback;"
+          new="export const formatCurrency = (v: number, fallback = 'N/A'): string => {\n  if (!Number.isFinite(v)) return fallback;\n  const billions = v / 1e9;\n  const display = Math.abs(billions) < 0.005 ? 0 : billions;\n  return `£${display.toFixed(2)}bn`;\n};"
+          if old not in s: raise SystemExit('missing formatCurrency pattern')
+          p.write_text(s.replace(old,new,1))
+
+          # Update capital dashboard regression for Tier 2.
+          p=Path('src/ui/capitalDashboard.test.tsx'); s=p.read_text()
+          s=s.replace("    expect(d.cards[1].amount).toBe(d.cards[2].amount);", "    expect(d.cards[2].amount).toBeCloseTo(d.cards[1].amount + (state.financial.capital.tier2 ?? 0), 4);")
+          s += '''\n\nit('shows issued Tier 2 in total capital without changing Tier 1',()=>{\n  const state=structuredClone(initialState);\n  state.financial.capital.tier2=75e6;\n  state.risk.riskMetrics=calculateRiskMetrics({state,config:baseConfig});\n  const d=capitalDashboardData(state,baseConfig);\n  expect(d.tier2).toBe(75e6);\n  expect(d.cards[2].amount-d.cards[1].amount).toBeCloseTo(75e6,4);\n  expect(d.cards[2].actual).toBeCloseTo(state.risk.riskMetrics.totalCapitalRatio ?? 0,12);\n});\n'''
+          p.write_text(s)
+
+          # Loans UI regression: all three retail-bank portfolios must appear.
+          Path('src/ui/loansPanelRetail.test.tsx').write_text('''import { expect, it } from 'vitest';\nimport { renderToStaticMarkup } from 'react-dom/server';\nimport LoansPanel from '../components/LoansPanel';\nimport { initialState } from '../config/initialState';\n\nit('shows mortgages, personal credit and SME/business lending in the retail loan report',()=>{\n  const html=renderToStaticMarkup(<LoansPanel items={initialState.financial.balanceSheet.items} loanCohorts={initialState.loanCohorts} loanPipelines={initialState.loanPipelines} workoutPipelines={initialState.workoutPipelines}/>);\n  expect(html).toContain('Mortgages');\n  expect(html).toContain('Personal Credit');\n  expect(html).toContain('SME &amp; Business');\n  expect(html).toContain('Personal Loans &amp; Revolving Credit');\n});\n''')
+          PY
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "Fix browser playthrough integration issues"
+          git push origin HEAD:audit-small-uk-retail-bank
