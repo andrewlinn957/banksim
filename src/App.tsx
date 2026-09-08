@@ -916,7 +916,7 @@ const App = () => {
 
       {activeTab === 'Regulatory' && (
         <section className="stack">
-      <h2>Regulatory Metrics</h2>
+      <h2>Regulatory metrics</h2>
       <RegMetricsPanel
         state={bankState}
         history={stateHistory}
@@ -960,7 +960,6 @@ const App = () => {
           {selectedAttributionLine && (
             <AttributionMechanicExplainer
               selection={selectedAttributionLine}
-              onNavigateHelp={openHelpSection}
             />
           )}
           <EventLog
