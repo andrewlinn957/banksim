@@ -1,0 +1,29 @@
+name: Finalize retail calibration
+
+on:
+  push:
+    branches:
+      - audit-small-uk-retail-bank
+    paths:
+      - .github/scripts/finalize_retail_calibration.py
+      - .github/workflows/finalize-retail-calibration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-small-uk-retail-bank
+      - name: Apply calibration patch
+        run: python .github/scripts/finalize_retail_calibration.py
+      - name: Commit source changes
+        run: |
+          git config user.name "andrewlinn957"
+          git config user.email "139116101+andrewlinn957@users.noreply.github.com"
+          git add src
+          git commit -m "Finalize retail-bank calibration and diagnostics"
+          git push origin HEAD:audit-small-uk-retail-bank
