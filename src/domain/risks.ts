@@ -3,6 +3,7 @@ export type FundingConfidenceState = 'strong' | 'stable' | 'watch' | 'stressed';
 export interface CapitalState {
   cet1: number;
   at1: number;
+  tier2?: number;
   accumulatedOCI: number;
 }
 
@@ -31,6 +32,9 @@ export interface RiskMetrics {
   lcr: number;
   lcrOutflowMultiplier: number;
   depositQualityIndex: number;
+  insuredRetailDepositShare?: number;
+  largeDepositorShare?: number;
+  termDepositShare?: number;
   asf: number;
   rsf: number;
   nsfr: number;
