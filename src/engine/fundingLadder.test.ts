@@ -145,7 +145,7 @@ describe('Contractual funding interest accrual', () => {
     );
   });
 
-  it('uses the surviving bucket coupon after one fixed-term deposit bucket matures', () => {
+  it('charges the maturing bucket coupon for its final month before removing it', () => {
     const engine = createSimulationEngine();
     const state = cloneBankState(initialState);
     const termLine = state.financial.balanceSheet.items.find(
@@ -179,7 +179,90 @@ describe('Contractual funding interest accrual', () => {
     expect(remaining[0].notional).toBeCloseTo(1.0e9, 2);
     expect(remaining[0].rate).toBeCloseTo(0.02, 12);
     expect(lineBalance(next, LiabilityProductType.RetailTermDeposits)).toBeCloseTo(1.0e9, 2);
-    expect(next.financial.incomeStatement.interestExpense).toBeCloseTo(1.0e9 * 0.02 / 12, 2);
+    expect(next.financial.incomeStatement.interestExpense).toBeCloseTo((0.5e9 * 0.05 + 1.0e9 * 0.02) / 12, 2);
+  });
+});
+
+describe('Funding maturity ordering', () => {
+  const quietConfig = {
+    ...baseConfig,
+    featureFlags: {
+      ...baseConfig.featureFlags,
+      depositSegmentation: false,
+      loanPipeline: false,
+      conductRisk: false,
+      irrbbHedges: false,
+      securitiesAccounting: false,
+      capitalPolicy: false,
+    },
+  };
+
+  it('accrues STR interest for its full one-month life before repaying principal', () => {
+    const engine = createSimulationEngine();
+    const controlState = cloneBankState(initialState);
+    const borrowingState = cloneBankState(initialState);
+    const amount = 250e6;
+    const rate = borrowingState.market.baseRate;
+
+    const control = engine.step({
+      state: controlState,
+      config: quietConfig,
+      actions: [],
+      shocks: [],
+    }).nextState;
+
+    const result = engine.step({
+      state: borrowingState,
+      config: quietConfig,
+      actions: [{ type: 'drawBoeFunding', facility: 'STR', amount }],
+      shocks: [],
+    });
+    const next = result.nextState;
+
+    expect(next.financial.incomeStatement.interestExpense - control.financial.incomeStatement.interestExpense)
+      .toBeCloseTo(amount * rate / 12, 2);
+    expect(lineBalance(next, LiabilityProductType.BankOfEnglandFunding)).toBeCloseTo(0, 2);
+    expect(next.fundingLadders[LiabilityProductType.BankOfEnglandFunding] ?? []).toHaveLength(0);
+
+    const gilts = next.financial.balanceSheet.items.find((item) => item.productType === 'Gilts');
+    expect(gilts?.encumbrance?.encumberedAmount ?? 0).toBeCloseTo(0, 2);
+    expect(result.events.some((event) => event.message.includes('STR drawing'))).toBe(true);
+    expect(result.events.some((event) => event.message.includes('Bank of England secured funding matured'))).toBe(true);
+  });
+
+  it('accrues the final coupon on wholesale funding before month-end rollover', () => {
+    const engine = createSimulationEngine();
+    const state = cloneBankState(initialState);
+    const wholesale = state.financial.balanceSheet.items.find(
+      (item) => item.productType === LiabilityProductType.WholesaleFundingLT
+    );
+    if (!wholesale) throw new Error('Missing wholesale funding line');
+
+    state.financial.balanceSheet.items
+      .filter((item) => item.side === 'Liability' && item.productType !== LiabilityProductType.WholesaleFundingLT)
+      .forEach((item) => {
+        item.balance = 0;
+        item.interestRate = 0;
+      });
+    Object.keys(state.fundingLadders).forEach((key) => {
+      state.fundingLadders[key as LiabilityProductType] = [];
+    });
+
+    wholesale.balance = 600e6;
+    wholesale.interestRate = 0.01;
+    state.fundingLadders[LiabilityProductType.WholesaleFundingLT] = [
+      { tenorMonths: 36, monthsToMaturity: 1, notional: 600e6, rate: 0.06 },
+    ];
+
+    const next = engine.step({
+      state,
+      config: quietConfig,
+      actions: [],
+      shocks: [],
+    }).nextState;
+
+    expect(next.financial.incomeStatement.interestExpense).toBeCloseTo(600e6 * 0.06 / 12, 2);
+    expect(next.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).not.toHaveLength(0);
   });
 });
 

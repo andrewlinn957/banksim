@@ -3000,18 +3000,8 @@ export const createSimulationEngine = (): SimulationEngine => {
           nonCashAdjustmentsByProduct: {},
         };
     applyActions(state, activeConfig, actions, events);
-    stepContractualRetailFunding(state, activeConfig, dtMonths, events);
     applyTreasuryPolicy(state, activeConfig, events);
     stepCompetitorReaction(state, activeConfig, dtMonths, events);
-    const fundingLifecycle = featureFlags.fundingLadder
-      ? stepFundingLadders(state, activeConfig, dtMonths, shockEffects, events)
-      : {
-          maturingNotional: 0,
-          refinancedNotional: 0,
-          shortfallNotional: 0,
-          weightedRefinanceRate: 0,
-          effectiveAccess: 1,
-        };
     if (featureFlags.depositSegmentation) {
       applyDepositBehaviour(state, activeConfig, dtMonths, events);
     }
@@ -3128,6 +3118,21 @@ export const createSimulationEngine = (): SimulationEngine => {
       events
     );
     capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;
+
+    // Funding drawn or outstanding during this step remains on balance sheet for the month's
+    // business activity and P&L accrual. Contractual principal maturities and wholesale rollover
+    // are settled at month-end, after interest for the maturity month has been recognised.
+    stepContractualRetailFunding(state, activeConfig, dtMonths, events);
+    const fundingLifecycle = featureFlags.fundingLadder
+      ? stepFundingLadders(state, activeConfig, dtMonths, shockEffects, events)
+      : {
+          maturingNotional: 0,
+          refinancedNotional: 0,
+          shortfallNotional: 0,
+          weightedRefinanceRate: 0,
+          effectiveAccess: 1,
+        };
+
     computeMetrics(state, activeConfig, shockEffects.lcrOutflowMultiplier, events, true, false);
     if (featureFlags.capitalPolicy) {
       applyCapitalPolicyDistributions(state, activeConfig, dtYears, events);
