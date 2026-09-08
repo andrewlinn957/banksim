@@ -21,22 +21,22 @@ const defineProducts = <const T extends Record<string, ProductDefinition>>(produ
 
 export const ASSET_PRODUCTS = defineProducts({
   DerivativeAssets: { productType: 'DerivativeAssets', label: 'Derivative assets', side: 'Asset', behaviour: {} },
-  CashReserves: { productType: 'CashReserves', label: 'Cash & reserves', side: 'Asset', behaviour: {} },
-  Gilts: { productType: 'Gilts', label: 'Gilts / liquidity portfolio', side: 'Asset', behaviour: {} },
-  Mortgages: { productType: 'Mortgages', label: 'Residential mortgages', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'mortgage' } },
-  ConsumerLoans: { productType: 'ConsumerLoans', label: 'Personal loans & revolving credit', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'consumer' } },
-  CorporateLoans: { productType: 'CorporateLoans', label: 'SME & business lending', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'corporate' } },
+  CashReserves: { productType: 'CashReserves', label: 'Cash & Reserves', side: 'Asset', behaviour: {} },
+  Gilts: { productType: 'Gilts', label: 'Gilts / Liquidity Portfolio', side: 'Asset', behaviour: {} },
+  Mortgages: { productType: 'Mortgages', label: 'Residential Mortgages', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'mortgage' } },
+  ConsumerLoans: { productType: 'ConsumerLoans', label: 'Personal Loans & Revolving Credit', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'consumer' } },
+  CorporateLoans: { productType: 'CorporateLoans', label: 'SME & Business Lending', side: 'Asset', behaviour: { isLoan: true, affectsBehaviouralLoanFlow: true, loanBenchmark: 'corporate' } },
 });
 
 export const LIABILITY_PRODUCTS = defineProducts({
   DerivativeLiabilities: { productType: 'DerivativeLiabilities', label: 'Derivative liabilities', side: 'Liability', behaviour: {} },
   CreditProvisions: { productType: 'CreditProvisions', label: 'Undrawn credit provisions', side: 'Liability', behaviour: {} },
   RetailCurrentAccounts: { productType: 'RetailCurrentAccounts', label: 'Retail current accounts', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'retail', affectsBehaviouralDepositFlow: true } },
-  RetailTermDeposits: { productType: 'RetailTermDeposits', label: 'Fixed-term savings', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'retail', affectsBehaviouralDepositFlow: true, isTermDeposit: true } },
-  CorporateOperatingDeposits: { productType: 'CorporateOperatingDeposits', label: 'SME/business operating deposits', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'corporate', affectsBehaviouralDepositFlow: true } },
-  CorporateNonOperatingDeposits: { productType: 'CorporateNonOperatingDeposits', label: 'Other business deposits', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'corporate', affectsBehaviouralDepositFlow: true } },
+  RetailTermDeposits: { productType: 'RetailTermDeposits', label: 'Fixed-Term Savings', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'retail', affectsBehaviouralDepositFlow: true, isTermDeposit: true } },
+  CorporateOperatingDeposits: { productType: 'CorporateOperatingDeposits', label: 'SME / Business Operating Deposits', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'corporate', affectsBehaviouralDepositFlow: true } },
+  CorporateNonOperatingDeposits: { productType: 'CorporateNonOperatingDeposits', label: 'Other Business Deposits', side: 'Liability', behaviour: { isCustomerDeposit: true, depositSegment: 'corporate', affectsBehaviouralDepositFlow: true } },
   WholesaleFundingST: { productType: 'WholesaleFundingST', label: 'Short-term wholesale funding', side: 'Liability', behaviour: {} },
-  WholesaleFundingLT: { productType: 'WholesaleFundingLT', label: 'Long-term debt', side: 'Liability', behaviour: {} },
+  WholesaleFundingLT: { productType: 'WholesaleFundingLT', label: 'Long-Term Debt', side: 'Liability', behaviour: {} },
   BankOfEnglandFunding: { productType: 'BankOfEnglandFunding', label: 'Bank of England secured funding', side: 'Liability', behaviour: {} },
   Tier2Debt: { productType: 'Tier2Debt', label: 'Tier 2 subordinated debt', side: 'Liability', behaviour: {} },
 });
