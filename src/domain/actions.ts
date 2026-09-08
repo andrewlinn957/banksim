@@ -1,12 +1,13 @@
 import {
   AssetProductType,
-  LiabilityProductType,
   ProductType,
 } from './enums';
+import type {
+  LoanProductType,
+  WholesaleFundingProductType,
+} from '../products/capabilities';
 
-export type WholesaleFundingProduct =
-  | typeof LiabilityProductType.WholesaleFundingST
-  | typeof LiabilityProductType.WholesaleFundingLT;
+export type WholesaleFundingProduct = WholesaleFundingProductType;
 
 export interface AdjustRateAction {
   type: 'adjustRate';
@@ -48,7 +49,7 @@ export interface DrawBoeFundingAction {
 
 export interface SetUnderwritingAction {
   type: 'setUnderwriting';
-  productType: typeof AssetProductType.Mortgages | typeof AssetProductType.ConsumerLoans | typeof AssetProductType.CorporateLoans;
+  productType: LoanProductType;
   tightness: number; // 0 = loose baseline, 1 = very tight
 }
 

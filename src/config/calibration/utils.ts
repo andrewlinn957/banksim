@@ -5,7 +5,7 @@ import { SimulationConfig } from '../../domain/config';
 import { AssetProductType, ProductType } from '../../domain/enums';
 import { calculateRiskMetrics, evaluateCompliance } from '../../engine/metrics';
 import { cloneBankState } from '../../engine/clone';
-import { PRODUCTS } from '../../products/catalogue';
+import { hasCapability, productTypesWithCapability } from '../../products/capabilities';
 import {
   assetPositions,
   findProductPosition,
@@ -44,7 +44,7 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
     }
   }
 
-  if (!PRODUCTS[productType]?.behaviour?.isLoan) return;
+  if (!hasCapability(productType, 'loan')) return;
 
   const cohorts = state.loanCohorts[productType] ?? [];
   const workoutBuckets = state.workoutPipelines[productType] ?? [];
@@ -84,7 +84,7 @@ export const rebalanceCash = (state: BankState): void => {
 };
 
 const calibrateAddressableMarketShares = (state: BankState, config: SimulationConfig): void => {
-  [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans].forEach((productType) => {
+  productTypesWithCapability('loan').forEach((productType) => {
     const pipeline = config.behaviour.loanPipelineByProduct?.[productType];
     const marketSize = pipeline?.referenceMarketSize;
     if (!pipeline || !marketSize || marketSize <= 0) return;
