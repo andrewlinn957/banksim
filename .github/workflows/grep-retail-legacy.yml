@@ -1,0 +1,16 @@
+name: Retail legacy grep
+
+on:
+  push:
+    branches: [clean-retail-current-accounts]
+
+jobs:
+  grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: clean-retail-current-accounts
+      - name: Show legacy references
+        run: |
+          grep -Rni -C 3 --include='*.ts' --include='*.tsx' 'RetailTransactionalDeposits' src || true
