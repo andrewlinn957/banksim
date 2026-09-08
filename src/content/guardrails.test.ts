@@ -54,7 +54,7 @@ describe('buildPreRunGuardrails', () => {
     const guardrails = buildPreRunGuardrails({
       state: cloneBankState(initialState),
       config: baseConfig,
-      parsedValues: { retailDepositRate: 0.01 },
+      parsedValues: { retailCurrentAccountRate: 0.01 },
       hasValidationErrors: true,
     });
     expect(guardrails).toHaveLength(0);

@@ -32,12 +32,12 @@ describe('Career pacing and economic sensitivity', () => {
 
   it('does not multiply franchise damage when the same deposit book is split into lines', () => {
     const state = cloneBankState(initialState);
-    const product = LiabilityProductType.RetailSavingsDeposits;
+    const product = LiabilityProductType.RetailCurrentAccounts;
     const deposit = state.financial.balanceSheet.items.find(item => item.productType === product)!;
     state.financial.balanceSheet.items = state.financial.balanceSheet.items.filter(item =>
       item.side !== 'Liability' || item.productType === product);
     deposit.interestRate = .01;
-    state.market.competitorRetailDepositRate = .03;
+    state.market.competitorRetailCurrentAccountRate = .03;
     // Freeze lag and migration here to isolate the bank-wide aggregation.
     const config = structuredClone(baseConfig);
     config.behaviour.depositByProduct![product]!.passThroughLag = 1;

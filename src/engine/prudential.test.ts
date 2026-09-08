@@ -3,7 +3,7 @@ import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { AssetProductType as A, LiabilityProductType as L, HQLALevel, BalanceSheetSide } from '../domain/enums';
 import { cloneBankState } from './clone';
-import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
+import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines, retailCurrentAccountRegulatoryFactors } from './prudential';
 import { calculateRiskMetrics, computeHqla, evaluateCompliance } from './metrics';
 import { computeMetrics } from './simulation';
 import { regulatoryRows } from '../components/RegMetricsPanel';
@@ -25,13 +25,22 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     expect(computeHqla([h(HQLALevel.Level1, 85), h(HQLALevel.Level2B, 1000)])).toBeCloseTo(100);
     expect(computeHqla([h(HQLALevel.Level2A, 1000)])).toBe(0);
   });
-  it('uses instant-retail and corporate liquidity factors independently of reputation', () => {
-    const expected = [[L.RetailSavingsDeposits,0.08571428571428572,0.9142857142857143],[L.CorporateOperatingDeposits,.25,.5],[L.CorporateNonOperatingDeposits,.4,.5]] as const;
+  it('classifies retail current accounts explicitly for LCR and NSFR', () => {
+    const factors = retailCurrentAccountRegulatoryFactors(initialState);
+    expect(factors.stableShare).toBeCloseTo(0.9);
+    expect(factors.otherShare).toBeCloseTo(0.1);
+    expect(factors.lcrOutflowFactor).toBeCloseTo(0.055);
+    expect(factors.nsfrAsfFactor).toBeCloseTo(0.945);
     const lines = prudentialLiquidityLines(initialState, baseConfig);
-    for (const [p, runoff, asf] of expected) {
-      const l = lines.find(x => x.productType === p)!;
-      expect(l.outflow / l.balance).toBeCloseTo(runoff); expect(l.asf / l.balance).toBeCloseTo(asf);
-    }
+    const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;
+    expect(retail.outflow / retail.balance).toBeCloseTo(0.055);
+    expect(retail.asf / retail.balance).toBeCloseTo(0.945);
+    const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;
+    const otherBusiness = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;
+    expect(operating.outflow / operating.balance).toBeCloseTo(0.25);
+    expect(operating.asf / operating.balance).toBeCloseTo(0.5);
+    expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);
+    expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);
   });
   it('uses contractual wholesale maturities at 1, 6 and 12 months', () => {
     const s = cloneBankState(initialState);
@@ -51,7 +60,7 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
   it('limits reserve exclusion to deposit-matched reserves and includes commitments', () => {
     const s=cloneBankState(initialState);
     s.financial.balanceSheet.items.filter(i=>i.side===BalanceSheetSide.Liability).forEach(i=>i.balance=0);
-    line(s,L.RetailSavingsDeposits).balance=100;
+    line(s,L.RetailCurrentAccounts).balance=100;
     expect(centralBankExclusion(s)).toBe(100);
     s.loanPipelines={ [A.Mortgages]:{demandNotional:0,approvedNotional:0,committedNotional:100},[A.CorporateLoans]:{demandNotional:0,approvedNotional:0,committedNotional:100} };
     expect(commitmentLiquidity(s)).toEqual({outflow:15,rsf:10});

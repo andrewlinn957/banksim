@@ -110,19 +110,12 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     lossGivenDefault: 0,
     volumeElasticityToRate: 0.8,
   },
-  [LiabilityProductType.RetailTransactionalDeposits]: {
-    productType: LiabilityProductType.RetailTransactionalDeposits,
+  [LiabilityProductType.RetailCurrentAccounts]: {
+    productType: LiabilityProductType.RetailCurrentAccounts,
     riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0.25,
-  },
-  [LiabilityProductType.RetailSavingsDeposits]: {
-    productType: LiabilityProductType.RetailSavingsDeposits,
-    riskWeight: 0,
-    baseDefaultRate: 0.0,
-    lossGivenDefault: 0,
-    volumeElasticityToRate: 0.4642857142857143,
   },
   [LiabilityProductType.RetailTermDeposits]: {
     productType: LiabilityProductType.RetailTermDeposits, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0.7,
@@ -215,17 +208,11 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     lcrOutflowRate: 0.4,
     nsfrAsfFactor: 0.5,
   },
-  [LiabilityProductType.RetailTransactionalDeposits]: {
-    productType: LiabilityProductType.RetailTransactionalDeposits,
+  [LiabilityProductType.RetailCurrentAccounts]: {
+    productType: LiabilityProductType.RetailCurrentAccounts,
     hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: .05,
-    nsfrAsfFactor: .95,
-  },
-  [LiabilityProductType.RetailSavingsDeposits]: {
-    productType: LiabilityProductType.RetailSavingsDeposits,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.08571428571428572,
-    nsfrAsfFactor: 0.9142857142857143,
+    lcrOutflowRate: 0.10,
+    nsfrAsfFactor: 0.90,
   },
   [LiabilityProductType.RetailTermDeposits]: {
     productType: LiabilityProductType.RetailTermDeposits, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .95,
@@ -271,7 +258,7 @@ const global: GlobalSimulationParameters = {
   maxLoanGrowthPerStep: 0.05,
   fixedOperatingCostPerMonth: 0.014e9,
   initialPortfolioSeed: 123456789,
-  competitorDepositReactionSpeed: 0.035,
+  competitorRetailCurrentAccountReactionSpeed: 0.035,
   competitorTermDepositReactionSpeed: 0.025,
   competitorConsumerLoanReactionSpeed: 0.025,
   competitorCorporateDepositReactionSpeed: 0.045,
@@ -333,7 +320,7 @@ const behaviour: BehaviourParameters = {
   loanFeeRateMonthly: 0.001,
   horizonRiskPenaltyWeight: 0.35,
   depositByProduct: {
-    [LiabilityProductType.RetailTransactionalDeposits]: {
+    [LiabilityProductType.RetailCurrentAccounts]: {
       baselineGrowthMonthly: 0.002,
       baseChurnMonthly: 0.0035,
       policyRateBeta: 0.02,
@@ -346,23 +333,6 @@ const behaviour: BehaviourParameters = {
       reacquisitionDrag: 0.35,
       stabilityDecayRate: 0.5,
       stabilityRecoveryRate: 0.06,
-      mixMigrationRate: 0.04,
-      mixMigrationDurationSensitivity: 0.06,
-    },
-    [LiabilityProductType.RetailSavingsDeposits]: {
-      // Blended Instant retail assumptions from the former 2/7 transactional + 5/7 savings mix.
-      baselineGrowthMonthly: 0.0022142857142857142,
-      baseChurnMonthly: 0.0024285714285714284,
-      policyRateBeta: 0.005714285714285714,
-      competitorSensitivity: 0.4142857142857143,
-      passThroughLag: 0.6285714285714286,
-      underpricingConvexity: 24.285714285714285,
-      underpricingDurationSensitivity: 0.09428571428571429,
-      franchiseDecayRate: 0.5571428571428572,
-      franchiseRecoveryRate: 0.047142857142857146,
-      reacquisitionDrag: 0.42142857142857143,
-      stabilityDecayRate: 0.5857142857142857,
-      stabilityRecoveryRate: 0.05285714285714286,
       mixMigrationRate: 0,
       mixMigrationDurationSensitivity: 0,
     },

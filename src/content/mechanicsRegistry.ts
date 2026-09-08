@@ -75,20 +75,20 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
   {
     id: 'deposit-behaviour',
     category: 'Customers',
-    title: 'Instant retail and business deposits',
+    title: 'Retail current accounts and business deposits',
     plainDescription:
-      'You set the rate for instant retail and SME or business deposits. The game compares your rate with the market rate.',
+      'You set the rate for retail current accounts and SME or business deposits. The game compares your rate with the market rate.',
     whyItMatters:
       'A higher rate can grow deposits and improve funding. A higher rate also increases interest expense. A low rate can cause customers to leave.',
     driverSummary: [
-      'Instant retail balances respond to the price gap, franchise strength, and reputation.',
+      'Retail current accounts balances respond to the price gap, franchise strength, and reputation.',
       'A negative price gap increases churn if it stays in place for several months.',
       'Weak franchise strength and weak reputation can increase deposit runoff in stress.',
       'A high insured retail share and a low large-depositor share improve deposit quality.',
     ],
     formula: 'Deposit price gap = your deposit rate - competitor deposit rate',
     relatedMetrics: [metric('Deposit quality'), metric('Funding confidence'), metric('LCR'), metric('NSFR')],
-    relatedActions: [action('Instant retail offer'), action('SME/business deposit offer')],
+    relatedActions: [action('Retail current account rate'), action('SME/business deposit offer')],
   },
   {
     id: 'term-savings',

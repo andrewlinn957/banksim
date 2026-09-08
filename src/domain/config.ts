@@ -52,7 +52,7 @@ export interface GlobalSimulationParameters {
   maxLoanGrowthPerStep: number;
   fixedOperatingCostPerMonth: number;
   initialPortfolioSeed?: number;
-  competitorDepositReactionSpeed?: number;
+  competitorRetailCurrentAccountReactionSpeed?: number;
   competitorTermDepositReactionSpeed?: number;
   competitorConsumerLoanReactionSpeed?: number;
   competitorCorporateDepositReactionSpeed?: number;

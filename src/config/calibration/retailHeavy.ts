@@ -8,7 +8,7 @@ export const createRetailHeavyCalibration = (): CalibrationPack => {
   setProductBalance(state, AssetProductType.Mortgages, 6.2e9);
   setProductBalance(state, AssetProductType.CorporateLoans, 2.3e9);
   // Former calibration had £6bn savings plus the untouched £2bn current-account line.
-  setProductBalance(state, LiabilityProductType.RetailSavingsDeposits, 8e9);
+  setProductBalance(state, LiabilityProductType.RetailCurrentAccounts, 8e9);
   setProductBalance(state, LiabilityProductType.CorporateNonOperatingDeposits, 0.15e9);
   setProductBalance(state, LiabilityProductType.RetailTermDeposits, 2.2e9);
   rebalanceCash(state);

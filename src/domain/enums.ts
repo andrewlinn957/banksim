@@ -25,8 +25,7 @@ export enum LiabilityProductType {
   RetailDeposits = 'RetailDeposits',
   CorporateDeposits = 'CorporateDeposits',
   // Segmented customer deposits.
-  RetailTransactionalDeposits = 'RetailTransactionalDeposits',
-  RetailSavingsDeposits = 'RetailSavingsDeposits',
+  RetailCurrentAccounts = 'RetailCurrentAccounts',
   RetailTermDeposits = 'RetailTermDeposits',
   CorporateOperatingDeposits = 'CorporateOperatingDeposits',
   CorporateNonOperatingDeposits = 'CorporateNonOperatingDeposits',

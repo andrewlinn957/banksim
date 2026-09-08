@@ -48,7 +48,7 @@ export interface MarketState {
   seniorDebtSpread: number;
   giltRepoHaircut: number;
   corpBondRepoHaircut: number;
-  competitorRetailDepositRate: number;
+  competitorRetailCurrentAccountRate: number;
   competitorTermDepositRate: number;
   competitorMortgageRate: number;
   competitorConsumerLoanRate: number;

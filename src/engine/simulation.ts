@@ -205,10 +205,10 @@ type ShockHandlerMap = HandlerMap<Shock, ShockContext>;
 const shockHandlers: ShockHandlerMap = {
   depositCompetition: (shock: DepositCompetitionShock, ctx: ShockContext) => {
     // Competitor deposit rates move up, making it harder to retain/grow deposits without repricing.
-    ctx.state.market.competitorRetailDepositRate += shock.retailRateIncrease;
+    ctx.state.market.competitorRetailCurrentAccountRate += shock.retailRateIncrease;
     if (shock.corporateRateIncrease !== undefined) {
       ctx.state.market.competitorCorporateDepositRate =
-        (ctx.state.market.competitorCorporateDepositRate ?? ctx.state.market.competitorRetailDepositRate) +
+        (ctx.state.market.competitorCorporateDepositRate ?? ctx.state.market.competitorRetailCurrentAccountRate) +
         shock.corporateRateIncrease;
     }
     ctx.events.push(createEvent('info', `Shock: deposit competition +${shock.retailRateIncrease}`));
@@ -1498,8 +1498,7 @@ export const stepFundingLadders = (
 };
 
 const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
-  LiabilityProductType.RetailTransactionalDeposits,
-  LiabilityProductType.RetailSavingsDeposits,
+  LiabilityProductType.RetailCurrentAccounts,
   LiabilityProductType.RetailTermDeposits,
 ];
 
@@ -1556,16 +1555,16 @@ const stepCompetitorReaction = (
     return clamp(reacted + meanReversion * (anchor - reacted), 0, 0.4);
   };
 
-  const oldRetail = state.market.competitorRetailDepositRate;
+  const oldRetail = state.market.competitorRetailCurrentAccountRate;
   const oldCorporate =
-    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
   const oldMortgage = state.market.competitorMortgageRate;
   const oldCorporateSpread = state.market.corporateLoanSpread;
 
-  state.market.competitorRetailDepositRate = update(
+  state.market.competitorRetailCurrentAccountRate = update(
     oldRetail,
     retailTarget,
-    global.competitorDepositReactionSpeed ?? 0.12,
+    global.competitorRetailCurrentAccountReactionSpeed ?? 0.12,
     retailAnchor
   );
   state.market.competitorCorporateDepositRate = update(
@@ -1588,13 +1587,13 @@ const stepCompetitorReaction = (
   );
 
   const maxChange = Math.max(
-    Math.abs(state.market.competitorRetailDepositRate - oldRetail),
+    Math.abs(state.market.competitorRetailCurrentAccountRate - oldRetail),
     Math.abs((state.market.competitorCorporateDepositRate ?? oldCorporate) - oldCorporate),
     Math.abs(state.market.competitorMortgageRate - oldMortgage),
     Math.abs(state.market.corporateLoanSpread - oldCorporateSpread)
   );
   const catchUp =
-    Math.abs(retailTarget - state.market.competitorRetailDepositRate) <
+    Math.abs(retailTarget - state.market.competitorRetailCurrentAccountRate) <
       Math.abs(retailTarget - oldRetail) ||
     Math.abs(corporateTarget - (state.market.competitorCorporateDepositRate ?? oldCorporate)) <
       Math.abs(corporateTarget - oldCorporate) ||
@@ -1606,7 +1605,7 @@ const stepCompetitorReaction = (
     events.push(
       createEvent(
         'info',
-        `${catchUp ? 'Market catches up: ' : ''}competitor reaction retail dep ${oldRetail.toFixed(4)}->${state.market.competitorRetailDepositRate.toFixed(4)}, mortgage ${oldMortgage.toFixed(4)}->${state.market.competitorMortgageRate.toFixed(4)}`
+        `${catchUp ? 'Market catches up: ' : ''}competitor reaction retail dep ${oldRetail.toFixed(4)}->${state.market.competitorRetailCurrentAccountRate.toFixed(4)}, mortgage ${oldMortgage.toFixed(4)}->${state.market.competitorMortgageRate.toFixed(4)}`
       )
     );
   }
@@ -1714,9 +1713,9 @@ const stepConductRisk = (
   const retailOffered = weightedOfferedRate(state, RETAIL_DEPOSIT_PRODUCTS);
   const corporateOffered = weightedOfferedRate(state, CORPORATE_DEPOSIT_PRODUCTS);
   const corporateCompetitor =
-    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
 
-  const retailDepositSeverity = Math.max(0, state.market.competitorRetailDepositRate - retailOffered - depositThreshold) /
+  const retailDepositSeverity = Math.max(0, state.market.competitorRetailCurrentAccountRate - retailOffered - depositThreshold) /
     depositThreshold;
   const corporateDepositSeverity = Math.max(0, corporateCompetitor - corporateOffered - depositThreshold) /
     depositThreshold;
@@ -1835,17 +1834,11 @@ const applyDepositMixMigration = (
     competitorRate: number;
   }> = [
     {
-      name: 'retail',
-      stable: LiabilityProductType.RetailSavingsDeposits,
-      unstable: LiabilityProductType.RetailTransactionalDeposits,
-      competitorRate: state.market.competitorRetailDepositRate,
-    },
-    {
       name: 'corporate',
       stable: LiabilityProductType.CorporateOperatingDeposits,
       unstable: LiabilityProductType.CorporateNonOperatingDeposits,
       competitorRate:
-        state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate,
+        state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate,
     },
   ];
 
@@ -1930,13 +1923,11 @@ export const applyDepositBehaviour = (
   depositItems.forEach((item) => {
       const meta = PRODUCT_META[item.productType];
       const byProduct = config.behaviour.depositByProduct?.[item.productType];
-      const competitor = item.productType === LiabilityProductType.RetailTransactionalDeposits
-        ? item.interestRate
-        : meta.behaviour.isTermDeposit
-          ? state.market.competitorTermDepositRate
-          : meta.behaviour.depositSegment === 'corporate'
-            ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate
-            : state.market.competitorRetailDepositRate;
+      const competitor = meta.behaviour.isTermDeposit
+        ? state.market.competitorTermDepositRate
+        : meta.behaviour.depositSegment === 'corporate'
+          ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate
+          : state.market.competitorRetailCurrentAccountRate;
       const passThroughLag = clamp(byProduct?.passThroughLag ?? 1, 0, 1);
       const laggedRateBefore = state.behaviour.depositRateLagMemory?.[item.productType] ?? item.interestRate;
       const laggedRate = laggedRateBefore + passThroughLag * (item.interestRate - laggedRateBefore);
@@ -1976,7 +1967,7 @@ export const applyDepositBehaviour = (
         // the contractual stock has temporarily run down. Target the share of retail
         // savings that customers choose to lock, then acquire toward that target at
         // no more than roughly one maturity-ladder slice per month.
-        const instantSavings = Math.max(0, findItem(state.financial.balanceSheet, LiabilityProductType.RetailSavingsDeposits)?.balance ?? 0);
+        const instantSavings = Math.max(0, findItem(state.financial.balanceSheet, LiabilityProductType.RetailCurrentAccounts)?.balance ?? 0);
         const rateAdvantage = laggedRate - competitor;
         const targetTermShare = clamp(0.23 + 5 * rateAdvantage, 0.05, 0.45);
         const targetTermStock = instantSavings * targetTermShare / Math.max(0.05, 1 - targetTermShare);
@@ -2934,8 +2925,7 @@ const computeBalanceFlows = (
     LiabilityProductType.DerivativeLiabilities,
     LiabilityProductType.RetailDeposits,
     LiabilityProductType.CorporateDeposits,
-    LiabilityProductType.RetailTransactionalDeposits,
-    LiabilityProductType.RetailSavingsDeposits,
+      LiabilityProductType.RetailCurrentAccounts,
     LiabilityProductType.CorporateOperatingDeposits,
     LiabilityProductType.CorporateNonOperatingDeposits,
     LiabilityProductType.WholesaleFundingST,

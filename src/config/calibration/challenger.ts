@@ -9,7 +9,7 @@ export const createChallengerCalibration = (): CalibrationPack => {
   setProductBalance(state, AssetProductType.CorporateLoans, 2.2e9);
   setProductBalance(state, AssetProductType.Gilts, 0.4e9);
   // Former calibration had £1.1bn savings plus the untouched £2bn current-account line.
-  setProductBalance(state, LiabilityProductType.RetailSavingsDeposits, 3.1e9);
+  setProductBalance(state, LiabilityProductType.RetailCurrentAccounts, 3.1e9);
   setProductBalance(state, LiabilityProductType.CorporateOperatingDeposits, 0.3e9);
   setProductBalance(state, LiabilityProductType.RetailTermDeposits, 0.7e9);
   setProductBalance(state, LiabilityProductType.WholesaleFundingLT, 1.6e9);

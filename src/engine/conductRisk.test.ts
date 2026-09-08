@@ -38,12 +38,7 @@ describe('Conduct and consumer-duty channel', () => {
         actions: [
           {
             type: 'adjustRate',
-            productType: LiabilityProductType.RetailTransactionalDeposits,
-            newRate: 0,
-          },
-          {
-            type: 'adjustRate',
-            productType: LiabilityProductType.RetailSavingsDeposits,
+            productType: LiabilityProductType.RetailCurrentAccounts,
             newRate: 0,
           },
           {

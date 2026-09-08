@@ -16,7 +16,7 @@ export function lcrDashboardData(state:BankState,config:SimulationConfig) {
  const inGroups:Record<string,number>={'Loan repayments':0,'Secured lending':0,'Derivatives & other':0};
  for(const l of lines){
   const p=l.productType;
-  const outKey=([L.RetailDeposits,L.RetailSavingsDeposits,L.RetailTransactionalDeposits] as string[]).includes(p)?'Retail deposits':([L.CorporateDeposits,L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.RepurchaseAgreements?'Secured funding':'Derivatives & other';
+  const outKey=([L.RetailDeposits,L.RetailCurrentAccounts] as string[]).includes(p)?'Retail deposits':([L.CorporateDeposits,L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.RepurchaseAgreements?'Secured funding':'Derivatives & other';
   outGroups[outKey]+=l.outflow;
   inGroups[p===A.Mortgages||p===A.CorporateLoans?'Loan repayments':p===A.ReverseRepo?'Secured lending':'Derivatives & other']+=l.inflow;
  }

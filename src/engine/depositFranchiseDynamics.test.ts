@@ -10,8 +10,7 @@ const totalCustomerDeposits = (state: typeof initialState): number =>
     .filter((item) => item.side === 'Liability')
     .filter((item) =>
       [
-        LiabilityProductType.RetailTransactionalDeposits,
-        LiabilityProductType.RetailSavingsDeposits,
+        LiabilityProductType.RetailCurrentAccounts,
         LiabilityProductType.CorporateOperatingDeposits,
         LiabilityProductType.CorporateNonOperatingDeposits,
       ].includes(item.productType as LiabilityProductType)
@@ -25,13 +24,13 @@ describe('Deposit franchise dynamics', () => {
     const startDeposits = totalCustomerDeposits(state);
     const startFranchise = state.behaviour.depositFranchiseStrength;
     const startStability =
-      state.behaviour.depositStabilityIndex?.[LiabilityProductType.RetailSavingsDeposits] ?? 1;
+      state.behaviour.depositStabilityIndex?.[LiabilityProductType.RetailCurrentAccounts] ?? 1;
 
     for (let month = 0; month < 24; month++) {
-      const retailTarget = Math.max(0, state.market.competitorRetailDepositRate - 0.02);
+      const retailTarget = Math.max(0, state.market.competitorRetailCurrentAccountRate - 0.02);
       const corporateTarget = Math.max(
         0,
-        (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) -
+        (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate) -
           0.025
       );
       state = engine.step({
@@ -40,12 +39,7 @@ describe('Deposit franchise dynamics', () => {
         actions: [
           {
             type: 'adjustRate',
-            productType: LiabilityProductType.RetailTransactionalDeposits,
-            newRate: retailTarget,
-          },
-          {
-            type: 'adjustRate',
-            productType: LiabilityProductType.RetailSavingsDeposits,
+            productType: LiabilityProductType.RetailCurrentAccounts,
             newRate: retailTarget,
           },
           {
@@ -66,13 +60,13 @@ describe('Deposit franchise dynamics', () => {
     const endDeposits = totalCustomerDeposits(state);
     const endFranchise = state.behaviour.depositFranchiseStrength;
     const endStability =
-      state.behaviour.depositStabilityIndex?.[LiabilityProductType.RetailSavingsDeposits] ?? 1;
+      state.behaviour.depositStabilityIndex?.[LiabilityProductType.RetailCurrentAccounts] ?? 1;
 
     expect(endFranchise).toBeLessThan(startFranchise);
     expect(endStability).toBeLessThan(startStability);
     expect(endDeposits).toBeLessThan(startDeposits);
     expect(
-      state.behaviour.depositUnderpricingMonths?.[LiabilityProductType.RetailSavingsDeposits] ?? 0
+      state.behaviour.depositUnderpricingMonths?.[LiabilityProductType.RetailCurrentAccounts] ?? 0
     ).toBeGreaterThan(12);
   });
 });

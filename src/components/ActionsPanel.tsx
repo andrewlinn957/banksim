@@ -2,7 +2,7 @@ import { Department } from '../game/departments';
 export type { Department } from '../game/departments';
 
 export interface ActionFormState {
-  retailDepositRate: string;
+  retailCurrentAccountRate: string;
   termDepositRate: string;
   termDepositTenorMonths: string;
   corporateDepositRate: string;
@@ -60,7 +60,7 @@ const Field = ({label,hint,field,state,update,disabled,error,placeholder}:FieldP
 );
 
 const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
-  retailDepositRate:'Instant retail offer', termDepositRate:'Fixed-term savings offer', corporateDepositRate:'SME/business deposit offer',
+  retailCurrentAccountRate:'Retail current account rate', termDepositRate:'Fixed-term savings offer', corporateDepositRate:'SME/business deposit offer',
   mortgageRate:'Mortgage new rate', consumerLoanRate:'Personal-credit new rate', corporateLoanRate:'SME/business new rate',
   mortgageUnderwritingTightness:'Mortgage selectivity', consumerUnderwritingTightness:'Personal-credit selectivity', corporateUnderwritingTightness:'SME/business selectivity',
   issueLTDebtAmount:'Long-term debt amount', issueEquityAmount:'CET1 equity amount', issueTier2Amount:'Tier 2 amount',
@@ -78,7 +78,7 @@ export default function ActionsPanel({department,state,onChange,disabled,errors,
 
     {department==='Customers'&&<>
       <div className="policy-fields policy-fields-primary">
-        <Field field="retailDepositRate" label="Instant retail offer" hint="Main instant retail funding price." state={state} update={update} disabled={disabled} error={errors?.retailDepositRate} placeholder="e.g. 3.5%"/>
+        <Field field="retailCurrentAccountRate" label="Retail current account rate" hint="Interest rate paid on retail current-account balances." state={state} update={update} disabled={disabled} error={errors?.retailCurrentAccountRate} placeholder="e.g. 3.5%"/>
         <Field field="corporateDepositRate" label="SME/business deposit offer" hint="Business balances are less stable and react faster to competing offers." state={state} update={update} disabled={disabled} error={errors?.corporateDepositRate} placeholder="e.g. 3.0%"/>
       </div>
       <details className="department-advanced policy-disclosure">

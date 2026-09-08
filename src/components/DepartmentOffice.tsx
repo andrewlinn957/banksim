@@ -17,9 +17,9 @@ export default function DepartmentOffice({department,state,history,form,errors,h
  const period=periodHistory(history,3).at(-1);
  const competitorRates=department==='Customers'
   ? [
-    ['Instant savings',state.market.competitorRetailDepositRate],
+    ['Instant savings',state.market.competitorRetailCurrentAccountRate],
     ['1y fixed savings',state.market.competitorTermDepositRate],
-    ['Business deposits',state.market.competitorCorporateDepositRate??state.market.competitorRetailDepositRate],
+    ['Business deposits',state.market.competitorCorporateDepositRate??state.market.competitorRetailCurrentAccountRate],
    ] as const
   : department==='Lending'
    ? [

@@ -40,8 +40,8 @@ export const boardDecisions = (s: BankState): BoardDecision[] => {
       benefit: 'Protect deposits and the franchise',
       tradeoff: 'Higher interest expense squeezes the margin',
       changes: {
-        retailDepositRate: rate(m.competitorRetailDepositRate + .0025),
-        corporateDepositRate: rate((m.competitorCorporateDepositRate ?? m.competitorRetailDepositRate) + .002),
+        retailCurrentAccountRate: rate(m.competitorRetailCurrentAccountRate + .0025),
+        corporateDepositRate: rate((m.competitorCorporateDepositRate ?? m.competitorRetailCurrentAccountRate) + .002),
       },
     },
     {

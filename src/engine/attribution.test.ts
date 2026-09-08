@@ -16,7 +16,7 @@ describe('Step attribution diagnostics', () => {
       actions: [
         {
           type: 'adjustRate',
-          productType: LiabilityProductType.RetailSavingsDeposits,
+          productType: LiabilityProductType.RetailCurrentAccounts,
           newRate: 0.03,
         },
         {

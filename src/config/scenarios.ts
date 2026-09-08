@@ -232,8 +232,7 @@ export const scenarios: Scenario[] = [
         balanceSheet: {
           items: [
             { productType: LiabilityProductType.WholesaleFundingST, balance: 2.4e9 },
-            { productType: LiabilityProductType.RetailTransactionalDeposits, balance: 3.5e9 },
-            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 4.5e9 },
+            { productType: LiabilityProductType.RetailCurrentAccounts, balance: 8.0e9 },
             { productType: LiabilityProductType.CorporateOperatingDeposits, balance: 1.3e9 },
             { productType: LiabilityProductType.CorporateNonOperatingDeposits, balance: 0.7e9 },
           ],

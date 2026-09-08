@@ -57,8 +57,7 @@ const getItem = (state: BankState, productType: ProductType) => {
 const getBalance = (state: BankState, productType: ProductType): number => getItem(state, productType).balance;
 
 const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
-  LiabilityProductType.RetailTransactionalDeposits,
-  LiabilityProductType.RetailSavingsDeposits,
+  LiabilityProductType.RetailCurrentAccounts,
 ];
 
 const CORPORATE_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
@@ -133,7 +132,7 @@ export const simulationTestCases: SimulationTestCase[] = [
       setGroupRate(
         stateEqual,
         RETAIL_DEPOSIT_PRODUCTS,
-        stateEqual.market.competitorRetailDepositRate
+        stateEqual.market.competitorRetailCurrentAccountRate
       );
       const baseline = step(ctx, stateEqual);
       assertAccountingOk(baseline, 'baseline');
@@ -142,7 +141,7 @@ export const simulationTestCases: SimulationTestCase[] = [
       const advantaged = step(
         ctx,
         stateAdvantage,
-        buildRateActions(RETAIL_DEPOSIT_PRODUCTS, stateAdvantage.market.competitorRetailDepositRate + 0.01)
+        buildRateActions(RETAIL_DEPOSIT_PRODUCTS, stateAdvantage.market.competitorRetailCurrentAccountRate + 0.01)
       );
       assertAccountingOk(advantaged, 'advantaged');
 
@@ -264,7 +263,7 @@ export const simulationTestCases: SimulationTestCase[] = [
 
       for (let stepNumber = 0; stepNumber < iterations; stepNumber++) {
         actions.length = 0;
-        const retailRate = state.market.competitorRetailDepositRate + (rand() - 0.5) * wiggle;
+        const retailRate = state.market.competitorRetailCurrentAccountRate + (rand() - 0.5) * wiggle;
         buildRateActions(RETAIL_DEPOSIT_PRODUCTS, retailRate).forEach((action) => actions.push(action));
         actions.push({
           type: 'adjustRate',
@@ -505,7 +504,7 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'retail deposits remain broadly stable when matching competitor rates',
     run: (ctx) => {
       const state = ctx.createState();
-      setGroupRate(state, RETAIL_DEPOSIT_PRODUCTS, state.market.competitorRetailDepositRate);
+      setGroupRate(state, RETAIL_DEPOSIT_PRODUCTS, state.market.competitorRetailCurrentAccountRate);
       const retailBefore = getGroupBalance(state, RETAIL_DEPOSIT_PRODUCTS);
 
       const { nextState } = ctx.engine.step({ state, config: ctx.config, actions: [], shocks: [] });
