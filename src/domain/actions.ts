@@ -34,6 +34,13 @@ export interface IssueEquityAction {
   amount: number;
 }
 
+export interface IssueTier2Action {
+  type: 'issueTier2';
+  amount: number;
+  maturityMonths?: number;
+}
+
+/** Legacy generic repo action retained for old saved states/tests; not exposed by the retail-bank UI. */
 export interface EnterRepoAction {
   type: 'enterRepo';
   direction: 'borrow' | 'lend';
@@ -44,10 +51,33 @@ export interface EnterRepoAction {
   maturityMonths?: number;
 }
 
+export interface DrawBoeFundingAction {
+  type: 'drawBoeFunding';
+  facility: 'STR' | 'ILTR';
+  amount: number;
+}
+
 export interface SetUnderwritingAction {
   type: 'setUnderwriting';
-  productType: AssetProductType.Mortgages | AssetProductType.CorporateLoans;
+  productType: AssetProductType.Mortgages | AssetProductType.ConsumerLoans | AssetProductType.CorporateLoans;
   tightness: number; // 0 = loose baseline, 1 = very tight
+}
+
+export interface SetMortgagePolicyAction {
+  type: 'setMortgagePolicy';
+  maxLtv: number;
+  fixedPeriodMonths: number;
+}
+
+export interface SetTreasuryPolicyAction {
+  type: 'setTreasuryPolicy';
+  giltShareOfHqla: number;
+  giltDurationYears: number;
+}
+
+export interface SetTermDepositPolicyAction {
+  type: 'setTermDepositPolicy';
+  tenorMonths: number;
 }
 
 export interface EnterHedgeAction {
@@ -70,7 +100,12 @@ export type PlayerAction =
   | BuySellAssetAction
   | IssueDebtAction
   | IssueEquityAction
+  | IssueTier2Action
   | EnterRepoAction
+  | DrawBoeFundingAction
   | SetUnderwritingAction
+  | SetMortgagePolicyAction
+  | SetTreasuryPolicyAction
+  | SetTermDepositPolicyAction
   | EnterHedgeAction
   | SetCapitalPolicyAction;
