@@ -25,23 +25,11 @@ describe('Funding confidence loop', () => {
     stressedState.risk.riskMetrics.fundingStressIndex = 1.1;
     stressedState.risk.riskMetrics.fundingConfidenceScore = 0.25;
 
-    const baseline = engine.step({
-      state: baselineState,
-      config: baseConfig,
-      actions: [],
-      shocks: [],
-    }).nextState;
+    const baseline = engine.step({ state: baselineState, config: baseConfig, actions: [], shocks: [] }).nextState;
+    const stressed = engine.step({ state: stressedState, config: baseConfig, actions: [], shocks: [] }).nextState;
 
-    const stressed = engine.step({
-      state: stressedState,
-      config: baseConfig,
-      actions: [],
-      shocks: [],
-    }).nextState;
-
-    expect(
-      fundingRate(stressed, LiabilityProductType.WholesaleFundingLT)
-    ).toBeGreaterThan(fundingRate(baseline, LiabilityProductType.WholesaleFundingLT));
-    expect(stressed.market.wholesaleFundingSpread).toBeGreaterThan(baseline.market.wholesaleFundingSpread);
+    expect(fundingRate(stressed, LiabilityProductType.WholesaleFundingLT))
+      .toBeGreaterThan(fundingRate(baseline, LiabilityProductType.WholesaleFundingLT));
+    expect(stressed.market.seniorDebtSpread).toBeGreaterThan(baseline.market.seniorDebtSpread);
   });
 });
