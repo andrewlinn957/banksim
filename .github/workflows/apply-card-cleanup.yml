@@ -1,0 +1,71 @@
+name: Apply card cleanup
+on: [push]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: simplify-department-cards
+      - name: Patch department cards
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          Path('src/components/DepartmentOffice.tsx').write_text("""import { BankState } from '../domain/bankState';
+import { Department, departmentSummary } from '../game/departments';
+import ActionsPanel, { ActionFormState } from './ActionsPanel';
+import { periodHistory } from '../game/management';
+import { formatPct } from '../utils/formatters';
+interface Props {
+ department:Department; state:BankState; history:BankState[]; form:ActionFormState;
+ errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean;
+ onChange:(form:ActionFormState)=>void;
+}
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange}:Props) {
+ const summary=departmentSummary(department,state,history);
+ const period=periodHistory(history,3).at(-1);
+ const competitorRates=department==='Customers'
+  ? [['Instant savings',state.market.competitorRetailDepositRate],['1y fixed savings',state.market.competitorTermDepositRate],['Business deposits',state.market.competitorCorporateDepositRate??state.market.competitorRetailDepositRate]] as const
+  : department==='Lending'
+   ? [['New mortgages',state.market.competitorMortgageRate],['Personal credit',state.market.competitorConsumerLoanRate],['SME/business',state.market.riskFreeLong+state.market.corporateLoanSpread]] as const
+   : [];
+ return <div className=\"department-office\">
+  <p className=\"office-status\">{summary.status}<small>{period?`${period.label} · ${period.months}/3 months closed`:'Opening position · no months closed'}</small></p>
+  <dl className=\"department-metrics\">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
+  <p className=\"department-consequence\">{summary.explanation}</p>
+  {competitorRates.length>0&&<section className=\"competitor-rates\" aria-label=\"Competitor rates\"><div><strong>Market reference</strong><small>Current competing offers</small></div><dl>{competitorRates.map(([label,rate])=><div key={label}><dt>{label}</dt><dd>{formatPct(rate)}</dd></div>)}</dl></section>}
+  <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors}/>
+ </div>;
+}
+""")
+
+          p=Path('src/components/ActionsPanel.tsx'); s=p.read_text()
+          s=s.replace("  onNavigateHelp?: (id:string)=>void;\n","")
+          s=s.replace("export default function ActionsPanel({department,state,onChange,disabled,errors,hasValidationErrors,onNavigateHelp}:Props) {","export default function ActionsPanel({department,state,onChange,disabled,errors,hasValidationErrors}:Props) {")
+          s=s.replace("  const helpId=department==='Customers'?'deposit-behaviour':department==='Lending'?'loan-pipeline':department==='Capital'?'capital-policy-and-distributions':'funding-ladder-and-rollover';\n","")
+          s=s.replace('    <button className=\"button ghost\" onClick={()=>onNavigateHelp?.(helpId)}>Explain this department</button>\n','')
+          p.write_text(s)
+
+          p=Path('src/App.tsx'); s=p.read_text()
+          old='<DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null}/>'
+          new='<DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}}/>'
+          if old not in s: raise SystemExit('DepartmentOffice invocation not found')
+          p.write_text(s.replace(old,new,1))
+
+          p=Path('src/ui/departmentOffice.test.tsx'); s=p.read_text()
+          s=s.replace(' selected={[]} onChange={noop} onDecision={noop} onReport={noop} onHelp={noop} estimate={null}',' onChange={noop}')
+          s=s.replace("  expect(html).toContain('Read loan portfolio report');expect(html).not.toContain('Retail savings offer');","  expect(html).not.toContain('Advice from your department head');expect(html).not.toContain('Explain this department');expect(html).not.toContain('Estimate the next close');expect(html).not.toContain('Read loan portfolio report');expect(html).not.toContain('Retail savings offer');")
+          p.write_text(s)
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name "andrewlinn957"
+          git config user.email "139116101+andrewlinn957@users.noreply.github.com"
+          git add src
+          git commit -m "Simplify department management cards"
+          git push origin HEAD:simplify-department-cards
