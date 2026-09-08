@@ -5,45 +5,515 @@ import { eligibleCet1, centralBankExclusion, committedExposure } from '../engine
 import { hedgeExposures } from '../engine/hedgeValuation';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
+import './LeverageDashboard.css';
 
-export function leverageDashboardData(state:BankState,config:SimulationConfig) {
- const assets=state.financial.balanceSheet.items.filter(i=>i.side===BalanceSheetSide.Asset);
- const book=assets.reduce((n,i)=>n+i.balance,0);
- const derivativeBook=assets.find(i=>i.productType===AssetProductType.DerivativeAssets)?.balance??0;
- const derivatives=hedgeExposures(state).leverage,reserves=centralBankExclusion(state),commitments=committedExposure(state)*.2;
- const exposure=book-derivativeBook+derivatives-reserves+commitments;
- const cet1=eligibleCet1(state,config),at1=state.financial.capital.at1,tier1=cet1+at1;
- const minimum=config.riskLimits.minLeverageRatio;
- const target=Math.max(minimum,state.behaviour.riskAppetite?.leverage??minimum*1.05);
- return {cet1,at1,tier1,exposure,minimum,target,ratio:exposure>0?tier1/exposure:NaN,required:exposure*minimum,surplus:tier1-exposure*minimum,limit:minimum>0?Math.max(0,tier1/minimum):NaN,
-  exposureRows:[{label:'On-balance-sheet assets',value:book},{label:'Remove derivative book assets',value:-derivativeBook},{label:'Add prudential derivative exposure',value:derivatives},{label:'Eligible central bank reserves exclusion',value:-reserves},{label:'Undrawn commitments × 20% CCF',value:commitments}],
- };
+export function leverageDashboardData(state: BankState, config: SimulationConfig) {
+  const assets = state.financial.balanceSheet.items.filter(i => i.side === BalanceSheetSide.Asset);
+  const book = assets.reduce((n, i) => n + i.balance, 0);
+  const derivativeBook = assets.find(i => i.productType === AssetProductType.DerivativeAssets)?.balance ?? 0;
+  const derivatives = hedgeExposures(state).leverage;
+  const reserves = centralBankExclusion(state);
+  const commitments = committedExposure(state) * 0.2;
+  const exposure = book - derivativeBook + derivatives - reserves + commitments;
+  const cet1 = eligibleCet1(state, config);
+  const at1 = state.financial.capital.at1;
+  const tier1 = cet1 + at1;
+  const minimum = config.riskLimits.minLeverageRatio;
+  const target = Math.max(minimum, state.behaviour.riskAppetite?.leverage ?? minimum * 1.05);
+  const ratio = exposure > 0 ? tier1 / exposure : NaN;
+  const required = exposure * minimum;
+  const targetRequired = exposure * target;
+  const limit = minimum > 0 ? Math.max(0, tier1 / minimum) : NaN;
+  const internalLimit = target > 0 ? Math.max(0, tier1 / target) : NaN;
+
+  return {
+    cet1,
+    at1,
+    tier1,
+    exposure,
+    minimum,
+    target,
+    ratio,
+    required,
+    targetRequired,
+    surplus: tier1 - required,
+    limit,
+    internalLimit,
+    exposureRows: [
+      { label: 'On-balance-sheet assets', value: book },
+      { label: 'Remove derivative book assets', value: -derivativeBook },
+      { label: 'Add prudential derivative exposure', value: derivatives },
+      { label: 'Eligible central bank reserves exclusion', value: -reserves },
+      { label: 'Undrawn commitments × 20% CCF', value: commitments },
+    ],
+  };
 }
-const signedMoney=(n:number)=>Number.isFinite(n)?`${n<0?'−':'+'}${formatCurrency(Math.abs(n))}`:'N/A';
-const pp=(n:number)=>Number.isFinite(n)?`${n<0?'':'+'}${(n*100).toFixed(2)}pp`:'N/A';
-function Gauge({actual,required,target,money=false}:{actual:number;required:number;target?:number;money?:boolean}) {
- const max=Math.max(money?1:.06,Number.isFinite(actual)?Math.max(0,actual)*1.2:0,Number.isFinite(required)?required*1.2:0,target??0);
- const x=(n:number)=>8+384*Math.max(0,n)/max;
- return <svg className="capital-bullet" viewBox="0 0 400 65" role="img" aria-label={`Actual ${money?formatCurrency(actual):formatPct(actual)}; threshold ${money?formatCurrency(required):formatPct(required)}`}><rect x="8" y="12" width="384" height="18" rx="5" fill="var(--border)"/><rect x="8" y="12" width={Number.isFinite(actual)?x(actual)-8:0} height="18" rx="5" fill="currentColor"/>{Number.isFinite(required)&&<path d={`M${x(required)} 6v29`} stroke="var(--text)" strokeWidth="3"/>}{target!==undefined&&Number.isFinite(target)&&<path d={`M${x(target)} 6v29`} stroke="#b24b92" strokeWidth="2" strokeDasharray="2 3"/>}{[0,1,2,3,4].map(i=><text key={i} x={8+i*96} y="55" textAnchor={i===0?'start':i===4?'end':'middle'}>{money?`${(max*i/4/1e9).toFixed(1)}bn`:formatPct(max*i/4,1)}</text>)}</svg>;
+
+const signedMoney = (n: number) =>
+  Number.isFinite(n) ? `${n < 0 ? '−' : '+'}${formatCurrency(Math.abs(n))}` : 'N/A';
+
+const pp = (n: number) =>
+  Number.isFinite(n) ? `${n < 0 ? '' : '+'}${(n * 100).toFixed(2)}pp` : 'N/A';
+
+const distinctTarget = (threshold: number, target: number) =>
+  Number.isFinite(target) && Math.abs(target - threshold) > 1e-10 ? target : undefined;
+
+function Gauge({
+  actual,
+  threshold,
+  target,
+  money = false,
+  thresholdLabel,
+  targetLabel,
+}: {
+  actual: number;
+  threshold: number;
+  target?: number;
+  money?: boolean;
+  thresholdLabel: string;
+  targetLabel?: string;
+}) {
+  const max = Math.max(
+    money ? 1 : 0.06,
+    Number.isFinite(actual) ? Math.max(0, actual) * 1.18 : 0,
+    Number.isFinite(threshold) ? Math.max(0, threshold) * 1.18 : 0,
+    Number.isFinite(target) ? Math.max(0, target ?? 0) * 1.18 : 0
+  );
+  const x = (n: number) => 8 + (384 * Math.max(0, Math.min(max, n))) / max;
+  const display = (n: number) => (money ? formatCurrency(n) : formatPct(n));
+
+  return (
+    <svg
+      className="capital-bullet leverage-gauge"
+      viewBox="0 0 400 58"
+      role="img"
+      aria-label={`Actual ${display(actual)}; ${thresholdLabel} ${display(threshold)}${
+        target !== undefined && targetLabel ? `; ${targetLabel} ${display(target)}` : ''
+      }`}
+    >
+      <rect x="8" y="10" width="384" height="18" rx="5" fill="var(--border)" />
+      <rect
+        x="8"
+        y="10"
+        width={Number.isFinite(actual) ? x(actual) - 8 : 0}
+        height="18"
+        rx="5"
+        fill="currentColor"
+      />
+      {Number.isFinite(threshold) && (
+        <path d={`M${x(threshold)} 5v28`} stroke="var(--text)" strokeWidth="3" />
+      )}
+      {target !== undefined && Number.isFinite(target) && (
+        <path
+          d={`M${x(target)} 5v28`}
+          stroke="#b24b92"
+          strokeWidth="2"
+          strokeDasharray="2 3"
+        />
+      )}
+      {[0, 1, 2, 3, 4].map(i => (
+        <text
+          key={i}
+          x={8 + i * 96}
+          y="51"
+          textAnchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}
+        >
+          {money ? `${((max * i) / 4 / 1e9).toFixed(1)}bn` : formatPct((max * i) / 4, 1)}
+        </text>
+      ))}
+    </svg>
+  );
 }
-export default function LeverageDashboard({state,config,history}:{state:BankState;config:SimulationConfig;history:BankState[]}) {
- const d=leverageDashboardData(state,config),gap=d.ratio-d.minimum;
- const status=!Number.isFinite(d.ratio)?'Unavailable':gap>=0?'Meets requirement':'Below requirement';
- const spare=d.limit-d.exposure;
- const common=`capital-card ${gap<0?'shortfall':''}`;
- const parts=[{label:'CET1',value:d.cet1,color:'#18528b'},{label:'AT1',value:d.at1,color:'#4d9ee3'}];
- const min=Math.min(0,d.exposure>0?d.cet1/d.exposure:0);
- const max=Math.max(.07,d.target*1.2,Number.isFinite(d.ratio)?d.ratio*1.2:0);
- const y=(n:number)=>330-(n-min)/(max-min)*285;
- const levels=[{label:'Leverage requirement',ratio:d.minimum},{label:'Internal leverage target',ratio:d.target}].sort((a,b)=>b.ratio-a.ratio);
- const grouped=Math.abs(d.target-d.minimum)<1e-10;
- let cumulative=0;
- return <div className="capital-dashboard leverage-dashboard"><div className="capital-cards">
-  <section className={common}><header><h3>Leverage ratio</h3><span className="capital-status">{status}</span></header><div className="capital-ratios"><div><strong>{formatPct(d.ratio)}</strong><span>Actual</span></div><div><span>Requirement</span><b>{formatPct(d.minimum)}</b></div><div><span>Headroom</span><b className="capital-gap">{pp(gap)}</b></div></div><Gauge actual={d.ratio} required={d.minimum} target={d.target}/><div className="capital-amounts"><div><b>{formatCurrency(d.tier1)}</b><span>Actual Tier 1 capital</span></div><div><b>{formatCurrency(d.required)}</b><span>Required Tier 1</span></div><div><b className="capital-gap">{signedMoney(d.surplus)}</b><span>Capital headroom</span></div></div><p className="lcr-target">Dotted marker: internal target {formatPct(d.target)}.</p></section>
-  <section className={common}><header><h3>Tier 1 capital</h3><span className="capital-status">{status}</span></header><div className="capital-ratios"><div><strong>{formatCurrency(d.tier1)}</strong><span>Actual</span></div><div><span>Requirement</span><b>{formatCurrency(d.required)}</b></div><div><span>Headroom</span><b className="capital-gap">{signedMoney(d.surplus)}</b></div></div><Gauge actual={d.tier1} required={d.required} target={d.exposure*d.target} money/><div className="capital-amounts"><div><b>{formatPct(d.ratio)}</b><span>Actual leverage ratio</span></div><div><b>{formatPct(d.minimum)}</b><span>Required ratio</span></div><div><b className="capital-gap">{pp(gap)}</b><span>Ratio headroom</span></div></div><p className="lcr-target">Dotted marker: Tier 1 at the internal target, {formatCurrency(d.exposure*d.target)}.</p></section>
-  <section className={common}><header><h3>Leverage exposure</h3><span className="capital-status">{status}</span></header><div className="capital-ratios"><div><strong>{formatCurrency(d.exposure)}</strong><span>Actual</span></div><div><span>Implied limit</span><b>{formatCurrency(d.limit)}</b></div><div><span>Headroom</span><b className="capital-gap">{signedMoney(spare)}</b></div></div><Gauge actual={d.exposure} required={d.limit} money/><div className="capital-amounts"><div><b>{formatPct(d.ratio)}</b><span>Actual leverage ratio</span></div><div><b>{formatPct(d.minimum)}</b><span>Minimum</span></div><div><b className="capital-gap">{d.exposure>0?formatPct(spare/d.exposure):'N/A'}</b><span>Spare exposure capacity</span></div></div><p className="lcr-target">Implied capacity holds Tier 1 constant. Risk-weighted capital and liquidity constraints may bind sooner.</p></section>
- </div><div className="capital-detail-grid">
-  <section className="capital-card"><h3>Tier 1 composition</h3><p className="capital-total">Total Tier 1 held <strong>{formatCurrency(d.tier1)} ({formatPct(d.ratio)})</strong></p>{d.exposure>0?<svg className="capital-composition" viewBox="0 0 740 390" role="img" aria-label={`Tier 1 composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(d.at1)}; exposure ${formatCurrency(d.exposure)}. Requirement ${formatPct(d.minimum)}, internal target ${formatPct(d.target)}.`}>{[0,1,2,3,4].map(i=>{const n=min+(max-min)*i/4;return <g key={i}><path d={`M65 ${y(n)}H350`} stroke="var(--border)"/><text x="55" y={y(n)+5} textAnchor="end">{formatPct(n,1)}</text></g>;})}<text transform="translate(18 180) rotate(-90)" textAnchor="middle">% of leverage exposure</text>{parts.map(p=>{const start=cumulative;cumulative+=p.value/d.exposure;const top=y(Math.max(start,cumulative)),height=Math.abs(y(start)-y(cumulative));return <g key={p.label}><rect x="110" y={top} width="190" height={height} fill={p.color}/>{height>40&&<text x="205" y={top+height/2} textAnchor="middle" className="stack-label">{p.label}<tspan x="205" dy="21">{formatCurrency(p.value)} ({formatPct(p.value/d.exposure)})</tspan></text>}</g>;})}{(grouped?levels.slice(0,1):levels).map((l,i)=><g key={l.label}><path d={`M300 ${y(l.ratio)}H345L385 ${150+i*85}H400`} fill="none" stroke={l.label.startsWith('Internal')?'#b24b92':'#7956bd'} strokeWidth="2" strokeDasharray={l.label.startsWith('Internal')?'2 4':'6 4'}/><text x="410" y={145+i*85}>{grouped?'Requirement & internal target':l.label}<tspan x="410" dy="24" fontWeight="700">{formatPct(l.ratio)} · {formatCurrency(l.ratio*d.exposure)}</tspan></text></g>)}<text x="205" y="375" textAnchor="middle" fontWeight="700">Leverage exposure {formatCurrency(d.exposure)}</text></svg>:<p>Ratio composition is unavailable without positive leverage exposure.</p>}<ul className="capital-legend">{parts.map(p=><li key={p.label}><i style={{background:p.color}}/>{p.label} · {formatCurrency(p.value)}</li>)}</ul></section>
-  <section className="capital-card"><h3>Requirement breakdown</h3><table><thead><tr><th>Item</th><th>Ratio / value</th></tr></thead><tbody><tr><th>Model leverage requirement</th><td>{formatPct(d.minimum)}</td></tr><tr><th>Additional leverage buffers</th><td>Not modelled</td></tr><tr className="total-row"><th>Total model requirement</th><td>{formatPct(d.minimum)}</td></tr></tbody></table><p className="muted">The model uses the configured leverage requirement. Additional leverage buffers are not separately modelled.</p><table><tbody>{[['Total leverage exposure',formatCurrency(d.exposure)],['Required Tier 1 capital',formatCurrency(d.required)],['Actual Tier 1 capital',formatCurrency(d.tier1)],['Surplus Tier 1 capital',signedMoney(d.surplus)],['Internal target',formatPct(d.target)],['Tier 1 at internal target',formatCurrency(d.target*d.exposure)],['Headroom to internal target',signedMoney(d.tier1-d.target*d.exposure)]].map(([label,value])=><tr key={label}><th>{label}</th><td>{value}</td></tr>)}</tbody></table></section>
- </div><section className="capital-card leverage-reconciliation"><h3>Leverage exposure reconciliation</h3><table><thead><tr><th>Contribution</th><th>Amount</th></tr></thead><tbody>{d.exposureRows.map(r=><tr key={r.label}><th>{r.label}</th><td>{r.value<0?'−':''}{formatCurrency(Math.abs(r.value))}</td></tr>)}</tbody><tfoot><tr><th>Total leverage exposure</th><td>{formatCurrency(d.exposure)}</td></tr></tfoot></table></section><section className="capital-card capital-history"><h3>Leverage ratio over time</h3><div style={{height:270}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.leverageRatio}))} xLabel="Month" yLabel="Leverage ratio (%)"/></div></section></div>;
+
+interface SummaryValue {
+  label: string;
+  value: string;
+  valueClass?: string;
+}
+
+function SummaryCard({
+  title,
+  status,
+  shortfall,
+  headline,
+  headlineLabel = 'Actual',
+  secondary,
+  footer,
+  gauge,
+}: {
+  title: string;
+  status: string;
+  shortfall: boolean;
+  headline: string;
+  headlineLabel?: string;
+  secondary: SummaryValue[];
+  footer: SummaryValue[];
+  gauge: {
+    actual: number;
+    threshold: number;
+    target?: number;
+    money?: boolean;
+    thresholdLabel: string;
+    targetLabel?: string;
+  };
+}) {
+  return (
+    <article className={`capital-card leverage-summary-card ${shortfall ? 'shortfall' : ''}`}>
+      <header>
+        <h3>{title}</h3>
+        <span className="capital-status">{status}</span>
+      </header>
+      <div className="capital-ratios">
+        <div>
+          <strong>{headline}</strong>
+          <span>{headlineLabel}</span>
+        </div>
+        {secondary.map(item => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <b className={item.valueClass}>{item.value}</b>
+          </div>
+        ))}
+      </div>
+      <Gauge {...gauge} />
+      <div className="leverage-marker-key" aria-hidden="true">
+        <span>
+          <i className="leverage-marker-swatch" />
+          {gauge.thresholdLabel}
+        </span>
+        {gauge.target !== undefined && gauge.targetLabel && (
+          <span>
+            <i className="leverage-marker-swatch target" />
+            {gauge.targetLabel}
+          </span>
+        )}
+      </div>
+      <div className="capital-amounts">
+        {footer.map(item => (
+          <div key={item.label}>
+            <b className={item.valueClass}>{item.value}</b>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+export default function LeverageDashboard({
+  state,
+  config,
+  history,
+}: {
+  state: BankState;
+  config: SimulationConfig;
+  history: BankState[];
+}) {
+  const d = leverageDashboardData(state, config);
+  const gap = d.ratio - d.minimum;
+  const status = !Number.isFinite(d.ratio)
+    ? 'Unavailable'
+    : gap >= 0
+      ? 'Meets requirement'
+      : 'Below requirement';
+  const shortfall = gap < 0;
+  const spare = d.limit - d.exposure;
+  const internalSpare = d.internalLimit - d.exposure;
+  const ratioTarget = distinctTarget(d.minimum, d.target);
+  const capitalTarget = distinctTarget(d.required, d.targetRequired);
+  const exposureTarget = distinctTarget(d.limit, d.internalLimit);
+  const parts = [
+    { label: 'CET1', value: d.cet1, color: '#18528b' },
+    { label: 'AT1', value: d.at1, color: '#4d9ee3' },
+  ];
+
+  const chartMax = Math.ceil(
+    Math.max(0.09, d.target * 1.2, Number.isFinite(d.ratio) ? d.ratio * 1.15 : 0) / 0.01
+  ) * 0.01;
+  const chartY = (n: number) => 250 - (Math.max(0, n) / chartMax) * 205;
+  const ticks = Array.from({ length: 5 }, (_, i) => (chartMax * i) / 4);
+  let cumulative = 0;
+  const positionedParts = parts.map(part => {
+    const start = cumulative;
+    cumulative += d.exposure > 0 ? part.value / d.exposure : 0;
+    return { ...part, start, end: cumulative };
+  });
+  const targetsGrouped = Math.abs(d.target - d.minimum) < 1e-10;
+
+  return (
+    <div className="capital-dashboard leverage-dashboard">
+      <div className="capital-cards">
+        <SummaryCard
+          title="Leverage ratio"
+          status={status}
+          shortfall={shortfall}
+          headline={formatPct(d.ratio)}
+          secondary={[
+            { label: 'Requirement', value: formatPct(d.minimum) },
+            { label: 'Headroom', value: pp(gap), valueClass: 'capital-gap' },
+          ]}
+          gauge={{
+            actual: d.ratio,
+            threshold: d.minimum,
+            target: ratioTarget,
+            thresholdLabel: 'Requirement',
+            targetLabel: 'Internal target',
+          }}
+          footer={[
+            { label: 'Actual Tier 1 capital', value: formatCurrency(d.tier1) },
+            { label: 'Required Tier 1', value: formatCurrency(d.required) },
+            { label: 'Capital headroom', value: signedMoney(d.surplus), valueClass: 'capital-gap' },
+          ]}
+        />
+
+        <SummaryCard
+          title="Tier 1 capital"
+          status={status}
+          shortfall={shortfall}
+          headline={formatCurrency(d.tier1)}
+          secondary={[
+            { label: 'Requirement', value: formatCurrency(d.required) },
+            { label: 'Headroom', value: signedMoney(d.surplus), valueClass: 'capital-gap' },
+          ]}
+          gauge={{
+            actual: d.tier1,
+            threshold: d.required,
+            target: capitalTarget,
+            money: true,
+            thresholdLabel: 'Requirement',
+            targetLabel: 'Internal target',
+          }}
+          footer={[
+            { label: 'Actual leverage ratio', value: formatPct(d.ratio) },
+            { label: 'Required ratio', value: formatPct(d.minimum) },
+            { label: 'Ratio headroom', value: pp(gap), valueClass: 'capital-gap' },
+          ]}
+        />
+
+        <SummaryCard
+          title="Leverage exposure"
+          status={status}
+          shortfall={shortfall}
+          headline={formatCurrency(d.exposure)}
+          secondary={[
+            { label: 'Implied limit', value: formatCurrency(d.limit) },
+            { label: 'Headroom', value: signedMoney(spare), valueClass: 'capital-gap' },
+          ]}
+          gauge={{
+            actual: d.exposure,
+            threshold: d.limit,
+            target: exposureTarget,
+            money: true,
+            thresholdLabel: 'Regulatory limit',
+            targetLabel: 'Internal limit',
+          }}
+          footer={[
+            { label: 'Actual leverage ratio', value: formatPct(d.ratio) },
+            { label: 'Minimum ratio', value: formatPct(d.minimum) },
+            {
+              label: 'Spare exposure capacity',
+              value: d.exposure > 0 ? formatPct(spare / d.exposure) : 'N/A',
+              valueClass: 'capital-gap',
+            },
+          ]}
+        />
+      </div>
+
+      <div className="capital-detail-grid leverage-detail-grid">
+        <section className="capital-card leverage-composition-card">
+          <h3>Tier 1 composition</h3>
+          <p className="capital-total">
+            Total Tier 1 held <strong>{formatCurrency(d.tier1)} ({formatPct(d.ratio)})</strong>
+          </p>
+          {d.exposure > 0 ? (
+            <div className="leverage-composition-layout">
+              <svg
+                className="leverage-composition-chart"
+                viewBox="0 0 360 300"
+                role="img"
+                aria-label={`Tier 1 composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(
+                  d.at1
+                )}; exposure ${formatCurrency(d.exposure)}. Requirement ${formatPct(
+                  d.minimum
+                )}, internal target ${formatPct(d.target)}.`}
+              >
+                {ticks.map(tick => (
+                  <g key={tick}>
+                    <path d={`M58 ${chartY(tick)}H320`} stroke="var(--border)" />
+                    <text x="49" y={chartY(tick) + 4} textAnchor="end">
+                      {formatPct(tick, 1)}
+                    </text>
+                  </g>
+                ))}
+                <text transform="translate(16 150) rotate(-90)" textAnchor="middle">
+                  % of leverage exposure
+                </text>
+                {positionedParts.map(part => {
+                  const top = chartY(Math.max(part.start, part.end));
+                  const height = Math.abs(chartY(part.start) - chartY(part.end));
+                  return (
+                    <g key={part.label}>
+                      <rect x="104" y={top} width="165" height={height} fill={part.color} />
+                      {height > 34 && (
+                        <text x="186.5" y={top + height / 2 - 5} textAnchor="middle" className="stack-label">
+                          {part.label}
+                          <tspan x="186.5" dy="18">
+                            {formatCurrency(part.value)} ({formatPct(part.value / d.exposure)})
+                          </tspan>
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+                <path
+                  d={`M58 ${chartY(d.minimum)}H320`}
+                  fill="none"
+                  stroke="#7956bd"
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                />
+                {!targetsGrouped && (
+                  <path
+                    d={`M58 ${chartY(d.target)}H320`}
+                    fill="none"
+                    stroke="#b24b92"
+                    strokeWidth="2"
+                    strokeDasharray="2 4"
+                  />
+                )}
+                <text x="186.5" y="286" textAnchor="middle" fontWeight="700">
+                  Leverage exposure {formatCurrency(d.exposure)}
+                </text>
+              </svg>
+
+              <div className="leverage-threshold-list">
+                {targetsGrouped ? (
+                  <div className="leverage-threshold">
+                    <span>Requirement & internal target</span>
+                    <strong>{formatPct(d.minimum)}</strong>
+                    <small>{formatCurrency(d.required)} Tier 1</small>
+                  </div>
+                ) : (
+                  <>
+                    <div className="leverage-threshold">
+                      <span>Leverage requirement</span>
+                      <strong>{formatPct(d.minimum)}</strong>
+                      <small>{formatCurrency(d.required)} Tier 1</small>
+                    </div>
+                    <div className="leverage-threshold target">
+                      <span>Internal leverage target</span>
+                      <strong>{formatPct(d.target)}</strong>
+                      <small>{formatCurrency(d.targetRequired)} Tier 1</small>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p>Ratio composition is unavailable without positive leverage exposure.</p>
+          )}
+          <ul className="capital-legend">
+            {parts.map(part => (
+              <li key={part.label}>
+                <i style={{ background: part.color }} />
+                {part.label} · {formatCurrency(part.value)}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="capital-card leverage-requirements-card">
+          <h3>Requirement breakdown</h3>
+          <div className="leverage-table-section">
+            <h4>Ratio thresholds</h4>
+            <table className="leverage-detail-table">
+              <tbody>
+                <tr>
+                  <th>Leverage requirement</th>
+                  <td>{formatPct(d.minimum)}</td>
+                </tr>
+                <tr>
+                  <th>Internal target</th>
+                  <td>{formatPct(d.target)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="leverage-table-section">
+            <h4>Capital position</h4>
+            <table className="leverage-detail-table">
+              <tbody>
+                <tr>
+                  <th>Total leverage exposure</th>
+                  <td>{formatCurrency(d.exposure)}</td>
+                </tr>
+                <tr>
+                  <th>Required Tier 1 capital</th>
+                  <td>{formatCurrency(d.required)}</td>
+                </tr>
+                <tr>
+                  <th>Tier 1 at internal target</th>
+                  <td>{formatCurrency(d.targetRequired)}</td>
+                </tr>
+                <tr className="emphasis-row">
+                  <th>Actual Tier 1 capital</th>
+                  <td>{formatCurrency(d.tier1)}</td>
+                </tr>
+                <tr>
+                  <th>Surplus to requirement</th>
+                  <td className={d.surplus >= 0 ? 'positive-value' : undefined}>{signedMoney(d.surplus)}</td>
+                </tr>
+                <tr>
+                  <th>Headroom to internal target</th>
+                  <td className={d.tier1 - d.targetRequired >= 0 ? 'positive-value' : undefined}>
+                    {signedMoney(d.tier1 - d.targetRequired)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <section className="capital-card leverage-reconciliation">
+        <h3>Leverage exposure reconciliation</h3>
+        <table className="leverage-compact-table">
+          <thead>
+            <tr>
+              <th>Contribution</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.exposureRows.map(row => (
+              <tr key={row.label}>
+                <th>{row.label}</th>
+                <td>
+                  {row.value < 0 ? '−' : ''}
+                  {formatCurrency(Math.abs(row.value))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th>Total leverage exposure</th>
+              <td>{formatCurrency(d.exposure)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <section className="capital-card capital-history">
+        <h3>Leverage ratio over time</h3>
+        <div style={{ height: 270 }}>
+          <TimeSeriesChart
+            data={history.map(s => ({ step: s.time.step, value: s.risk.riskMetrics.leverageRatio }))}
+            xLabel="Month"
+            yLabel="Leverage ratio (%)"
+          />
+        </div>
+      </section>
+    </div>
+  );
 }
