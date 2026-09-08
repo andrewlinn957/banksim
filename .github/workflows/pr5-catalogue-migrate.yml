@@ -53,24 +53,22 @@ jobs:
               'products.includes(item.productType as LiabilityProductType)',
               'products.includes(item.productType)'
           )
-          mortgage_target = """  const mortgageTarget =
-            findItem(state.financial.balanceSheet, AssetProductType.Mortgages)?.interestRate ??
-            state.market.competitorMortgageRate;"""
-          mortgage_replacement = """  const mortgageTarget =
-            findItem(state.financial.balanceSheet, MORTGAGE_BENCHMARK_PRODUCT)?.interestRate ??
-            state.market.competitorMortgageRate;"""
-          if mortgage_target not in text:
-              raise SystemExit('Mortgage competitor target block not found')
-          text = text.replace(mortgage_target, mortgage_replacement, 1)
-          corporate_target = """  const corporateLoanRate =
-            findItem(state.financial.balanceSheet, AssetProductType.CorporateLoans)?.interestRate ??
-            (state.market.riskFreeLong + state.market.corporateLoanSpread);"""
-          corporate_replacement = """  const corporateLoanRate =
-            findItem(state.financial.balanceSheet, CORPORATE_LOAN_BENCHMARK_PRODUCT)?.interestRate ??
-            (state.market.riskFreeLong + state.market.corporateLoanSpread);"""
-          if corporate_target not in text:
-              raise SystemExit('Corporate competitor target block not found')
-          text = text.replace(corporate_target, corporate_replacement, 1)
+          text, mortgage_count = re.subn(
+              r'(const mortgageTarget\s*=\s*\n\s*)findItem\(state\.financial\.balanceSheet, AssetProductType\.Mortgages\)',
+              r'\1findItem(state.financial.balanceSheet, MORTGAGE_BENCHMARK_PRODUCT)',
+              text,
+              count=1,
+          )
+          if mortgage_count != 1:
+              raise SystemExit(f'Expected one mortgage competitor target, migrated {mortgage_count}')
+          text, corporate_count = re.subn(
+              r'(const corporateLoanRate\s*=\s*\n\s*)findItem\(state\.financial\.balanceSheet, AssetProductType\.CorporateLoans\)',
+              r'\1findItem(state.financial.balanceSheet, CORPORATE_LOAN_BENCHMARK_PRODUCT)',
+              text,
+              count=1,
+          )
+          if corporate_count != 1:
+              raise SystemExit(f'Expected one corporate competitor target, migrated {corporate_count}')
           simulation.write_text(text)
 
           loans = Path('src/components/LoansPanel.tsx')
@@ -97,7 +95,7 @@ jobs:
           if label_count == 0 or 'PORTFOLIO_LABEL' in text:
               raise SystemExit('Loan portfolio labels were not fully migrated')
           loans.write_text(text)
-          print(f'Migrated {label_count} loan UI label reads')
+          print(f'Migrated benchmark targets and {label_count} loan UI label reads')
           PY
       - name: Remove temporary migration workflow and commit
         run: |
