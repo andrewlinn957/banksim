@@ -19,8 +19,7 @@ const sumBalances = (
 ): number => productTypes.reduce((sum, productType) => sum + getBalance(state, productType), 0);
 
 const RETAIL_DEPOSITS = [
-  LiabilityProductType.RetailTransactionalDeposits,
-  LiabilityProductType.RetailSavingsDeposits,
+  LiabilityProductType.RetailCurrentAccounts,
 ] as const;
 
 const CORPORATE_DEPOSITS = [

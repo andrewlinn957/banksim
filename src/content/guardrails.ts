@@ -29,7 +29,7 @@ export interface GuardrailInputs {
 }
 
 type ActionNumericField =
-  | 'retailDepositRate'
+  | 'retailCurrentAccountRate'
   | 'corporateDepositRate'
   | 'mortgageRate'
   | 'corporateLoanRate'
@@ -151,13 +151,13 @@ export const buildPreRunGuardrails = (inputs: GuardrailInputs): PreRunGuardrail[
     });
   }
 
-  const retailDepositRate = parsedValues.retailDepositRate;
+  const retailCurrentAccountRate = parsedValues.retailCurrentAccountRate;
   const corpDepositRate = parsedValues.corporateDepositRate;
   const competitorCorpDeposit =
-    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
   const retailUnderpricing =
-    retailDepositRate !== undefined &&
-    state.market.competitorRetailDepositRate - retailDepositRate >= 0.0075;
+    retailCurrentAccountRate !== undefined &&
+    state.market.competitorRetailCurrentAccountRate - retailCurrentAccountRate >= 0.0075;
   const corpUnderpricing =
     corpDepositRate !== undefined &&
     competitorCorpDeposit - corpDepositRate >= 0.009;

@@ -55,8 +55,7 @@ const totalLoans = (state: BankState): number =>
   productBalance(state, AssetProductType.CorporateLoans);
 
 const totalCustomerDeposits = (state: BankState): number =>
-  productBalance(state, LiabilityProductType.RetailTransactionalDeposits) +
-  productBalance(state, LiabilityProductType.RetailSavingsDeposits) +
+  productBalance(state, LiabilityProductType.RetailCurrentAccounts) +
   productBalance(state, LiabilityProductType.RetailTermDeposits) +
   productBalance(state, LiabilityProductType.CorporateOperatingDeposits) +
   productBalance(state, LiabilityProductType.CorporateNonOperatingDeposits);
@@ -99,14 +98,14 @@ const managementPolicy = (
   if (monthIndex % 12 === 0) {
     const cash = productBalance(state, AssetProductType.CashReserves);
     const offset = cash < 1.5e9 ? 0.0025 : cash > 3.5e9 ? -0.0025 : 0;
-    const retailRate = Math.max(0, state.market.competitorRetailDepositRate + offset);
+    const retailRate = Math.max(0, state.market.competitorRetailCurrentAccountRate + offset);
     const corporateRate = Math.max(
       0,
-      (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) + offset
+      (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate) + offset
     );
     const termRate = Math.max(0, state.market.competitorTermDepositRate + offset);
     actions.push(
-      { type: 'adjustRate', productType: LiabilityProductType.RetailSavingsDeposits, newRate: retailRate },
+      { type: 'adjustRate', productType: LiabilityProductType.RetailCurrentAccounts, newRate: retailRate },
       { type: 'adjustRate', productType: LiabilityProductType.RetailTermDeposits, newRate: termRate },
       { type: 'setTermDepositPolicy', tenorMonths: 12 },
       { type: 'adjustRate', productType: LiabilityProductType.CorporateOperatingDeposits, newRate: corporateRate },
@@ -264,17 +263,12 @@ describe('Model regression harness', () => {
       config: pack.config,
       actionsForMonth: (state) => {
         const competitorCorporate =
-          state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+          state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
         return [
           {
             type: 'adjustRate',
-            productType: LiabilityProductType.RetailTransactionalDeposits,
-            newRate: Math.max(0, state.market.competitorRetailDepositRate - 0.02),
-          },
-          {
-            type: 'adjustRate',
-            productType: LiabilityProductType.RetailSavingsDeposits,
-            newRate: Math.max(0, state.market.competitorRetailDepositRate - 0.02),
+            productType: LiabilityProductType.RetailCurrentAccounts,
+            newRate: Math.max(0, state.market.competitorRetailCurrentAccountRate - 0.02),
           },
           {
             type: 'adjustRate',

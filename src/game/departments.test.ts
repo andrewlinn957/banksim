@@ -10,7 +10,7 @@ describe('Department operations summaries', () => {
   it('uses the actual quarter opening and excludes past-quarter approvals', () => {
     const history = Array.from({ length: 5 }, (_, i) => {
       const s = cloneBankState(initialState); s.time.step = i;
-      s.financial.balanceSheet.items.find(x => x.productType === L.RetailSavingsDeposits)!.balance += i * 1e6;
+      s.financial.balanceSheet.items.find(x => x.productType === L.RetailCurrentAccounts)!.balance += i * 1e6;
       s.loanPipelines = { [A.Mortgages]: { demandNotional: 100e6, approvedNotional: i * 1e6, committedNotional: 11e6 } };
       return s;
     });

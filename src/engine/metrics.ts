@@ -140,8 +140,7 @@ const computeIrrbbSensitivities = (
       case AssetProductType.Mortgages: return Math.max(.5, Math.min(5, (state.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24) / 12 * .85));
       case AssetProductType.ConsumerLoans: return 1.25;
       case AssetProductType.CorporateLoans: return 1.75;
-      case LiabilityProductType.RetailTransactionalDeposits: return .35;
-      case LiabilityProductType.RetailSavingsDeposits: return .45;
+      case LiabilityProductType.RetailCurrentAccounts: return .35;
       case LiabilityProductType.RetailTermDeposits: {
         const b=state.fundingLadders?.[item.productType]??[]; const n=b.reduce((s,x)=>s+x.notional,0); return n>0?b.reduce((s,x)=>s+x.notional*Math.max(.08,x.monthsToMaturity/12),0)/n:1;
       }

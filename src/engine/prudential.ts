@@ -4,6 +4,19 @@ import { AssetProductType, BalanceSheetSide, ProductType, LiabilityProductType }
 import { PRODUCT_META } from '../domain/productMeta';
 
 // 2026 UK standardised portfolio assumptions: docs/model-basis.md.
+
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+export const retailCurrentAccountRegulatoryFactors = (s: BankState) => {
+  const stableShare = clamp01(s.behaviour.insuredRetailDepositShare ?? 0);
+  const otherShare = 1 - stableShare;
+  return {
+    stableShare,
+    otherShare,
+    lcrOutflowFactor: stableShare * 0.05 + otherShare * 0.10,
+    nsfrAsfFactor: stableShare * 0.95 + otherShare * 0.90,
+  };
+};
 export const committedExposure = (s: BankState, product?: ProductType): number =>
   Object.entries(s.loanPipelines ?? {}).reduce((sum, [p, b]) => sum + (!product || p === product ? Math.max(0, b?.committedNotional ?? 0) : 0), 0);
 export const commitmentLiquidity = (s: BankState) => ({ outflow: committedExposure(s, AssetProductType.Mortgages) * .05 + committedExposure(s, AssetProductType.ConsumerLoans) * .1 + committedExposure(s, AssetProductType.CorporateLoans) * .1, rsf: committedExposure(s) * .05 });
@@ -24,6 +37,11 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
   let inflow = asset ? b * Math.min(1, Math.max(0, tag?.lcrInflowRate ?? 0)) : 0;
   let asf = asset ? 0 : b * (tag?.nsfrAsfFactor ?? 0);
   let rsf = asset ? b * (tag?.nsfrRsfFactor ?? 0) : 0;
+  if (p === LiabilityProductType.RetailCurrentAccounts) {
+    const retail = retailCurrentAccountRegulatoryFactors(s);
+    outflow = b * retail.lcrOutflowFactor;
+    asf = b * retail.nsfrAsfFactor;
+  }
   if (p === AssetProductType.DerivativeAssets || p === LiabilityProductType.DerivativeLiabilities) {
     let receipts=0, payments=0;
     for(const hedge of s.financial.hedges){
@@ -40,9 +58,13 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
   if ([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt].includes(p as LiabilityProductType)) {
     const buckets = s.fundingLadders?.[p];
     if (buckets?.length) {
-      outflow = buckets.reduce((sum, f) => sum + (f.monthsToMaturity <= 1 ? f.notional * (1 + f.rate / 12) : 0), 0);
+      outflow = buckets.reduce((sum, f) => {
+        if (f.monthsToMaturity > 1) return sum;
+        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * 0.10;
+        return sum + f.notional * (1 + f.rate / 12);
+      }, 0);
       asf = buckets.reduce((sum, f) => {
-        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : .95);
+        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : 0.90);
         return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? .5 : 0);
       }, 0);
     }

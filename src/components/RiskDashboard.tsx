@@ -39,8 +39,7 @@ const LOAN_PRODUCTS = new Set<string>([
 const CUSTOMER_DEPOSIT_PRODUCTS = new Set<string>([
   LiabilityProductType.RetailDeposits,
   LiabilityProductType.CorporateDeposits,
-  LiabilityProductType.RetailTransactionalDeposits,
-  LiabilityProductType.RetailSavingsDeposits,
+  LiabilityProductType.RetailCurrentAccounts,
   LiabilityProductType.RetailTermDeposits,
   LiabilityProductType.CorporateOperatingDeposits,
   LiabilityProductType.CorporateNonOperatingDeposits,

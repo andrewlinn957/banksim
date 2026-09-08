@@ -9,13 +9,18 @@ const getBalance = (state: typeof initialState, productType: LiabilityProductTyp
   state.financial.balanceSheet.items.find((item) => item.productType === productType)?.balance ?? 0;
 
 describe('Deposit segmentation', () => {
-  it('instant retail and business deposits react differently to equivalent pricing changes', () => {
+  it('retail current accounts are less price-sensitive than business operating deposits', () => {
+    const retailParams = baseConfig.behaviour.depositByProduct?.[LiabilityProductType.RetailCurrentAccounts]!;
+    const businessParams = baseConfig.behaviour.depositByProduct?.[LiabilityProductType.CorporateOperatingDeposits]!;
+    expect(businessParams.competitorSensitivity).toBeGreaterThan(retailParams.competitorSensitivity);
+    expect(businessParams.underpricingConvexity).toBeGreaterThan(retailParams.underpricingConvexity);
+
     const engine = createSimulationEngine();
     const start = cloneBankState(initialState);
-    const retailCompetitor = start.market.competitorRetailDepositRate;
+    const retailCompetitor = start.market.competitorRetailCurrentAccountRate;
     const businessCompetitor = start.market.competitorCorporateDepositRate ?? retailCompetitor;
 
-    const beforeRetail = getBalance(start, LiabilityProductType.RetailSavingsDeposits);
+    const beforeRetail = getBalance(start, LiabilityProductType.RetailCurrentAccounts);
     const beforeBusiness = getBalance(start, LiabilityProductType.CorporateOperatingDeposits);
 
     const { nextState } = engine.step({
@@ -24,7 +29,7 @@ describe('Deposit segmentation', () => {
       actions: [
         {
           type: 'adjustRate',
-          productType: LiabilityProductType.RetailSavingsDeposits,
+          productType: LiabilityProductType.RetailCurrentAccounts,
           newRate: retailCompetitor + 0.01,
         },
         {
@@ -36,19 +41,19 @@ describe('Deposit segmentation', () => {
       shocks: [],
     });
 
-    const afterRetail = getBalance(nextState, LiabilityProductType.RetailSavingsDeposits);
+    const afterRetail = getBalance(nextState, LiabilityProductType.RetailCurrentAccounts);
     const afterBusiness = getBalance(nextState, LiabilityProductType.CorporateOperatingDeposits);
-
     const retailGrowth = (afterRetail - beforeRetail) / beforeRetail;
     const businessGrowth = (afterBusiness - beforeBusiness) / beforeBusiness;
+
     expect(Number.isFinite(retailGrowth)).toBe(true);
     expect(Number.isFinite(businessGrowth)).toBe(true);
-    expect(Math.abs(retailGrowth - businessGrowth)).toBeGreaterThan(0.001);
+    expect(businessGrowth).toBeGreaterThan(retailGrowth);
   });
 
   it('corporate deposit mix shift changes NSFR via ASF factors', () => {
     const engine = createSimulationEngine();
-    const competitor = initialState.market.competitorCorporateDepositRate ?? initialState.market.competitorRetailDepositRate;
+    const competitor = initialState.market.competitorCorporateDepositRate ?? initialState.market.competitorRetailCurrentAccountRate;
 
     const baseline = engine.step({
       state: cloneBankState(initialState),

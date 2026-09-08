@@ -93,7 +93,7 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>({
-    retailDepositRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailSavingsDeposits)?.interestRate ?? bankState.market.competitorRetailDepositRate),
+    retailCurrentAccountRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailCurrentAccounts)?.interestRate ?? bankState.market.competitorRetailCurrentAccountRate),
     termDepositRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? bankState.market.competitorTermDepositRate),
     termDepositTenorMonths: String(bankState.behaviour.termDepositTenorMonths ?? 12),
     corporateDepositRate: formatRateInputPct(getGroupDepositRate(bankState, 'corporate')),
@@ -397,7 +397,7 @@ const App = () => {
     setCurrentTimeline([]);
     setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
     setActionForm({
-      retailDepositRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailSavingsDeposits)?.interestRate ?? scenarioState.market.competitorRetailDepositRate),
+      retailCurrentAccountRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailCurrentAccounts)?.interestRate ?? scenarioState.market.competitorRetailCurrentAccountRate),
       termDepositRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? scenarioState.market.competitorTermDepositRate),
       termDepositTenorMonths: String(scenarioState.behaviour.termDepositTenorMonths ?? 12),
       corporateDepositRate: formatRateInputPct(getGroupDepositRate(scenarioState, 'corporate')),
@@ -765,7 +765,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
   const values: Partial<Record<keyof ActionFormState, number>> = {};
 
   const rateFields: Array<keyof ActionFormState> = [
-    'retailDepositRate', 'termDepositRate', 'corporateDepositRate', 'mortgageRate', 'consumerLoanRate', 'corporateLoanRate',
+    'retailCurrentAccountRate', 'termDepositRate', 'corporateDepositRate', 'mortgageRate', 'consumerLoanRate', 'corporateLoanRate',
   ];
   rateFields.forEach((field) => {
     const parsed = parseRateInput(state[field]);
@@ -852,13 +852,13 @@ const buildActionsFromParsed = (
   const actions: PlayerAction[] = [];
   const values = parsed.values;
 
-  if (values.retailDepositRate !== undefined) {
-    [LiabilityProductType.RetailSavingsDeposits].forEach(
+  if (values.retailCurrentAccountRate !== undefined) {
+    [LiabilityProductType.RetailCurrentAccounts].forEach(
       (productType) => {
         actions.push({
           type: 'adjustRate',
           productType,
-          newRate: values.retailDepositRate!,
+          newRate: values.retailCurrentAccountRate!,
         });
       }
     );
@@ -974,7 +974,7 @@ const calculateNim = (state: BankState): number => {
 const getGroupDepositRate = (state: BankState, segment: 'retail' | 'corporate'): number => {
   const productTypes: Array<LiabilityProductType> =
     segment === 'retail'
-      ? [LiabilityProductType.RetailTransactionalDeposits, LiabilityProductType.RetailSavingsDeposits]
+      ? [LiabilityProductType.RetailCurrentAccounts]
       : [
           LiabilityProductType.CorporateOperatingDeposits,
           LiabilityProductType.CorporateNonOperatingDeposits,
@@ -985,8 +985,8 @@ const getGroupDepositRate = (state: BankState, segment: 'retail' | 'corporate'):
   const total = selected.reduce((sum, item) => sum + item.balance, 0);
   if (total <= 0) {
     return segment === 'retail'
-      ? state.market.competitorRetailDepositRate
-      : state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+      ? state.market.competitorRetailCurrentAccountRate
+      : state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
   }
   return selected.reduce((sum, item) => sum + item.balance * item.interestRate, 0) / total;
 };

@@ -9,7 +9,7 @@ describe('Competitor reaction dynamics', () => {
   it('competitor rates move toward persistent player pricing', () => {
     const engine = createSimulationEngine();
     let state = cloneBankState(initialState);
-    const startRetail = state.market.competitorRetailDepositRate;
+    const startRetail = state.market.competitorRetailCurrentAccountRate;
     const startMortgage = state.market.competitorMortgageRate;
 
     for (let month = 0; month < 6; month++) {
@@ -19,13 +19,8 @@ describe('Competitor reaction dynamics', () => {
         actions: [
           {
             type: 'adjustRate',
-            productType: LiabilityProductType.RetailTransactionalDeposits,
-            newRate: state.market.competitorRetailDepositRate + 0.02,
-          },
-          {
-            type: 'adjustRate',
-            productType: LiabilityProductType.RetailSavingsDeposits,
-            newRate: state.market.competitorRetailDepositRate + 0.02,
+            productType: LiabilityProductType.RetailCurrentAccounts,
+            newRate: state.market.competitorRetailCurrentAccountRate + 0.02,
           },
           {
             type: 'adjustRate',
@@ -37,7 +32,7 @@ describe('Competitor reaction dynamics', () => {
       }).nextState;
     }
 
-    expect(state.market.competitorRetailDepositRate).toBeGreaterThan(startRetail);
+    expect(state.market.competitorRetailCurrentAccountRate).toBeGreaterThan(startRetail);
     expect(state.market.competitorMortgageRate).toBeGreaterThan(startMortgage);
   });
 });

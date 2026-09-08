@@ -60,7 +60,7 @@ const selectGiltRows = (market: MarketState): RowItem[] => {
 const selectMarketRows = (market: MarketState): RowItem[] => [
   { label: 'Competitor mortgage rate', value: formatPct(market.competitorMortgageRate) },
   { label: 'Competitor corporate loan rate', value: formatPct(market.riskFreeLong + market.corporateLoanSpread) },
-  { label: 'Competitor retail deposit rate', value: formatPct(market.competitorRetailDepositRate) },
+  { label: 'Competitor retail deposit rate', value: formatPct(market.competitorRetailCurrentAccountRate) },
   { label: 'Competitor corporate deposit rate', value: maybeRate(market.competitorCorporateDepositRate) },
   { label: 'Short-term wholesale funding spread', value: formatPct(market.wholesaleFundingSpread) },
   { label: 'Long-term wholesale funding spread', value: formatPct(market.seniorDebtSpread) },

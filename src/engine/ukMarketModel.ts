@@ -808,8 +808,8 @@ export const advanceUkMarketState = (market: MarketState, dtMonths: number): voi
 
     // Deposit rates are constrained to be non-negative and not exceed the base rate.
     const competitorDepositTarget = Math.max(0, bankRateClamped - 0.025);
-    market.competitorRetailDepositRate = clamp(
-      meanRevert(market.competitorRetailDepositRate, competitorDepositTarget, 0.25) + rng.normal() * noise,
+    market.competitorRetailCurrentAccountRate = clamp(
+      meanRevert(market.competitorRetailCurrentAccountRate, competitorDepositTarget, 0.25) + rng.normal() * noise,
       0,
       bankRateClamped
     );

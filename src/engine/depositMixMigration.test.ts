@@ -20,7 +20,7 @@ describe('Deposit mix migration', () => {
 
     for (let month = 0; month < 8; month++) {
       const competitor =
-        state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate;
+        state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
       state = engine.step({
         state,
         config: baseConfig,
