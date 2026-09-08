@@ -3,21 +3,20 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import LoansPanel from '../components/LoansPanel';
 import { initialState } from '../config/initialState';
 import { AssetProductType } from '../domain/enums';
+import { getProduct } from '../products/catalogue';
 
-it('shows mortgages, personal credit and SME/business lending in the retail loan report',()=>{
+it('shows every catalogue loan product in the retail loan report',()=>{
   const html=renderToStaticMarkup(<LoansPanel items={initialState.financial.balanceSheet.items} loanCohorts={initialState.loanCohorts} loanPipelines={initialState.loanPipelines} workoutPipelines={initialState.workoutPipelines}/>);
-  expect(html).toContain('Residential mortgages');
-  expect(html).toContain('Personal loans &amp; revolving credit');
-  expect(html).toContain('SME &amp; business lending');
-  expect(html).toContain('Personal Loans &amp; Revolving Credit');
+  for (const productType of [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans]) {
+    expect(html).toContain(getProduct(productType).label.replaceAll('&', '&amp;'));
+  }
 });
-
 
 it('shows consumer cohorts as consumer rather than SME/corporate sectors',()=>{
   const consumerItems = initialState.financial.balanceSheet.items.filter((item)=>item.productType===AssetProductType.ConsumerLoans);
   const consumerCohorts = initialState.loanCohorts[AssetProductType.ConsumerLoans] ?? [];
   const html=renderToStaticMarkup(<LoansPanel items={consumerItems} loanCohorts={{[AssetProductType.ConsumerLoans]: consumerCohorts}} loanPipelines={{[AssetProductType.ConsumerLoans]: initialState.loanPipelines?.[AssetProductType.ConsumerLoans]}} workoutPipelines={{[AssetProductType.ConsumerLoans]: initialState.workoutPipelines?.[AssetProductType.ConsumerLoans]}}/>);
-  expect(html).toContain('Cohort breakdown — Personal loans &amp; revolving credit');
+  expect(html).toContain(`Cohort breakdown — ${getProduct(AssetProductType.ConsumerLoans).label.replaceAll('&', '&amp;')}`);
   expect(html).toContain('Consumer');
   expect(html).not.toContain('Large corporate');
   expect(html).not.toContain('Commercial real estate');
