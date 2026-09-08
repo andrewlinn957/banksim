@@ -1,0 +1,19 @@
+name: Catalogue audit
+
+on:
+  push:
+    branches: [product-catalogue]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory old product references
+        run: |
+          echo '--- PRODUCT_META ---'
+          grep -RIn --exclude='productMeta.ts' 'PRODUCT_META' src || true
+          echo '--- legacy products ---'
+          grep -RInE 'ReverseRepo|RepurchaseAgreements|RetailDeposits|CorporateDeposits' src || true
+          echo '--- productMeta imports ---'
+          grep -RIn "domain/productMeta\|./productMeta\|../domain/productMeta" src || true
