@@ -27,8 +27,8 @@ replace(p,
 # 2) Engine integration: franchise current accounts, damp recession pricing capture, ALCO tolerance band.
 p = "src/engine/simulation.ts"
 replace(p,
-"      const competitor =\n        meta.behaviour.depositSegment === 'corporate'\n          ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate\n          : state.market.competitorRetailDepositRate;",
-"      const competitor =\n        item.productType === LiabilityProductType.RetailTransactionalDeposits\n          ? item.interestRate\n          : meta.behaviour.depositSegment === 'corporate'\n            ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate\n            : state.market.competitorRetailDepositRate;")
+"      const competitor = meta.behaviour.isTermDeposit ? state.market.competitorTermDepositRate : meta.behaviour.depositSegment === 'corporate' ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate : state.market.competitorRetailDepositRate;",
+"      const competitor = item.productType === LiabilityProductType.RetailTransactionalDeposits\n        ? item.interestRate\n        : meta.behaviour.isTermDeposit\n          ? state.market.competitorTermDepositRate\n          : meta.behaviour.depositSegment === 'corporate'\n            ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate\n            : state.market.competitorRetailDepositRate;")
 replace(p,
 "        const pricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);",
 "        const rawPricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);\n        // In a contracting credit market, a cheap offer can win share but cannot create aggregate demand.\n        const pricingCapture = rawPricingCapture <= 1\n          ? rawPricingCapture\n          : 1 + (rawPricingCapture - 1) * Math.min(1, macroMarketMultiplier);")
@@ -44,7 +44,6 @@ replace(p,
 replace(p,
 "        metric('Gross loan principal', gross),\n        metric('Approvals this quarter', approvals),\n        metric('Personal credit', balance(A.ConsumerLoans)),\n        metric('Stage 2 and 3 share', gross > 0 ? stressed / gross : 0, 'ratio'),",
 "        metric('Gross loan principal', gross),\n        metric('Approvals this quarter', approvals),\n        metric('Undrawn commitments', committed),\n        metric('Stage 2 and 3 share', gross > 0 ? stressed / gross : 0, 'ratio'),")
-# remove now-unused weighted interest local to keep typecheck clean
 replace(p,
 "    const interest = state.financial.balanceSheet.items.filter(i => PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit)\n      .reduce((n, i) => n + i.balance * i.interestRate, 0);\n",
 "")
@@ -79,7 +78,6 @@ Path(p).write_text(text)
 
 p = "src/engine/fundingConfidenceLoop.test.ts"
 text = Path(p).read_text().replace("LiabilityProductType.WholesaleFundingST", "LiabilityProductType.WholesaleFundingLT")
-# force a maturity so refinance pricing is exercised
 text = text.replace("    const baselineState = cloneBankState(initialState);\n    const stressedState = cloneBankState(initialState);",
 "    const baselineState = cloneBankState(initialState);\n    const stressedState = cloneBankState(initialState);\n    for (const state of [baselineState, stressedState]) {\n      (state.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);\n    }")
 Path(p).write_text(text)
