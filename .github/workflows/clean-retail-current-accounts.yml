@@ -121,13 +121,14 @@ jobs:
           if old not in s: raise SystemExit('prudential term-funding block not found')
           s=s.replace(old,new,1); write(p,s)
 
-          # Replace the obsolete retail-segmentation test with classification tests.
+          # Replace obsolete retail-segmentation and weighted-factor tests with classification tests.
           p='src/engine/depositSegmentation.test.ts'; s=read(p)
           s=re.sub(r"\n  it\('retail segments react differently to the same pricing change', \(\) => \{.*?\n  \}\);\n",'\n',s,flags=re.S); write(p,s)
+
           p='src/engine/prudential.test.ts'; s=read(p)
           s=s.replace("import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines } from './prudential';", "import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines, retailCurrentAccountRegulatoryFactors } from './prudential';")
           s=re.sub(
-              r"  it\('uses retail/corporate liquidity factors independently of reputation', \(\) => \{.*?\n  \}\);",
+              r"  it\('uses (?:instant-retail|retail/corporate) and corporate liquidity factors independently of reputation', \(\) => \{.*?\n  \}\);",
               """  it('classifies retail current accounts explicitly for LCR and NSFR', () => {\n    const factors = retailCurrentAccountRegulatoryFactors(initialState);\n    expect(factors.stableShare).toBeCloseTo(0.9);\n    expect(factors.otherShare).toBeCloseTo(0.1);\n    expect(factors.lcrOutflowFactor).toBeCloseTo(0.055);\n    expect(factors.nsfrAsfFactor).toBeCloseTo(0.945);\n    const lines = prudentialLiquidityLines(initialState, baseConfig);\n    const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;\n    expect(retail.outflow / retail.balance).toBeCloseTo(0.055);\n    expect(retail.asf / retail.balance).toBeCloseTo(0.945);\n    const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;\n    const otherBusiness = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;\n    expect(operating.outflow / operating.balance).toBeCloseTo(0.25);\n    expect(operating.asf / operating.balance).toBeCloseTo(0.5);\n    expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);\n    expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);\n  });""",s,count=1,flags=re.S)
           s=s.replace('line(s,L.RetailTransactionalDeposits).balance=100;','line(s,L.RetailCurrentAccounts).balance=100;')
           write(p,s)
