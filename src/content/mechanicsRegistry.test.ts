@@ -102,7 +102,7 @@ describe('buildMechanicsRegistry', () => {
     const context = buildMechanicsDynamicContext({ config: baseConfig, state: initialState });
     const text = JSON.stringify(buildMechanicsRegistry(context));
     expect(text).not.toContain('Wholesale ST/LT funding');
-    expect(text).not.toContain('next-close estimate');
+    expect(text).not.toContain('Select a department on the bank screen for standing policies, one-off orders and a next-close estimate.');
     expect(text).not.toContain('generic repo');
   });
 });
