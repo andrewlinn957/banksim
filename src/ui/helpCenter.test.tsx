@@ -15,6 +15,8 @@ describe('HelpCenterPanel', () => {
     expect(html).toContain('Mortgage LTV and fixed period');
     expect(html).toContain('Bank of England secured funding');
     expect(html).toContain('Equity and Tier 2 issuance');
+    expect(html).toContain('Pillar 2A and the annual SREP');
+    expect(html).toContain('PS15/20');
     expect(html).toContain('LCR = HQLA');
     expect(html).toContain('CET1 ratio = adjusted CET1 / RWA');
     expect(html).toContain('<pre');
