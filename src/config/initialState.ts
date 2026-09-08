@@ -1,13 +1,10 @@
 import { securityEcl } from '../engine/securityImpairment';
 import {
   AssetProductType,
-  BalanceSheetSide,
-  Currency,
   LiabilityProductType,
   MaturityBucket,
-  ProductType,
 } from '../domain/enums';
-import { BalanceSheet, BalanceSheetItem } from '../domain/balanceSheet';
+import { BalanceSheet } from '../domain/balanceSheet';
 import {
   BankState,
   BehaviouralState,
@@ -26,6 +23,8 @@ import { CashFlowStatement } from '../domain/cashflow';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
 import { fitNelsonSiegelFrom3Points } from '../engine/ukMarketModel';
 import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
+import { createPosition } from '../products/factory';
+import { requireProductPosition } from '../products/selectors';
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
@@ -37,46 +36,68 @@ const unemploymentToLatent = (u: number, uMin: number, uMax: number): number => 
   return logit(safeP);
 };
 
-const makeItem = (
-  side: BalanceSheetSide,
-  productType: ProductType,
-  label: string,
-  balance: number,
-  interestRate: number,
-  maturityBucket: MaturityBucket
-): BalanceSheetItem => ({
-  side,
-  productType,
-  label,
-  currency: Currency.GBP,
-  balance,
-  interestRate,
-  maturityBucket,
-  liquidityTag: baseConfig.liquidityTags[productType],
-  encumbrance: { encumberedAmount: 0 },
-  security: baseConfig.behaviour.securitiesAccounting?.defaultClassificationByProduct?.[productType]
-    ? {
-        classification:
-          baseConfig.behaviour.securitiesAccounting.defaultClassificationByProduct[productType] ?? 'FVOCI',
-        effectiveDurationYears:
-          baseConfig.behaviour.securitiesAccounting.effectiveDurationYearsByProduct?.[productType] ?? 0,
-        valuationReferenceYield: 0,
-      }
-    : undefined,
-});
-
 const balanceSheet: BalanceSheet = {
   items: [
-    makeItem(BalanceSheetSide.Asset, AssetProductType.CashReserves, 'Cash & Reserves', 1.5e9, 0.031, MaturityBucket.Overnight),
-    makeItem(BalanceSheetSide.Asset, AssetProductType.Gilts, 'Gilts / Liquidity Portfolio', 2.5e9, 0.041, MaturityBucket.GreaterThan5Y),
-    makeItem(BalanceSheetSide.Asset, AssetProductType.Mortgages, 'Residential Mortgages', 7.0e9, 0.050, MaturityBucket.GreaterThan5Y),
-    makeItem(BalanceSheetSide.Asset, AssetProductType.ConsumerLoans, 'Personal Loans & Revolving Credit', 0.7e9, 0.105, MaturityBucket.ThreeToFiveY),
-    makeItem(BalanceSheetSide.Asset, AssetProductType.CorporateLoans, 'SME & Business Lending', 2.261e9, 0.068, MaturityBucket.GreaterThan5Y),
-    makeItem(BalanceSheetSide.Liability, LiabilityProductType.RetailCurrentAccounts, 'Retail current accounts', 7.0e9, 0.017, MaturityBucket.LessThan1Y),
-    makeItem(BalanceSheetSide.Liability, LiabilityProductType.RetailTermDeposits, 'Fixed-Term Savings', 1.5e9, 0.038, MaturityBucket.OneToThreeY),
-    makeItem(BalanceSheetSide.Liability, LiabilityProductType.CorporateOperatingDeposits, 'SME / Business Operating Deposits', 3.0e9, 0.0205, MaturityBucket.LessThan1Y),
-    makeItem(BalanceSheetSide.Liability, LiabilityProductType.CorporateNonOperatingDeposits, 'Other Business Deposits', 0.3e9, 0.030, MaturityBucket.LessThan1Y),
-    makeItem(BalanceSheetSide.Liability, LiabilityProductType.WholesaleFundingLT, 'Long-Term Debt', 1.2e9, 0.053, MaturityBucket.GreaterThan5Y),
+    createPosition(baseConfig, {
+      productType: AssetProductType.CashReserves,
+      balance: 1.5e9,
+      interestRate: 0.031,
+      maturityBucket: MaturityBucket.Overnight,
+    }),
+    createPosition(baseConfig, {
+      productType: AssetProductType.Gilts,
+      balance: 2.5e9,
+      interestRate: 0.041,
+      maturityBucket: MaturityBucket.GreaterThan5Y,
+    }),
+    createPosition(baseConfig, {
+      productType: AssetProductType.Mortgages,
+      balance: 7.0e9,
+      interestRate: 0.050,
+      maturityBucket: MaturityBucket.GreaterThan5Y,
+    }),
+    createPosition(baseConfig, {
+      productType: AssetProductType.ConsumerLoans,
+      balance: 0.7e9,
+      interestRate: 0.105,
+      maturityBucket: MaturityBucket.ThreeToFiveY,
+    }),
+    createPosition(baseConfig, {
+      productType: AssetProductType.CorporateLoans,
+      balance: 2.261e9,
+      interestRate: 0.068,
+      maturityBucket: MaturityBucket.GreaterThan5Y,
+    }),
+    createPosition(baseConfig, {
+      productType: LiabilityProductType.RetailCurrentAccounts,
+      balance: 7.0e9,
+      interestRate: 0.017,
+      maturityBucket: MaturityBucket.LessThan1Y,
+    }),
+    createPosition(baseConfig, {
+      productType: LiabilityProductType.RetailTermDeposits,
+      balance: 1.5e9,
+      interestRate: 0.038,
+      maturityBucket: MaturityBucket.OneToThreeY,
+    }),
+    createPosition(baseConfig, {
+      productType: LiabilityProductType.CorporateOperatingDeposits,
+      balance: 3.0e9,
+      interestRate: 0.0205,
+      maturityBucket: MaturityBucket.LessThan1Y,
+    }),
+    createPosition(baseConfig, {
+      productType: LiabilityProductType.CorporateNonOperatingDeposits,
+      balance: 0.3e9,
+      interestRate: 0.030,
+      maturityBucket: MaturityBucket.LessThan1Y,
+    }),
+    createPosition(baseConfig, {
+      productType: LiabilityProductType.WholesaleFundingLT,
+      balance: 1.2e9,
+      interestRate: 0.053,
+      maturityBucket: MaturityBucket.GreaterThan5Y,
+    }),
   ],
 };
 
@@ -365,10 +386,11 @@ const seedState: BankState = {
 const initialPortfolioSeed = baseConfig.global.initialPortfolioSeed ?? seedState.market.macroModel.rngSeed;
 
 const seedLoanCohorts = (productType: AssetProductType): void => {
-  const item = seedState.financial.balanceSheet.items.find((i) => i.productType === productType);
-  if (!item) {
-    throw new Error(`Missing balance sheet item for ${productType} while seeding loan cohorts`);
-  }
+  const item = requireProductPosition(
+    seedState.financial.balanceSheet,
+    productType,
+    `Missing balance sheet item for ${productType} while seeding loan cohorts`
+  );
   if (item.balance <= 0) return;
 
   const params = baseConfig.productParameters[productType];
@@ -391,7 +413,6 @@ const seedLoanCohorts = (productType: AssetProductType): void => {
   item.balance = sumLoanOutstanding(cohorts) - allowance.total;
   for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) seedState.financial.provisionStock[stage] += allowance[stage];
 };
-
 
 seedLoanCohorts(AssetProductType.Mortgages);
 seedLoanCohorts(AssetProductType.ConsumerLoans);

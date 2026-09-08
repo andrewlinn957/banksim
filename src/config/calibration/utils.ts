@@ -2,10 +2,16 @@ import { baseConfig } from '../baseConfig';
 import { initialState } from '../initialState';
 import { BankState } from '../../domain/bankState';
 import { SimulationConfig } from '../../domain/config';
-import { AssetProductType, BalanceSheetSide, ProductType } from '../../domain/enums';
+import { AssetProductType, ProductType } from '../../domain/enums';
 import { calculateRiskMetrics, evaluateCompliance } from '../../engine/metrics';
 import { cloneBankState } from '../../engine/clone';
 import { PRODUCTS } from '../../products/catalogue';
+import {
+  assetPositions,
+  findProductPosition,
+  liabilityPositions,
+  requireProductPosition,
+} from '../../products/selectors';
 import { calculateProvisionTargetFromCohorts, sumLoanOutstanding } from '../../engine/loanCohorts';
 
 const cloneConfig = (): SimulationConfig => JSON.parse(JSON.stringify(baseConfig)) as SimulationConfig;
@@ -16,8 +22,7 @@ export const createCalibrationBase = (): { state: BankState; config: SimulationC
 });
 
 export const setProductBalance = (state: BankState, productType: ProductType, balance: number): void => {
-  const item = state.financial.balanceSheet.items.find((line) => line.productType === productType);
-  if (!item) throw new Error(`Missing balance-sheet line for ${productType}`);
+  const item = requireProductPosition(state.financial.balanceSheet, productType);
   const nextBalance = Math.max(0, balance);
   if (item.security && item.balance > 0) {
     item.security.amortisedCost = (item.security.amortisedCost ?? item.balance) * nextBalance / item.balance;
@@ -62,16 +67,16 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
 };
 
 export const rebalanceCash = (state: BankState): void => {
-  const cash = state.financial.balanceSheet.items.find(
-    (line) => line.productType === AssetProductType.CashReserves
+  const cash = requireProductPosition(
+    state.financial.balanceSheet,
+    AssetProductType.CashReserves,
+    'Missing cash line while rebalancing calibration state'
   );
-  if (!cash) throw new Error('Missing cash line while rebalancing calibration state');
 
-  const assetsExCash = state.financial.balanceSheet.items
-    .filter((line) => line.side === BalanceSheetSide.Asset && line.productType !== AssetProductType.CashReserves)
+  const assetsExCash = assetPositions(state.financial.balanceSheet)
+    .filter((line) => line.productType !== AssetProductType.CashReserves)
     .reduce((sum, line) => sum + line.balance, 0);
-  const liabilities = state.financial.balanceSheet.items
-    .filter((line) => line.side === BalanceSheetSide.Liability)
+  const liabilities = liabilityPositions(state.financial.balanceSheet)
     .reduce((sum, line) => sum + line.balance, 0);
   const equity =
     state.financial.capital.cet1 + state.financial.capital.at1 + state.financial.capital.accumulatedOCI;
@@ -83,7 +88,7 @@ const calibrateAddressableMarketShares = (state: BankState, config: SimulationCo
     const pipeline = config.behaviour.loanPipelineByProduct?.[productType];
     const marketSize = pipeline?.referenceMarketSize;
     if (!pipeline || !marketSize || marketSize <= 0) return;
-    const openingBook = state.financial.balanceSheet.items.find((line) => line.productType === productType)?.balance ?? 0;
+    const openingBook = findProductPosition(state.financial.balanceSheet, productType)?.balance ?? 0;
     pipeline.referenceBankShare = Math.max(0, Math.min(1, openingBook / marketSize));
   });
 };
