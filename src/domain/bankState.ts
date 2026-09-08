@@ -99,6 +99,7 @@ export interface BehaviouralState {
   capitalPolicy?: CapitalPolicyState;
   mortgagePolicy?: MortgagePolicyState;
   treasuryPolicy?: TreasuryPolicyState;
+  termDepositTenorMonths?: number;
   /** Approximate share of retail deposits protected by FSCS limits. */
   insuredRetailDepositShare?: number;
   /** Approximate share of total deposits represented by the largest depositor/group. */
