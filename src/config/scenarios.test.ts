@@ -4,7 +4,7 @@ import { applyScenarioConfig, scenarios } from './scenarios';
 import { AssetProductType } from '../domain/enums';
 
 describe('Scenario config overrides', () => {
-  it('merges overrides without dropping non-overridden config branches', () => {
+  it('merges deeply without dropping non-overridden config branches', () => {
     const scenarioId = 'unit-test-config-merge';
     scenarios.push({
       id: scenarioId,
@@ -23,11 +23,14 @@ describe('Scenario config overrides', () => {
         tolerances: {
           cashFlowBreachThreshold: 5,
         },
+        riskLimits: {
+          pillar2A: { totalRatio: 0.02 },
+        },
         productParameters: {
           [AssetProductType.Mortgages]: {
             volumeElasticityToRate: -0.9,
-          } as any,
-        } as any,
+          },
+        },
       },
     });
 
@@ -45,9 +48,12 @@ describe('Scenario config overrides', () => {
       expect(merged.tolerances.cashFlowBreachThreshold).toBe(5);
       expect(merged.tolerances.cashFlowRoundingTolerance).toBe(baseConfig.tolerances.cashFlowRoundingTolerance);
 
+      expect(merged.riskLimits.pillar2A?.totalRatio).toBe(0.02);
+      expect(merged.riskLimits.minCet1Ratio).toBe(baseConfig.riskLimits.minCet1Ratio);
+
       expect(merged.productParameters[AssetProductType.Mortgages].volumeElasticityToRate).toBe(-0.9);
-      expect(merged.productParameters[AssetProductType.Mortgages].riskWeight).toBe(
-        baseConfig.productParameters[AssetProductType.Mortgages].riskWeight
+      expect(merged.productParameters[AssetProductType.Mortgages].baseDefaultRate).toBe(
+        baseConfig.productParameters[AssetProductType.Mortgages].baseDefaultRate
       );
     } finally {
       scenarios.pop();
