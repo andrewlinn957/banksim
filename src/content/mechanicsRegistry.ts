@@ -1,13 +1,13 @@
 import { MechanicsDisplayContext } from './mechanicsContext';
 
 export type MechanicCategory =
-  | 'Controls'
-  | 'Deposits'
-  | 'Loans'
-  | 'Funding & Liquidity'
-  | 'Capital & Compliance'
-  | 'Market & Scenarios'
-  | 'Diagnostics';
+  | 'Start Here'
+  | 'Customers'
+  | 'Lending'
+  | 'Treasury'
+  | 'Capital'
+  | 'Risk Measures'
+  | 'Market & Reports';
 
 export interface MechanicEntry {
   id: string;
@@ -23,311 +23,431 @@ export interface MechanicEntry {
 }
 
 const metric = (name: string): string => name;
-
 const action = (name: string): string => name;
 
 export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEntry[] => [
   {
     id: 'core-monthly-loop',
-    category: 'Controls',
-    title: 'Monthly Step Pipeline',
+    category: 'Start Here',
+    title: 'What happens when you close a month',
     plainDescription:
-      'Each month processes shocks, actions, behavior dynamics, P&L, losses, capital, compliance, and then market evolution.',
+      'The game applies your queued actions and standing policies. It then updates customers, loans, funding, profit, losses, capital, liquidity, and the market.',
     whyItMatters:
-      'Your action effect is path-dependent because later subsystems can amplify or offset earlier gains.',
+      'One action can change more than one result. For example, a higher savings rate can improve deposit growth and reduce profit at the same time.',
     driverSummary: [
-      'Shocks and actions happen before behavior and losses.',
-      'Capital distributions happen after initial metric computation.',
-      'Market state is advanced at the end of the step.',
+      'Standing policies stay in force until you change them.',
+      'One-off transactions execute once and then clear from the queue.',
+      'The market moves after the bank completes the monthly close.',
+      'The game checks capital, leverage, liquidity, cash, and concentration after each close.',
     ],
-    relatedMetrics: [metric('CET1 Ratio'), metric('LCR'), metric('NSFR'), metric('Net Income')],
+    relatedMetrics: [metric('Net income'), metric('CET1 ratio'), metric('LCR'), metric('NSFR')],
   },
   {
     id: 'actions-pricing-and-underwriting',
-    category: 'Controls',
-    title: 'Pricing and Underwriting Levers',
+    category: 'Start Here',
+    title: 'How to read a policy control',
     plainDescription:
-      'Rate levers update offered pricing directly, while underwriting tightness adjusts approvals and selection pressure.',
+      'Most controls change one of four things: price, volume, risk, or funding. A change can improve one result and weaken another result.',
     whyItMatters:
-      'Aggressive pricing can improve short-run volume or margin but may hurt franchise, defaults, and conduct risk.',
+      'Do not judge a policy from one metric. Check profit, capital, liquidity, and future maturities together.',
     driverSummary: [
-      'Deposit rates feed deposit growth/churn and franchise dynamics.',
-      'Loan rates feed demand and adverse selection multipliers.',
-      'Underwriting tightness reduces approval rates and risk loading.',
-    ],
-    relatedActions: [
-      action('adjustRate'),
-      action('setUnderwriting'),
-      action('setCapitalPolicy'),
-      action('enterHedge'),
+      'A higher deposit rate can attract funding. It also increases interest expense.',
+      'A lower loan rate can increase demand. It also reduces margin.',
+      'Looser underwriting can increase approvals. It also increases expected credit loss.',
+      'More capital increases resilience. It can reduce return on equity or dilute shareholders.',
     ],
   },
   {
     id: 'autopilot-and-run-history',
-    category: 'Controls',
-    title: 'Autopilot, Stop Rules, and Replay',
+    category: 'Start Here',
+    title: 'Run controls and saved games',
     plainDescription:
-      'Auto advances individual months under standing pricing, underwriting and payout policies. One-off debt, equity and swap orders execute once. Quarter/year controls stop at reporting boundaries; safety interruption defaults on.',
+      'You can run one month, to quarter end, to year end, or continuously. The game uses your standing policies for each new month.',
     whyItMatters:
-      'You can test strategy stability quickly and verify deterministic replay for the same timeline.',
+      'A policy can look safe for one month and fail after several quarters. Use longer runs to test the full funding and credit cycle.',
     driverSummary: [
-      'Choose one month, quarter end, year end or continuous play. Safety pauses are enabled by default; configure them under Game.',
-      'Saved runs keep snapshots plus action/shock timeline.',
-      'Replay compares final metrics for deterministic consistency.',
+      'Safety pauses can stop a run when the bank needs attention.',
+      'Saved runs keep snapshots and the action timeline.',
+      'Replay uses the same timeline and random seed to check that the result is deterministic.',
     ],
   },
+
   {
     id: 'deposit-behaviour',
-    category: 'Deposits',
-    title: 'Deposit Behavior and Franchise',
+    category: 'Customers',
+    title: 'Instant savings and business deposits',
     plainDescription:
-      'Deposits reprice with lag against competitor benchmarks and then grow/churn based on rate gap, policy conditions, and underpricing duration.',
+      'You set the rate for instant-access savings and SME or business deposits. The game compares your rate with the market rate.',
     whyItMatters:
-      'Persistent underpricing can silently erode franchise quality before hard liquidity ratios break.',
+      'A higher rate can grow deposits and improve funding. A higher rate also increases interest expense. A low rate can cause customers to leave.',
     driverSummary: [
-      'Pass-through lag stores rate memory by product.',
-      'Underpricing months increase convex churn penalties.',
-      'Mix migration shifts balances toward less stable buckets in stress.',
+      'Current accounts are separate. The game treats them as less sensitive to price.',
+      'A negative price gap increases churn if it stays in place for several months.',
+      'Weak franchise strength and weak reputation can increase deposit runoff in stress.',
+      'A high insured retail share and a low large-depositor share improve deposit quality.',
     ],
-    relatedMetrics: [metric('LCR'), metric('NSFR'), metric('Deposit Quality'), metric('Funding Confidence')],
-    relatedActions: [action('adjustRate')],
+    formula: 'Deposit price gap = your deposit rate - competitor deposit rate',
+    relatedMetrics: [metric('Deposit quality'), metric('Funding confidence'), metric('LCR'), metric('NSFR')],
+    relatedActions: [action('Instant-access savings offer'), action('SME/business deposit offer')],
   },
   {
-    id: 'loan-pipeline',
-    category: 'Loans',
-    title: 'Loan Pipeline (Demand to Drawdown)',
+    id: 'term-savings',
+    category: 'Customers',
+    title: 'Fixed-term savings',
     plainDescription:
-      'Each loan book runs monthly demand, approval, cancellation, commitment, and drawdown, subject to cash availability.',
+      'You set a fixed-term savings rate and a term of one, two, or three years. New balances stay in a contractual maturity bucket until they mature.',
     whyItMatters:
-      'Pipeline volume can look healthy while hidden selection pressure and future defaults accumulate.',
+      'Fixed-term savings give the bank more stable funding. They also create a future maturity wall and lock in the deposit rate for longer.',
     driverSummary: [
-      'Demand uses pricing gap and macro signal.',
-      'Approval drops with tighter underwriting.',
-      'Drawdown is capped by committed amount and available cash.',
-      'Adverse selection can uplift PD on new originations.',
+      'A higher fixed-term rate can attract more balances.',
+      'A longer term keeps the funding stable for longer.',
+      'Maturing balances can leave the bank or roll into new funding.',
+      'A larger term-deposit share can improve funding confidence and NSFR.',
     ],
-    relatedMetrics: [metric('Net Income'), metric('CET1 Ratio'), metric('Board Pressure')],
-    relatedActions: [action('adjustRate'), action('setUnderwriting')],
+    formula: 'Term deposit share = fixed-term retail deposits / total customer deposits',
+    relatedMetrics: [metric('Term deposit share'), metric('Funding <=12m'), metric('NSFR')],
+    relatedActions: [action('Fixed-term savings offer'), action('Term')],
+  },
+
+  {
+    id: 'loan-pipeline',
+    category: 'Lending',
+    title: 'Loan price, demand, and approvals',
+    plainDescription:
+      'The game models mortgages, personal credit, and SME or business lending. Each product has its own price and selectivity control.',
+    whyItMatters:
+      'A lower loan rate can increase demand but reduce margin. Looser selectivity can increase approvals but increase credit risk.',
+    driverSummary: [
+      'The game compares your loan rate with the market rate.',
+      'Selectivity uses a scale from 0 to 1. A value of 0 is loose. A value of 1 is tight.',
+      'Demand changes with the economy and the price gap.',
+      'Approved loans first become commitments. Customers then draw the loans if the bank has cash.',
+    ],
+    formula: 'Loan price gap = your loan rate - market loan rate',
+    relatedMetrics: [metric('Approvals'), metric('Undrawn commitments'), metric('Loan balance'), metric('Net interest income')],
+    relatedActions: [action('Loan rate'), action('Selectivity')],
+  },
+  {
+    id: 'mortgage-structure',
+    category: 'Lending',
+    title: 'Mortgage LTV and fixed period',
+    plainDescription:
+      'You set the maximum loan-to-value ratio and the initial fixed-rate period for new mortgages.',
+    whyItMatters:
+      'A higher LTV can increase demand but increases loss severity. A longer fixed period reduces near-term repricing but increases duration risk.',
+    driverSummary: [
+      'The LTV limit applies to new mortgage business.',
+      'Higher LTV loans are more exposed to a fall in house prices.',
+      'A longer fixed period makes mortgage cash flows stay fixed for longer.',
+      'Long fixed periods can make EVE more sensitive to a rise in rates.',
+    ],
+    formula: 'LTV = mortgage amount / property value',
+    relatedMetrics: [metric('Mortgage balance'), metric('Credit losses'), metric('EVE +100bp')],
+    relatedActions: [action('Maximum LTV'), action('Initial fixed period')],
   },
   {
     id: 'loan-cohorts-and-ifrs9',
-    category: 'Loans',
-    title: 'Loan Cohorts, Defaults, and IFRS9 Staging',
+    category: 'Lending',
+    title: 'Credit losses and IFRS 9 stages',
     plainDescription:
-      'Loans are tracked as cohorts that amortize, prepay, renew, migrate stage, default, and enter workout buckets.',
+      'The game keeps loan cohorts by age and risk. Loans can prepay, amortize, move between IFRS 9 stages, default, and enter workout.',
     whyItMatters:
-      'Credit risk is driven by both current pricing and the quality/age distribution of prior originations.',
+      'A bad lending decision can create losses many months after origination. Current profit can therefore hide future credit cost.',
     driverSummary: [
-      'SICR compares current PD with origination risk. Macro deterioration alone does not establish credit impairment.',
-      'Defaults feed workout pipeline with lagged recoveries.',
-      'Probability-weighted discounted ECL is held separately from borrower principal. Stage 1 uses defaults within 12 months; stage 2 uses remaining life.',
+      'Stage 1 uses expected defaults over the next 12 months.',
+      'Stage 2 uses expected defaults over the remaining life of the loan.',
+      'A large increase in credit risk can move a cohort to Stage 2.',
+      'Defaulted loans enter workout. Recoveries arrive later and depend on LGD.',
     ],
-    formula: 'Monthly default probability ~= 1 - (1 - annualPd)^(1/12)',
-    relatedMetrics: [metric('Credit Losses'), metric('CET1 Ratio'), metric('Sector Concentration')],
+    formula: 'Monthly default probability ≈ 1 - (1 - annual PD)^(1/12)',
+    relatedMetrics: [metric('Credit losses'), metric('CET1 ratio'), metric('Sector concentration')],
+  },
+
+  {
+    id: 'treasury-liquidity-portfolio',
+    category: 'Treasury',
+    title: 'Reserves, gilts, and gilt duration',
+    plainDescription:
+      'You set the share of liquid assets held as gilts. The rest stays as reserves. You also set the duration of the gilt portfolio.',
+    whyItMatters:
+      'Reserves give immediate liquidity. Gilts can add yield but create fair-value and interest-rate risk. Long-duration gilts create more EVE risk.',
+    driverSummary: [
+      'The game rebalances only when the actual gilt share moves outside a tolerance band.',
+      'Unencumbered reserves and eligible gilts can count as HQLA.',
+      'Encumbered gilts do not count as available HQLA.',
+      'Longer gilt duration increases the balance-sheet response to a rate shock.',
+    ],
+    formula: 'Gilt share = gilts / (reserves + gilts)',
+    relatedMetrics: [metric('HQLA'), metric('LCR'), metric('EVE +100bp')],
+    relatedActions: [action('Gilt share of liquid assets'), action('Gilt portfolio duration')],
   },
   {
     id: 'funding-ladder-and-rollover',
-    category: 'Funding & Liquidity',
-    title: 'Funding Ladder and Rollover Access',
+    category: 'Treasury',
+    title: 'Long-term debt and funding maturities',
     plainDescription:
-      'Wholesale ST/LT funding matures by bucket and is refinanced only up to an access level shaped by stress and confidence.',
+      'You can issue long-term debt as a one-off funding action. The debt enters a maturity ladder and remains until it matures or is refinanced.',
     whyItMatters:
-      'Rollover cliffs can produce sudden cash failures even if last month looked compliant.',
+      'Long-term debt can support stable funding. It also adds interest expense and a future refinancing need.',
     driverSummary: [
-      'Access depends on spreads, liquidity stress, franchise quality, and confidence state.',
-      'Shortfalls can roll as overdue high-rate funding.',
-      'Maturity walls are visible in <=3m and <=12m funding metrics.',
+      'Fixed-term savings are the main contractual retail funding tool in this version of the game.',
+      'Long-term debt gives another source of stable funding when retail funding is not enough.',
+      'The game reports funding that matures within 3 months and 12 months.',
+      'Weak funding confidence can make market funding less effective or more expensive.',
     ],
-    relatedMetrics: [metric('LCR'), metric('NSFR'), metric('Funding <=3m'), metric('Funding <=12m')],
-    relatedActions: [action('issueDebt'), action('issueEquity')],
+    relatedMetrics: [metric('Funding <=3m'), metric('Funding <=12m'), metric('NSFR'), metric('Funding confidence')],
+    relatedActions: [action('Raise long-term debt once')],
+  },
+  {
+    id: 'boe-secured-funding',
+    category: 'Treasury',
+    title: 'Bank of England secured funding',
+    plainDescription:
+      'You can draw secured reserves from the Bank of England. The game supports STR and ILTR. The drawing uses eligible gilt collateral.',
+    whyItMatters:
+      'The drawing increases reserves but encumbers collateral. It can solve a short-term cash need without creating new equity.',
+    driverSummary: [
+      'STR is short-term secured funding.',
+      'ILTR stays outstanding for six months in the game.',
+      'A haircut limits the amount that you can borrow against gilts.',
+      'The game releases the collateral when the borrowing matures.',
+    ],
+    formula: 'Maximum secured drawing is limited by eligible collateral after the haircut',
+    relatedMetrics: [metric('Cash and reserves'), metric('HQLA'), metric('Funding <=12m')],
+    relatedActions: [action('Bank of England facility'), action('BoE drawing once')],
   },
   {
     id: 'liquidity-ratios',
-    category: 'Funding & Liquidity',
-    title: 'LCR and NSFR Mechanics',
+    category: 'Risk Measures',
+    title: 'LCR and NSFR',
     plainDescription:
-      'LCR compares HQLA to stressed 30-day net outflows, while NSFR compares available stable funding to required stable funding.',
+      'LCR measures 30-day liquidity. NSFR measures structural funding over a longer horizon.',
     whyItMatters:
-      'Breaches require recovery and reduce confidence. A liquidity ratio shortfall alone does not end the game.',
+      'Low liquidity can reduce funding confidence and limit your options. A liquidity-ratio breach does not end the game by itself, but a cash failure can end the game.',
     driverSummary: [
-      'Regulatory outflows use prescribed product factors and contractual maturities.',
-      'Inflows are capped (75% of outflows for LCR).',
-      'Behavioural runoff and ASF haircuts affect separate management stress estimates.',
+      'LCR increases when HQLA increases or stressed net outflows decrease.',
+      'The LCR inflow cap is 75% of outflows.',
+      'NSFR increases when available stable funding increases or required stable funding decreases.',
+      'The game also calculates management-stress versions of LCR and NSFR.',
     ],
+    formula: 'LCR = HQLA / [Outflows - min(Inflows, 75% × Outflows)]\nNSFR = ASF / RSF',
     thresholds: [
-      { label: 'Min LCR', value: ctx.formatted.minLcr },
-      { label: 'Min NSFR', value: ctx.formatted.minNsfr },
+      { label: 'Minimum LCR', value: ctx.formatted.minLcr },
+      { label: 'Minimum NSFR', value: ctx.formatted.minNsfr },
       { label: 'Current LCR', value: ctx.formatted.currentLcr ?? 'N/A' },
       { label: 'Current NSFR', value: ctx.formatted.currentNsfr ?? 'N/A' },
     ],
-    formula: 'LCR = HQLA / max(Outflows - min(Inflows, 75% of Outflows), 0)',
-    relatedMetrics: [metric('LCR'), metric('NSFR'), metric('Deposit Quality')],
+    relatedMetrics: [metric('HQLA'), metric('LCR'), metric('NSFR'), metric('Deposit quality')],
   },
   {
-    id: 'capital-policy-and-distributions',
-    category: 'Capital & Compliance',
-    title: 'Capital Policy, Dividends, and AT1 Coupons',
+    id: 'irrbb-and-swaps',
+    category: 'Treasury',
+    title: 'Interest-rate risk and swaps',
     plainDescription:
-      'Requested distributions are clipped by regulatory and internal capital rules, then limited by distributable CET1 and cash.',
+      'The game measures the effect of a 1 percentage point rise in rates on net interest income and economic value. You can use swaps to change this exposure.',
     whyItMatters:
-      'You can appear profitable but still be distribution-constrained by internal target logic.',
+      'A bank can have strong capital and liquidity but still have a large interest-rate risk. Mortgage fixes, gilt duration, deposits, debt, and swaps all change this risk.',
     driverSummary: [
-      'Dividend ratio is capped by max payout ratio.',
-      'Bank policy suspends dividends and AT1 coupons inside combined buffers, including manual pay mode. This is not the PRA MDA amount.',
-      'Paid distributions reduce CET1 and cash immediately.',
+      'Pay fixed and receive floating when you want to reduce excess fixed-rate asset duration.',
+      'Receive fixed and pay floating when you want the opposite effect.',
+      'A swap changes interest-rate exposure. It does not remove credit risk or funding risk.',
+      'A longer swap has a larger duration effect in the model.',
     ],
-    thresholds: [
-      { label: 'AT1 discretionary CET1 threshold', value: ctx.formatted.at1DiscretionaryCet1Threshold },
+    formula: 'EVE +100bp ≈ -1% × (asset duration value - liability duration value + hedge effect)',
+    relatedMetrics: [metric('NII +100bp'), metric('EVE +100bp')],
+    relatedActions: [action('Swap direction'), action('Swap notional'), action('Swap term')],
+  },
+
+  {
+    id: 'capital-policy-and-distributions',
+    category: 'Capital',
+    title: 'Profit payout and retained earnings',
+    plainDescription:
+      'You set the share of profit that the bank pays to shareholders. The bank keeps the rest as retained earnings.',
+    whyItMatters:
+      'A lower payout builds CET1 faster. A higher payout returns more cash to shareholders but leaves less capital for growth and losses.',
+    driverSummary: [
+      'Paid dividends reduce cash and CET1.',
+      'The game can reduce or stop distributions when capital headroom is too low.',
+      'AT1 coupons run automatically in the current game.',
+      'Your internal CET1 target can restrict payout before the regulatory minimum is breached.',
     ],
-    relatedMetrics: [metric('Max Payout Ratio'), metric('Internal CET1 Headroom'), metric('CET1 Ratio')],
-    relatedActions: [action('setCapitalPolicy')],
+    relatedMetrics: [metric('CET1 ratio'), metric('Internal CET1 headroom'), metric('Max payout ratio')],
+    relatedActions: [action('Share of profit paid out')],
+  },
+  {
+    id: 'tier2-and-equity',
+    category: 'Capital',
+    title: 'Equity and Tier 2 issuance',
+    plainDescription:
+      'You can raise CET1 equity or Tier 2 capital as a one-off action.',
+    whyItMatters:
+      'Equity improves CET1, Tier 1, total capital, and leverage. Tier 2 improves total capital only. Equity can dilute existing shareholders.',
+    driverSummary: [
+      'CET1 equity is the strongest form of capital in the game.',
+      'Tier 2 does not increase CET1.',
+      'Tier 2 does not increase the leverage ratio because leverage uses Tier 1 capital.',
+      'Capital issuance can give the bank room to absorb losses or grow RWA.',
+    ],
+    formula: 'Tier 1 capital = CET1 + AT1\nTotal capital = CET1 + AT1 + Tier 2',
+    relatedMetrics: [metric('CET1 ratio'), metric('Tier 1 ratio'), metric('Total capital ratio'), metric('Leverage ratio')],
+    relatedActions: [action('Raise CET1 equity once'), action('Raise Tier 2 once')],
   },
   {
     id: 'risk-metrics-and-compliance',
-    category: 'Capital & Compliance',
-    title: 'Capital and Hard Breach Limits',
+    category: 'Risk Measures',
+    title: 'CET1, total capital, and leverage',
     plainDescription:
-      'CET1, Tier 1, total capital, leverage, LCR and NSFR are recomputed each month. The game ends for capital minimum or cash failures; liquidity ratios can recover.',
+      'The game recalculates capital ratios after each close. Capital protects the bank against losses and supports asset growth.',
     whyItMatters:
-      'These are the run-ending constraints, so strategy should be framed around preserving headroom, not only profitability.',
+      'A capital failure can end the game. Low headroom can also stop distributions and reduce funding confidence before a hard breach occurs.',
     driverSummary: [
-      'CET1 ratio uses adjusted CET1 over RWA.',
-      'Leverage uses Tier 1 over total exposure.',
-      'Compliance booleans are checked every step.',
+      'CET1 can rise through retained profit or new equity.',
+      'CET1 can fall through losses, dividends, and some valuation changes.',
+      'RWA rises when the bank grows riskier assets or commitments.',
+      'The leverage ratio uses Tier 1 capital and a broad exposure measure instead of RWA.',
     ],
+    formula: 'CET1 ratio = adjusted CET1 / RWA\nLeverage ratio = Tier 1 capital / leverage exposure',
     thresholds: [
-      { label: 'Min CET1 ratio', value: ctx.formatted.minCet1Ratio },
-      { label: 'Min leverage ratio', value: ctx.formatted.minLeverageRatio },
-      { label: 'Combined CET1 requirement (MDA line)', value: ctx.formatted.combinedCet1Requirement },
+      { label: 'Minimum CET1 ratio', value: ctx.formatted.minCet1Ratio },
+      { label: 'Combined CET1 requirement', value: ctx.formatted.combinedCet1Requirement },
+      { label: 'Minimum leverage ratio', value: ctx.formatted.minLeverageRatio },
       { label: 'Current CET1 ratio', value: ctx.formatted.currentCet1Ratio ?? 'N/A' },
       { label: 'Current leverage ratio', value: ctx.formatted.currentLeverageRatio ?? 'N/A' },
     ],
-    relatedMetrics: [metric('CET1 Ratio'), metric('Leverage Ratio'), metric('CET1 Headroom')],
+    relatedMetrics: [metric('RWA'), metric('CET1 ratio'), metric('Leverage ratio'), metric('CET1 headroom')],
   },
   {
     id: 'confidence-state-machine',
-    category: 'Capital & Compliance',
-    title: 'Funding Confidence State Machine',
+    category: 'Risk Measures',
+    title: 'Funding confidence',
     plainDescription:
-      'Funding confidence transitions among strong/stable/watch/stressed states and modifies access, spreads, and equity issuance execution.',
+      'The game rates funding confidence as strong, stable, watch, or stressed. Weak confidence makes funding and capital actions harder.',
     whyItMatters:
-      'State downgrades can materially tighten funding and capital flexibility in just a few months.',
+      'A bank can enter funding stress before it runs out of cash. The confidence state gives an early warning of this problem.',
     driverSummary: [
-      'Downgrades are immediate; upgrades require sustained improvement.',
-      'Hard gates use LCR/NSFR/CET1 headroom to force watch or stressed.',
-      'Impacts apply to debt issuance, rollover, and equity raises.',
+      'Management LCR and management NSFR affect funding confidence.',
+      'CET1 headroom, franchise strength, deposit quality, and funding maturities also affect it.',
+      'Large uninsured or concentrated deposits can reduce confidence.',
+      'The game can downgrade confidence quickly. An upgrade needs sustained improvement.',
     ],
     thresholds: [
-      { label: 'Strong min score', value: ctx.formatted.confidenceStrongMinScore },
-      { label: 'Stable min score', value: ctx.formatted.confidenceStableMinScore },
-      { label: 'Watch min score', value: ctx.formatted.confidenceWatchMinScore },
-      { label: 'Hard LCR watch gate', value: ctx.formatted.confidenceHardLcrWatch },
-      { label: 'Hard LCR stressed gate', value: ctx.formatted.confidenceHardLcrStressed },
+      { label: 'Strong score starts at', value: ctx.formatted.confidenceStrongMinScore },
+      { label: 'Stable score starts at', value: ctx.formatted.confidenceStableMinScore },
+      { label: 'Watch score starts at', value: ctx.formatted.confidenceWatchMinScore },
+      { label: 'LCR watch gate', value: ctx.formatted.confidenceHardLcrWatch },
+      { label: 'LCR stressed gate', value: ctx.formatted.confidenceHardLcrStressed },
     ],
-    relatedMetrics: [metric('Funding Confidence'), metric('Confidence State'), metric('Funding Stress Index')],
-  },
-  {
-    id: 'conduct-risk',
-    category: 'Capital & Compliance',
-    title: 'Conduct Risk and Event Costs',
-    plainDescription:
-      'Conduct score builds from pricing severity and underwriting looseness; high score can trigger costly events with franchise/reputation damage.',
-    whyItMatters:
-      'Conduct events can rapidly reverse earnings and resilience, especially when buffers are already thin.',
-    driverSummary: [
-      'Deposit underpricing and lending overpricing both contribute.',
-      'Event probability rises with score and is cooldown-limited.',
-      'Triggered events add fines/remediation and reduce franchise/reputation.',
-    ],
-    relatedMetrics: [metric('Conduct Risk Score'), metric('Net Income'), metric('Deposit Franchise')],
-  },
-  {
-    id: 'market-and-curve-engine',
-    category: 'Market & Scenarios',
-    title: 'Macro, Curve, and Spread Engine',
-    plainDescription:
-      'A deterministic seeded UK macro model updates GDP, inflation, unemployment, policy rate, gilt curve, and spreads each step.',
-    whyItMatters:
-      'Market drift changes competitor benchmarks and risk costs even when your own actions are unchanged.',
-    driverSummary: [
-      'Correlated latent factors and regime switching drive macro path.',
-      'Credit and funding spreads pass through to pricing references.',
-      'Stored RNG seed preserves replay determinism for fixed timelines.',
-    ],
-    relatedMetrics: [metric('Base Rate'), metric('Credit Spread'), metric('Competitor Rates')],
-  },
-  {
-    id: 'scenario-system',
-    category: 'Market & Scenarios',
-    title: 'Scenarios, Scheduled Shocks, and Arc Triggers',
-    plainDescription:
-      'Starting a scenario can override starting state/config and inject both scheduled shocks and trigger-based arc shocks.',
-    whyItMatters:
-      'Different scenarios can change both the environment and your operating constraints, not just shock timing.',
-    driverSummary: [
-      'Arc triggers can depend on metrics and action requirements.',
-      'Milestones are emitted to the event log for narrative context.',
-      'Scenario score includes objective completion and quality penalty.',
-    ],
-    relatedMetrics: [metric('Scenario completion %'), metric('Quality penalty')],
+    relatedMetrics: [metric('Funding confidence'), metric('Funding stress index'), metric('Deposit quality')],
   },
   {
     id: 'board-pressure',
-    category: 'Diagnostics',
-    title: 'Board Pressure Signal',
+    category: 'Risk Measures',
+    title: 'Board pressure and risk appetite',
     plainDescription:
-      'Board pressure is a soft governance signal combining earnings volatility, franchise underperformance, and risk appetite gaps.',
+      'Board pressure is an early-warning score. Risk appetite sets internal targets for CET1, leverage, LCR, and NSFR.',
     whyItMatters:
-      'It does not directly fail the bank, but persistent high pressure highlights unstable strategy before hard capital or liquidity breaches appear.',
+      'An internal target is not the same as a regulatory minimum. A high target gives more safety but can restrict payout or growth sooner.',
     driverSummary: [
-      'Higher earnings volatility raises pressure.',
-      'Franchise score below target increases pressure.',
-      'Low CET1 headroom versus appetite increases pressure.',
+      'High earnings volatility increases board pressure.',
+      'Weak deposit franchise increases board pressure.',
+      'Low CET1 headroom against the chosen appetite increases board pressure.',
+      'Risk appetite changes the point at which the game treats a position as too close to the limit.',
     ],
-    relatedMetrics: [metric('Board Pressure'), metric('Funding Confidence'), metric('CET1 Headroom')],
+    relatedMetrics: [metric('Board pressure'), metric('Internal CET1 headroom'), metric('Risk appetite')],
+  },
+  {
+    id: 'conduct-risk',
+    category: 'Risk Measures',
+    title: 'Conduct risk',
+    plainDescription:
+      'The game builds conduct risk when pricing or underwriting becomes too aggressive. High conduct risk can cause a costly event.',
+    whyItMatters:
+      'A conduct event can reduce profit, franchise strength, and reputation at the same time.',
+    driverSummary: [
+      'Very low deposit rates can increase conduct pressure.',
+      'Very high lending rates can increase conduct pressure.',
+      'Very loose underwriting can increase conduct pressure.',
+      'Events can add fines and remediation costs.',
+    ],
+    relatedMetrics: [metric('Conduct risk score'), metric('Net income'), metric('Deposit franchise')],
+  },
+
+  {
+    id: 'market-and-curve-engine',
+    category: 'Market & Reports',
+    title: 'The market moves without you',
+    plainDescription:
+      'The UK macro model changes growth, inflation, unemployment, Bank Rate, the gilt curve, credit spreads, and competitor rates.',
+    whyItMatters:
+      'A standing policy can become uncompetitive even when you do not change it. Review price gaps after the market moves.',
+    driverSummary: [
+      'Competitor deposit and loan rates move with the market.',
+      'Credit conditions change loan demand and default risk.',
+      'Funding spreads change the cost of market funding.',
+      'The game keeps a seeded random path so the same timeline can be replayed.',
+    ],
+    relatedMetrics: [metric('Bank Rate'), metric('Gilt curve'), metric('Credit spread'), metric('Competitor rates')],
+  },
+  {
+    id: 'scenario-system',
+    category: 'Market & Reports',
+    title: 'Scenarios and shocks',
+    plainDescription:
+      'A scenario can change the starting bank, the market path, or both. A scenario can also add scheduled or trigger-based shocks.',
+    whyItMatters:
+      'A policy that works in the base game can fail in a recession or funding shock. Use scenarios to test the policy under stress.',
+    driverSummary: [
+      'Some shocks happen on a fixed month.',
+      'Some shocks start only after a metric or action reaches a trigger.',
+      'Scenario goals score the final result and can include quality penalties.',
+    ],
+    relatedMetrics: [metric('Scenario completion'), metric('Quality penalty')],
   },
   {
     id: 'share-price-model',
-    category: 'Market & Scenarios',
-    title: 'Share Price Model',
+    category: 'Market & Reports',
+    title: 'Share price',
     plainDescription:
-      'Share price evolves from smoothed EPS, capital headroom, macro state, and franchise score through a bounded P/E framework.',
+      'The game estimates share price from earnings, capital headroom, the economy, and franchise strength. It uses a bounded price-to-earnings framework.',
     whyItMatters:
-      'Market valuation can diverge from safety metrics; high price does not guarantee solvency resilience.',
+      'A safe bank can still destroy shareholder value. A high share price also does not prove that the bank is safe.',
     driverSummary: [
-      'P/E is bounded and score-sensitive.',
-      'Price mean-reverts toward model fair value each step.',
-      'Equity issuance dilutes via discounted issue price.',
+      'Higher sustainable earnings can increase fair value.',
+      'Weak capital headroom or franchise strength can reduce fair value.',
+      'New equity can dilute existing shares because the issue price can include a discount.',
+      'The market price moves toward model fair value over time.',
     ],
-    relatedMetrics: [metric('Share Price'), metric('Market Cap'), metric('P/E'), metric('EPS TTM')],
+    relatedMetrics: [metric('Share price'), metric('Market capitalization'), metric('P/E'), metric('EPS')],
   },
   {
     id: 'preview-and-recommendations',
-    category: 'Diagnostics',
-    title: 'Preview Paths and Recommendations',
+    category: 'Market & Reports',
+    title: 'Guardrails and forward checks',
     plainDescription:
-      'Preview runs baseline and stress paths for one-step risk deltas, while recommendations rank candidate actions by deficit improvement.',
+      'The game can calculate short forward paths and guardrail warnings before you advance time. These checks use the full bank, not one department in isolation.',
     whyItMatters:
-      'This gives forward-looking guardrails before committing a month.',
+      'Use a warning as a reason to inspect the bank. Do not treat a forward check as a guarantee of the next result.',
     driverSummary: [
-      'Preview includes macro, funding, and run stresses.',
-      'Recommendation score balances ratio improvements against earnings drag and board pressure.',
-      'Select a department on the bank screen for standing policies, one-off orders and a next-close estimate.',
+      'Forward checks include market and funding stress.',
+      'A warning can identify a likely capital, liquidity, or cash problem.',
+      'The department cards no longer show a separate next-close estimate.',
     ],
   },
   {
     id: 'attribution-events-reconciliation',
-    category: 'Diagnostics',
-    title: 'Attribution, Event Links, and Reconciliations',
+    category: 'Market & Reports',
+    title: 'Find the cause of a result',
     plainDescription:
-      'Step attribution decomposes metric moves into drivers and links them to events; reconciliation checks ensure accounting consistency.',
+      'Use attribution, Events, Accounts, and Reconciliations to find why a metric changed. Each view answers a different question.',
     whyItMatters:
-      'Use this chain to diagnose why a run failed and which lever to change next.',
+      'A ratio can move because of profit, asset growth, funding changes, market values, or several effects at the same time.',
     driverSummary: [
-      'Attribution exposes top positive/negative drivers by metric.',
-      'Event links filter the log to relevant step events.',
-      'Balance-sheet and cash-flow tie-outs can independently fail the run.',
+      'Attribution shows the main positive and negative drivers of a metric change.',
+      'Events show shocks and important state changes.',
+      'Accounts show the balance-sheet and income-statement entries.',
+      'Reconciliations check that accounting and cash movements tie out.',
     ],
-    relatedMetrics: [metric('CET1 delta attribution'), metric('LCR/NSFR attribution'), metric('CF mismatch')],
+    relatedMetrics: [metric('CET1 attribution'), metric('LCR/NSFR attribution'), metric('Cash-flow reconciliation')],
   },
 ];
