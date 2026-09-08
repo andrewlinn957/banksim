@@ -30,7 +30,6 @@ jobs:
           def save(p, text):
               p.write_text(text)
 
-          # Product parameter and liquidity-tag entries for the four deleted legacy products.
           p, text = load('src/config/baseConfig.ts')
           for legacy in [
               'AssetProductType.ReverseRepo',
@@ -43,11 +42,18 @@ jobs:
               assert count == 2, (legacy, count)
           save(p, text)
 
-          # The generic repo action existed only to support the deleted legacy repo/reverse-repo products.
           p, text = load('src/domain/actions.ts')
           text, count = re.subn(r"/\*\* Legacy generic repo action.*?\nexport interface EnterRepoAction \{.*?\n\}\n\n", '', text, flags=re.S)
           assert count == 1, count
           text = text.replace('  | EnterRepoAction\n', '')
+          text = text.replace(
+              'export type WholesaleFundingProduct =\n  | LiabilityProductType.WholesaleFundingST\n  | LiabilityProductType.WholesaleFundingLT;',
+              'export type WholesaleFundingProduct =\n  | typeof LiabilityProductType.WholesaleFundingST\n  | typeof LiabilityProductType.WholesaleFundingLT;'
+          )
+          text = text.replace(
+              '  productType: AssetProductType.Mortgages | AssetProductType.ConsumerLoans | AssetProductType.CorporateLoans;',
+              '  productType: typeof AssetProductType.Mortgages | typeof AssetProductType.ConsumerLoans | typeof AssetProductType.CorporateLoans;'
+          )
           save(p, text)
 
           p, text = load('src/engine/simulation.ts')
@@ -71,9 +77,26 @@ jobs:
           ]:
               assert line in text, line
               text = text.replace(line, '')
+          text = text.replace(
+              'type FundingProduct =\n  | LiabilityProductType.WholesaleFundingST\n  | LiabilityProductType.WholesaleFundingLT;',
+              'type FundingProduct =\n  | typeof LiabilityProductType.WholesaleFundingST\n  | typeof LiabilityProductType.WholesaleFundingLT;'
+          )
           save(p, text)
 
-          # Remove tests for products/actions that no longer exist.
+          p, text = load('src/engine/creditRwa.ts')
+          old = "  if (![AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans].includes(p as AssetProductType)) {"
+          new = "  if (!([AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as AssetProductType[]).includes(p as AssetProductType)) {"
+          assert old in text
+          text = text.replace(old, new)
+          save(p, text)
+
+          p, text = load('src/engine/prudential.ts')
+          old = "  if ([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt].includes(p as LiabilityProductType)) {"
+          new = "  if (([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt] as LiabilityProductType[]).includes(p as LiabilityProductType)) {"
+          assert old in text
+          text = text.replace(old, new)
+          save(p, text)
+
           p, text = load('src/engine/smallRetailBank.test.ts')
           text = text.replace("  it('opens as a retail-heavy bank without generic repo positions', () => {\n", "  it('opens as a retail-heavy bank', () => {\n")
           text = text.replace("    expect(initialState.financial.balanceSheet.items.some(i => i.productType === A.ReverseRepo)).toBe(false);\n", '')
@@ -102,7 +125,6 @@ jobs:
           text = text.replace(old, '')
           save(p, text)
 
-          # Dashboard grouping now refers only to live catalogue products.
           p, text = load('src/components/LcrDashboard.tsx')
           old_out = "  const outKey=([L.RetailDeposits,L.RetailCurrentAccounts] as string[]).includes(p)?'Retail deposits':([L.CorporateDeposits,L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.RepurchaseAgreements?'Secured funding':'Derivatives & other';"
           new_out = "  const outKey=([L.RetailCurrentAccounts,L.RetailTermDeposits] as string[]).includes(p)?'Retail deposits':([L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.BankOfEnglandFunding?'Secured funding':'Derivatives & other';"
