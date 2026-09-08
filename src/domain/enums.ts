@@ -7,8 +7,8 @@ export enum BalanceSheetSide {
   Liability = 'Liability',
 }
 
-export { AssetProductType, LiabilityProductType } from '../products/ids';
-export type { ProductType } from '../products/ids';
+export { AssetProductType, LiabilityProductType } from '../products/catalogue';
+export type { ProductType } from '../products/catalogue';
 
 export enum MaturityBucket {
   Overnight = 'Overnight',
