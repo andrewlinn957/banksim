@@ -390,6 +390,9 @@ const computeFundingConfidenceMetrics = (args: {
   lcr: number;
   nsfr: number;
   depositQualityIndex: number;
+  insuredRetailDepositShare: number;
+  largeDepositorShare: number;
+  termDepositShare: number;
   asf: number;
   fundingMaturing12m: number;
 }): { fundingStressIndex: number; fundingConfidenceScore: number } => {
@@ -400,14 +403,21 @@ const computeFundingConfidenceMetrics = (args: {
     Math.max(0, 0.78 - clamp(args.state.behaviour.depositFranchiseStrength, 0, 1)) / 0.78;
   const qualityStress = Math.max(0, 0.9 - clamp(args.depositQualityIndex, 0, 1.1)) / 0.9;
   const maturityStress = Math.max(0, args.fundingMaturing12m / Math.max(1, args.asf) - 0.42);
+  const uninsuredStress = Math.max(0, 0.85 - clamp(args.insuredRetailDepositShare, 0, 1)) / 0.85;
+  const concentrationStress = clamp((args.largeDepositorShare - 0.05) / 0.15, 0, 1);
+  const termFundingRelief = clamp(args.termDepositShare / 0.25, 0, 1) * 0.025;
 
-  const fundingStressIndex =
+  const fundingStressIndex = Math.max(0,
     liquidityStress * 0.28 +
     nsfrStress * 0.2 +
     capitalStress * 0.2 +
     franchiseStress * 0.16 +
     qualityStress * 0.1 +
-    maturityStress * 0.06;
+    maturityStress * 0.06 +
+    uninsuredStress * 0.04 +
+    concentrationStress * 0.05 -
+    termFundingRelief
+  );
   const fundingConfidenceScore = clamp(1 - fundingStressIndex, 0, 1);
 
   return { fundingStressIndex, fundingConfidenceScore };

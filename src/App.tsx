@@ -1343,7 +1343,7 @@ const buildActionsFromParsed = (
   }
   if (values.mortgageMaxLtv!==undefined && values.mortgageFixedPeriodMonths!==undefined) actions.push({type:'setMortgagePolicy',maxLtv:values.mortgageMaxLtv,fixedPeriodMonths:values.mortgageFixedPeriodMonths});
   if (values.giltShareOfHqla!==undefined && values.giltDurationYears!==undefined) actions.push({type:'setTreasuryPolicy',giltShareOfHqla:values.giltShareOfHqla,giltDurationYears:values.giltDurationYears});
-  if (state.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:state.boeFacility,amount:values.boeFundingAmount});
+  if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
   if (values.issueTier2Amount!==undefined && values.issueTier2Amount>0) actions.push({type:'issueTier2',amount:values.issueTier2Amount,maturityMonths:60});
   if (values.issueLTDebtAmount !== undefined && values.issueLTDebtAmount > 0) {
     actions.push({
