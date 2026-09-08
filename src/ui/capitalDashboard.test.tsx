@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
 import { calculateRiskMetrics } from '../engine/metrics';
-import { capitalDashboardData } from '../components/CapitalDashboard';
+import CapitalDashboard, { capitalDashboardData } from '../components/CapitalDashboard';
 
 it('reconciles displayed CET1 requirements and nominal headroom to the engine across capital mixes',()=>{
   for(const at1 of [0, 100e6, 2e9]) {
@@ -18,7 +19,6 @@ it('reconciles displayed CET1 requirements and nominal headroom to the engine ac
   }
 });
 
-
 it('shows issued Tier 2 in total capital without changing Tier 1',()=>{
   const state=structuredClone(initialState);
   state.financial.capital.tier2=75e6;
@@ -27,4 +27,16 @@ it('shows issued Tier 2 in total capital without changing Tier 1',()=>{
   expect(d.tier2).toBe(75e6);
   expect(d.cards[2].amount-d.cards[1].amount).toBeCloseTo(75e6,4);
   expect(d.cards[2].actual).toBeCloseTo(state.risk.riskMetrics.totalCapitalRatio ?? 0,12);
+});
+
+it('shows the annual Pillar 2A assessment, its risk components and PS15/20 offset',()=>{
+  const html=renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig}/>);
+  expect(html).toContain('Pillar 2A annual SREP assessment');
+  expect(html).toContain('SA credit-risk underestimation');
+  expect(html).toContain('Single-name concentration');
+  expect(html).toContain('Geographic concentration');
+  expect(html).toContain('IRRBB');
+  expect(html).toContain('PS15/20 initial offset');
+  expect(html).toContain('UK CCyB pass-through');
+  expect(html).toContain('Next review');
 });
