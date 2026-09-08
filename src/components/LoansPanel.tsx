@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { LoanPipelineState } from '../domain/bankState';
-import { AssetProductType, ProductType } from '../domain/enums';
+import { AssetProductType, MaturityBucket, ProductType } from '../domain/enums';
 import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 
@@ -22,9 +22,6 @@ const PORTFOLIO_LABEL: Record<LoanPortfolioType, string> = {
   [AssetProductType.CorporateLoans]: 'SME & business lending',
 };
 
-const PD_THRESHOLDS = { greenMax: 0.005, amberMax: 0.02 };
-const LGD_THRESHOLDS = { greenMax: 0.25, amberMax: 0.45 };
-const PDXLGD_THRESHOLDS = { greenMax: 0.002, amberMax: 0.008 };
 const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
 const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
 
@@ -57,13 +54,18 @@ const GEOGRAPHY_LABEL: Record<LoanGeography, string> = {
 const cohortSector = (cohort: LoanCohort): LoanSector => cohort.sector ?? 'other';
 const cohortGeography = (cohort: LoanCohort): LoanGeography => cohort.geography ?? 'other';
 
-type RagTone = 'rag-green' | 'rag-amber' | 'rag-red';
-const ragClass = (value: number, thresholds: { greenMax: number; amberMax: number }): RagTone => {
-  if (!Number.isFinite(value)) return 'rag-amber';
-  if (value <= thresholds.greenMax) return 'rag-green';
-  if (value <= thresholds.amberMax) return 'rag-amber';
-  return 'rag-red';
+const MATURITY_LABEL: Record<MaturityBucket, string> = {
+  [MaturityBucket.Overnight]: 'Overnight',
+  [MaturityBucket.LessThan1Y]: '<1 year',
+  [MaturityBucket.OneToThreeY]: '1–3 years',
+  [MaturityBucket.ThreeToFiveY]: '3–5 years',
+  [MaturityBucket.GreaterThan5Y]: '>5 years',
+  [MaturityBucket.Perpetual]: 'Perpetual',
 };
+
+const maturityLabel = (bucket: MaturityBucket | undefined): string => bucket ? MATURITY_LABEL[bucket] : '—';
+const currentPd = (cohort: LoanCohort): number => cohort.effectiveAnnualPd ?? cohort.annualPd;
+const currentLgd = (cohort: LoanCohort): number => cohort.effectiveLgd ?? cohort.lgd;
 
 const remainingTermMonths = (cohort: LoanCohort): number => Math.max(0, Math.floor(cohort.termMonths - cohort.ageMonths));
 
@@ -285,35 +287,30 @@ const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
   },
   {
     key: 'annualPd',
-    label: 'PD',
+    label: 'Current PD',
     filterUnit: 'percent',
     placeholder: '% (e.g. > 2)',
-    value: (cohort) => cohort.annualPd,
-    display: (cohort) => formatRate(cohort.annualPd),
-    cell: (cohort) => (
-      <span className={`rag-badge ${ragClass(cohort.annualPd, PD_THRESHOLDS)}`}>{formatRate(cohort.annualPd)}</span>
-    ),
+    value: currentPd,
+    display: (cohort) => formatRate(currentPd(cohort)),
+    cell: (cohort) => formatRate(currentPd(cohort)),
   },
   {
     key: 'lgd',
-    label: 'LGD',
+    label: 'Current LGD',
     filterUnit: 'percent',
     placeholder: '% (e.g. > 45)',
-    value: (cohort) => cohort.lgd,
-    display: (cohort) => formatRate(cohort.lgd),
-    cell: (cohort) => <span className={`rag-badge ${ragClass(cohort.lgd, LGD_THRESHOLDS)}`}>{formatRate(cohort.lgd)}</span>,
+    value: currentLgd,
+    display: (cohort) => formatRate(currentLgd(cohort)),
+    cell: (cohort) => formatRate(currentLgd(cohort)),
   },
   {
     key: 'pdxlgd',
     label: 'PD×LGD',
     filterUnit: 'percent',
     placeholder: '% (e.g. > 0.8)',
-    value: (cohort) => cohort.annualPd * cohort.lgd,
-    display: (cohort) => formatRate(cohort.annualPd * cohort.lgd),
-    cell: (cohort) => {
-      const risk = cohort.annualPd * cohort.lgd;
-      return <span className={`rag-badge ${ragClass(risk, PDXLGD_THRESHOLDS)}`}>{formatRate(risk)}</span>;
-    },
+    value: (cohort) => currentPd(cohort) * currentLgd(cohort),
+    display: (cohort) => formatRate(currentPd(cohort) * currentLgd(cohort)),
+    cell: (cohort) => formatRate(currentPd(cohort) * currentLgd(cohort)),
   },
 ] as const;
 
@@ -393,7 +390,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
 
     return loans.filter((loan) => {
       if (productNeedle && !loan.label.toLowerCase().includes(productNeedle)) return false;
-      if (maturityNeedle && !String(loan.maturityBucket ?? '').toLowerCase().includes(maturityNeedle)) return false;
+      if (maturityNeedle && !maturityLabel(loan.maturityBucket).toLowerCase().includes(maturityNeedle)) return false;
 
       if (balanceRaw) {
         if (balanceFilter) {
@@ -424,7 +421,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
     sorted.sort((a, b) => {
       if (loanSummarySort.key === 'product') return compareStrings(a.label, b.label) * dir;
       if (loanSummarySort.key === 'maturity')
-        return compareStrings(String(a.maturityBucket ?? ''), String(b.maturityBucket ?? '')) * dir;
+        return compareStrings(maturityLabel(a.maturityBucket), maturityLabel(b.maturityBucket)) * dir;
       if (loanSummarySort.key === 'balance') return compareNumbers(a.balance, b.balance) * dir;
       if (loanSummarySort.key === 'rate') return compareNumbers(a.interestRate, b.interestRate) * dir;
       return 0;
@@ -490,9 +487,9 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
     const cohortCount = visibleCohorts.length;
     const totalOutstanding = visibleCohorts.reduce((sum, cohort) => sum + (cohort.outstandingPrincipal ?? 0), 0);
     const weightedCoupon = weightedAverage(visibleCohorts, (cohort) => cohort.annualInterestRate);
-    const weightedPd = weightedAverage(visibleCohorts, (cohort) => cohort.annualPd);
-    const weightedLgd = weightedAverage(visibleCohorts, (cohort) => cohort.lgd);
-    const weightedRisk = weightedAverage(visibleCohorts, (cohort) => cohort.annualPd * cohort.lgd);
+    const weightedPd = weightedAverage(visibleCohorts, currentPd);
+    const weightedLgd = weightedAverage(visibleCohorts, currentLgd);
+    const weightedRisk = weightedAverage(visibleCohorts, (cohort) => currentPd(cohort) * currentLgd(cohort));
     const weightedAffordability = weightedAverage(visibleCohorts, (cohort) => cohort.affordabilityIndex ?? 1);
     const sectorTotals = new Map<string, number>();
     const geographyTotals = new Map<string, number>();
@@ -750,7 +747,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
                 <td>{l.label}</td>
                 <td className="numeric">{formatCurrency(l.balance)}</td>
                 <td className="numeric">{formatRate(l.interestRate)}</td>
-                <td>{l.maturityBucket}</td>
+                <td>{maturityLabel(l.maturityBucket)}</td>
               </tr>
             ))
           )}
@@ -760,11 +757,6 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
       <div className="stack" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0 }}>Cohort breakdown — {PORTFOLIO_LABEL[selectedPortfolio]}</h3>
-          <div className="muted" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span className="rag-badge rag-green">Green safer</span>
-            <span className="rag-badge rag-amber">Amber middle</span>
-            <span className="rag-badge rag-red">Red riskier</span>
-          </div>
         </div>
 
         {portfolioCohorts.length === 0 ? (

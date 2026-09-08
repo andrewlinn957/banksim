@@ -25,4 +25,9 @@ it('shows consumer cohorts as consumer rather than SME/corporate sectors',()=>{
   expect(html).toContain('Net carrying amount');
   expect(html).toContain('Offer rate');
   expect(html).toContain('Maturity bucket');
+  expect(html).toContain('3–5 years');
+  expect(html).not.toContain('ThreeToFiveY');
+  expect(html).toContain('Current PD');
+  expect(html).toContain('Current LGD');
+  expect(html).not.toContain('Green safer');
 });
