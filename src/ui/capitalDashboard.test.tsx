@@ -41,3 +41,13 @@ it('shows the 24-month Pillar 2A assessment, its risk components and PS15/20 off
   expect(html).toContain('UK CCyB pass-through');
   expect(html).toContain('Next review');
 });
+
+
+it('shows the dynamic capital buffer framework and O-SII growth trigger',()=>{
+  const html=renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig}/>);
+  expect(html).toContain('Capital buffer framework');
+  expect(html).toContain('Institution-specific countercyclical buffer');
+  expect(html).toContain('O-SII buffer');
+  expect(html).toContain('O-SII growth trigger');
+  expect(html).toContain('scope threshold');
+});

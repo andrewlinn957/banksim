@@ -3,6 +3,7 @@ import { assetCreditRwa } from './creditRwa';
 import { ownFundsRequirements } from './prudential';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
 import { ensurePillar2AAssessment } from './pillar2A';
+import { calculateCapitalBufferFramework } from './capitalBuffers';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
@@ -246,15 +247,6 @@ const computeConcentrationMetrics = (state: BankState): ConcentrationMetricSet =
   };
 };
 
-const computeCet1Requirement = (limits: RiskLimits): number => {
-  const stack = limits.capitalBufferStack;
-  return (
-    limits.minCet1Ratio +
-    (stack?.conservationBuffer ?? 0) +
-    (stack?.countercyclicalBuffer ?? 0) +
-    (stack?.systemicBuffer ?? 0)
-  );
-};
 
 const confidenceStateStressSignal = (state: FundingConfidenceState): number => {
   if (state === 'strong') return 0;
@@ -482,13 +474,14 @@ export const calculateRiskMetrics = ({
     0
   );
   const leverageExposure = totalAssets - derivativeBook + hedgeExposures(state).leverage - centralBankExclusion(state) + committedExposure(state) * .2;
+  const capitalBuffers = calculateCapitalBufferFramework({ state, config });
   const fvociInclusionRate = clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
   const tier2 = eligibleTier2OwnFunds(state);
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
   const minima = ownFundsRequirements(config.riskLimits, rwa, pillar2A.assessedRate);
   const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - (state.financial.capital.at1 + tier2) / rwa) : minima.cet1;
-  const cet1Requirement = computeCet1Requirement(config.riskLimits) + ownFundsCet1Floor - config.riskLimits.minCet1Ratio;
+  const cet1Requirement = ownFundsCet1Floor + capitalBuffers.combinedBufferRate;
   const praBufferTarget = cet1Requirement + Math.max(0, config.riskLimits.praBufferRatio ?? 0);
   const cet1Headroom = cet1Ratio - cet1Requirement;
   const leverageRatio =
@@ -581,6 +574,24 @@ export const calculateRiskMetrics = ({
     pillar2AGrossRate: pillar2A.grossRate,
     pillar2AOffsetRate: pillar2A.ps1520.initialOffsetRate + pillar2A.ps1520.additionalOffsetRate,
     pillar2ANextAssessmentStep: pillar2A.nextAssessmentStep,
+    capitalConservationBufferRate: capitalBuffers.conservationRate,
+    countercyclicalBufferRate: capitalBuffers.ccybRate,
+    ukCountercyclicalBufferRate: capitalBuffers.ukCcybRate,
+    ukRelevantCreditRwaShare: capitalBuffers.ukRelevantCreditRwaShare,
+    osiiBufferRate: capitalBuffers.osiiRate,
+    combinedBufferRate: capitalBuffers.combinedBufferRate,
+    osiiInScope: capitalBuffers.osiiInScope,
+    osiiScopeRoute: capitalBuffers.osiiScopeRoute,
+    osiiCoreDeposits: capitalBuffers.osiiCoreDeposits,
+    osiiTradingAssets: capitalBuffers.osiiTradingAssets,
+    osiiTradingAssetsToTier1: capitalBuffers.osiiTradingAssetsToTier1,
+    osiiCurrentUkLeverageExposure: capitalBuffers.osiiCurrentUkLeverageExposure,
+    osiiTrailingAverageUkLeverageExposure: capitalBuffers.osiiTrailingAverageUkLeverageExposure,
+    osiiAssessedAverageUkLeverageExposure: capitalBuffers.osiiAssessedAverageUkLeverageExposure,
+    osiiNextThreshold: capitalBuffers.osiiNextThreshold,
+    osiiNextThresholdRate: capitalBuffers.osiiNextThresholdRate,
+    osiiNextAssessmentStep: capitalBuffers.osiiNextAssessmentStep,
+    osiiThresholdScheduleYear: capitalBuffers.osiiThresholdScheduleYear,
     minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
     tier1Requirement: Math.max(minima.tier1,minima.total) + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,
     totalCapitalRequirement: minima.total + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,

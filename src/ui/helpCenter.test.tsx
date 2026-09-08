@@ -15,6 +15,7 @@ describe('HelpCenterPanel', () => {
     expect(html).toContain('Mortgage LTV and fixed period');
     expect(html).toContain('Bank of England secured funding');
     expect(html).toContain('Equity and Tier 2 issuance');
+    expect(html).toContain('Capital conservation, CCyB and O-SII buffers');
     expect(html).toContain('Pillar 2A and the SREP cycle');
     expect(html).toContain('once every 24 months');
     expect(html).toContain('PS15/20');
