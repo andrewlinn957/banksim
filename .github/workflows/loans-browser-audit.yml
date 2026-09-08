@@ -1,0 +1,41 @@
+name: Loans browser audit
+
+on:
+  push:
+    branches:
+      - audit-loans-tab
+    paths:
+      - .github/scripts/loans_browser_audit.mjs
+      - .github/workflows/loans-browser-audit.yml
+
+jobs:
+  browser-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-loans-tab
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Add browser driver for QA only
+        run: npm install --no-save --package-lock=false playwright-core@1.55.0
+      - name: Find Chrome
+        run: |
+          CHROME_PATH="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME_PATH"
+          echo "CHROME_PATH=$CHROME_PATH" >> "$GITHUB_ENV"
+      - name: Build and serve
+        run: |
+          npm run build
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/banksim-preview.log 2>&1 &
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:4173/banksim/ >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/banksim-preview.log
+          exit 1
+      - name: Click through Loans tab
+        run: node .github/scripts/loans_browser_audit.mjs
