@@ -21,6 +21,7 @@ import { baseConfig } from './baseConfig';
 import { MarketState } from '../domain/market';
 import { CashFlowStatement } from '../domain/cashflow';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
+import { initializeOpeningSupervisoryAssessments } from '../engine/supervisoryAssessments';
 import { fitNelsonSiegelFrom3Points } from '../engine/ukMarketModel';
 import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
 import { createPosition } from '../products/factory';
@@ -429,6 +430,7 @@ seedState.financial.balanceSheet.items.forEach((item) => {
   }
 });
 
+initializeOpeningSupervisoryAssessments(seedState, baseConfig);
 const riskMetrics = calculateRiskMetrics({ state: seedState, config: baseConfig });
 const compliance = evaluateCompliance(riskMetrics, baseConfig.riskLimits);
 

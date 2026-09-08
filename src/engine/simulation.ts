@@ -51,6 +51,7 @@ import { PRODUCTS } from '../products/catalogue';
 import { customerDepositProductsForBenchmark, requireLoanProductForBenchmark } from '../products/benchmarks';
 import { liquidityTagForProduct } from '../products/regulatory';
 import { calculateRiskMetrics, classifyFundingConfidenceState, evaluateCompliance } from './metrics';
+import { advanceSupervisoryAssessmentsAtClose } from './supervisoryAssessments';
 import { checkInvariants } from './invariants';
 import { cloneBankState } from './clone';
 import { advanceUkMarketState } from './ukMarketModel';
@@ -3133,6 +3134,12 @@ export const createSimulationEngine = (): SimulationEngine => {
           effectiveAccess: 1,
         };
 
+    const supervisoryCloseMetrics = calculateRiskMetrics({
+      state,
+      config: activeConfig,
+      lcrOutflowMultiplier: shockEffects.lcrOutflowMultiplier,
+    });
+    advanceSupervisoryAssessmentsAtClose(state, activeConfig, supervisoryCloseMetrics);
     computeMetrics(state, activeConfig, shockEffects.lcrOutflowMultiplier, events, true, false);
     if (featureFlags.capitalPolicy) {
       applyCapitalPolicyDistributions(state, activeConfig, dtYears, events);
