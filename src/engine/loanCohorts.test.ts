@@ -37,6 +37,18 @@ describe('Loan cohort engine', () => {
     });
   });
 
+  it('seeds product-appropriate sectors for each retail loan portfolio', () => {
+    const mortgageSectors = new Set((initialState.loanCohorts[AssetProductType.Mortgages] ?? []).map((c) => c.sector));
+    const consumerSectors = new Set((initialState.loanCohorts[AssetProductType.ConsumerLoans] ?? []).map((c) => c.sector));
+    const businessSectors = new Set((initialState.loanCohorts[AssetProductType.CorporateLoans] ?? []).map((c) => c.sector));
+
+    expect([...mortgageSectors]).toEqual(['retailMortgage']);
+    expect([...consumerSectors]).toEqual(['consumer']);
+    expect(businessSectors.has('consumer')).toBe(false);
+    expect(businessSectors.has('retailMortgage')).toBe(false);
+    expect(businessSectors.has('sme')).toBe(true);
+  });
+
   it('seasoning generation is deterministic for a fixed seed', () => {
     const seed = baseConfig.global.initialPortfolioSeed ?? initialState.market.macroModel.rngSeed;
     const mort = initialState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages);
