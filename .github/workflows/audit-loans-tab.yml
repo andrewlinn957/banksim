@@ -6,6 +6,7 @@ on:
       - audit-loans-tab
     paths:
       - .github/scripts/audit_loans_tab.py
+      - .github/workflows/audit-loans-tab.yml
 
 permissions:
   contents: write
