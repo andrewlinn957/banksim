@@ -319,7 +319,7 @@ export const assessPillar2A = (args: {
     mrelEqualsTcr: policy?.mrelEqualsTcr,
   });
   const assessmentStep = Math.max(0, args.assessmentStep ?? state.time.step);
-  const interval = Math.max(1, Math.round(policy?.assessmentIntervalMonths ?? 12));
+  const interval = Math.max(1, Math.round(policy?.assessmentIntervalMonths ?? 24));
   const monthsAhead = Math.max(0, assessmentStep - state.time.step);
 
   return {
