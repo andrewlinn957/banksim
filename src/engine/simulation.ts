@@ -2202,12 +2202,16 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
       (bucketSum, bucket) => bucketSum + Math.max(0, bucket.notional),
       0
     );
+    const fundedBalance = Math.max(0, liability.balance);
+    const coveredNotional = Math.min(fundedBalance, contractualNotional);
+    const contractualScale = contractualNotional > 0 ? coveredNotional / contractualNotional : 0;
     const contractualExpense = buckets.reduce(
       (bucketSum, bucket) =>
-        bucketSum + Math.max(0, bucket.notional) * Math.max(0, bucket.rate) * dtYears,
+        bucketSum +
+        Math.max(0, bucket.notional) * contractualScale * Math.max(0, bucket.rate) * dtYears,
       0
     );
-    const unbucketedBalance = Math.max(0, liability.balance - contractualNotional);
+    const unbucketedBalance = Math.max(0, fundedBalance - coveredNotional);
 
     return sum + contractualExpense + unbucketedBalance * liability.interestRate * dtYears;
   }, 0);
