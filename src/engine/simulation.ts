@@ -48,6 +48,7 @@ import {
 import { CashFlowStatement } from '../domain/cashflow';
 import { Currency, MaturityBucket } from '../domain/enums';
 import { PRODUCTS } from '../products/catalogue';
+import { customerDepositProductsForBenchmark, requireLoanProductForBenchmark } from '../products/benchmarks';
 import { liquidityTagForProduct } from '../products/regulatory';
 import { calculateRiskMetrics, classifyFundingConfidenceState, evaluateCompliance } from './metrics';
 import { checkInvariants } from './invariants';
@@ -1379,18 +1380,14 @@ export const stepFundingLadders = (
   };
 };
 
-const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
-  LiabilityProductType.RetailCurrentAccounts,
-];
+const RETAIL_DEPOSIT_PRODUCTS = customerDepositProductsForBenchmark('retailCurrentAccount');
+const CORPORATE_DEPOSIT_PRODUCTS = customerDepositProductsForBenchmark('corporateDeposit');
+const MORTGAGE_BENCHMARK_PRODUCT = requireLoanProductForBenchmark('mortgage');
+const CORPORATE_LOAN_BENCHMARK_PRODUCT = requireLoanProductForBenchmark('corporate');
 
-const CORPORATE_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
-  LiabilityProductType.CorporateOperatingDeposits,
-  LiabilityProductType.CorporateNonOperatingDeposits,
-];
-
-const weightedOfferedRate = (state: BankState, products: LiabilityProductType[]): number => {
+const weightedOfferedRate = (state: BankState, products: readonly ProductType[]): number => {
   const rows = state.financial.balanceSheet.items.filter((item) =>
-    products.includes(item.productType as LiabilityProductType)
+    products.includes(item.productType)
   );
   const total = rows.reduce((sum, row) => sum + Math.max(0, row.balance), 0);
   if (total <= 0) return 0;
@@ -1418,10 +1415,10 @@ const stepCompetitorReaction = (
   const retailTarget = weightedOfferedRate(state, RETAIL_DEPOSIT_PRODUCTS);
   const corporateTarget = weightedOfferedRate(state, CORPORATE_DEPOSIT_PRODUCTS);
   const mortgageTarget =
-    findItem(state.financial.balanceSheet, AssetProductType.Mortgages)?.interestRate ??
+    findItem(state.financial.balanceSheet, MORTGAGE_BENCHMARK_PRODUCT)?.interestRate ??
     state.market.competitorMortgageRate;
   const corporateLoanRate =
-    findItem(state.financial.balanceSheet, AssetProductType.CorporateLoans)?.interestRate ??
+    findItem(state.financial.balanceSheet, CORPORATE_LOAN_BENCHMARK_PRODUCT)?.interestRate ??
     (state.market.riskFreeLong + state.market.corporateLoanSpread);
   const corporateSpreadTarget = Math.max(0, corporateLoanRate - state.market.riskFreeLong);
 

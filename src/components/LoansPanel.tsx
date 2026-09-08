@@ -5,6 +5,8 @@ import { LoanPipelineState } from '../domain/bankState';
 import { AssetProductType, MaturityBucket, ProductType } from '../domain/enums';
 import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
+import { getProduct } from '../products/catalogue';
+import { LoanProductType, productTypesWithCapability } from '../products/capabilities';
 
 interface Props {
   items: BalanceSheetItem[];
@@ -13,14 +15,8 @@ interface Props {
   workoutPipelines?: Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 }
 
-const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;
-type LoanPortfolioType = (typeof LOAN_PORTFOLIOS)[number];
-
-const PORTFOLIO_LABEL: Record<LoanPortfolioType, string> = {
-  [AssetProductType.Mortgages]: 'Residential mortgages',
-  [AssetProductType.ConsumerLoans]: 'Personal loans & revolving credit',
-  [AssetProductType.CorporateLoans]: 'SME & business lending',
-};
+const LOAN_PORTFOLIOS = productTypesWithCapability('loan');
+type LoanPortfolioType = LoanProductType;
 
 const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
 const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
@@ -566,7 +562,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
             aria-selected={selectedPortfolio === AssetProductType.Mortgages}
             disabled={!mortgagesAvailable}
           >
-            {PORTFOLIO_LABEL[AssetProductType.Mortgages]}
+            {getProduct(AssetProductType.Mortgages).label}
           </button>
           <button
             type="button"
@@ -576,7 +572,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
             aria-selected={selectedPortfolio === AssetProductType.ConsumerLoans}
             disabled={!consumerAvailable}
           >
-            {PORTFOLIO_LABEL[AssetProductType.ConsumerLoans]}
+            {getProduct(AssetProductType.ConsumerLoans).label}
           </button>
           <button
             type="button"
@@ -586,7 +582,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
             aria-selected={selectedPortfolio === AssetProductType.CorporateLoans}
             disabled={!corporateAvailable}
           >
-            {PORTFOLIO_LABEL[AssetProductType.CorporateLoans]}
+            {getProduct(AssetProductType.CorporateLoans).label}
           </button>
         </div>
       </div>
@@ -756,7 +752,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
 
       <div className="stack" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0 }}>Cohort breakdown — {PORTFOLIO_LABEL[selectedPortfolio]}</h3>
+          <h3 style={{ margin: 0 }}>Cohort breakdown — {getProduct(selectedPortfolio).label}</h3>
         </div>
 
         {portfolioCohorts.length === 0 ? (
