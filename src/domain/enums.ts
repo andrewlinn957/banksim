@@ -7,37 +7,8 @@ export enum BalanceSheetSide {
   Liability = 'Liability',
 }
 
-export enum AssetProductType {
-  DerivativeAssets = 'DerivativeAssets',
-  CashReserves = 'CashReserves',
-  Gilts = 'Gilts',
-  Mortgages = 'Mortgages',
-  ConsumerLoans = 'ConsumerLoans',
-  CorporateLoans = 'CorporateLoans',
-  // Legacy engine support. Generic reverse repo is no longer part of the default retail-bank balance sheet.
-  ReverseRepo = 'ReverseRepo',
-}
-
-export enum LiabilityProductType {
-  DerivativeLiabilities = 'DerivativeLiabilities',
-  CreditProvisions = 'CreditProvisions',
-  // Legacy aggregate categories (kept for backwards-compatibility with older states/tests).
-  RetailDeposits = 'RetailDeposits',
-  CorporateDeposits = 'CorporateDeposits',
-  // Segmented customer deposits.
-  RetailCurrentAccounts = 'RetailCurrentAccounts',
-  RetailTermDeposits = 'RetailTermDeposits',
-  CorporateOperatingDeposits = 'CorporateOperatingDeposits',
-  CorporateNonOperatingDeposits = 'CorporateNonOperatingDeposits',
-  WholesaleFundingST = 'WholesaleFundingST',
-  WholesaleFundingLT = 'WholesaleFundingLT',
-  BankOfEnglandFunding = 'BankOfEnglandFunding',
-  Tier2Debt = 'Tier2Debt',
-  // Legacy engine support. Generic market repo is no longer part of the default retail-bank balance sheet.
-  RepurchaseAgreements = 'RepurchaseAgreements',
-}
-
-export type ProductType = AssetProductType | LiabilityProductType;
+export { AssetProductType, LiabilityProductType } from '../products/ids';
+export type { ProductType } from '../products/ids';
 
 export enum MaturityBucket {
   Overnight = 'Overnight',
