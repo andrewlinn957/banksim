@@ -2,6 +2,7 @@ import { hedgeExposures } from './hedgeValuation';
 import { assetCreditRwa } from './creditRwa';
 import { ownFundsRequirements } from './prudential';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
+import { ensurePillar2AAssessment } from './pillar2A';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
@@ -469,6 +470,13 @@ export const calculateRiskMetrics = ({
     0
   );
   const rwa = baseRwa + additionalRwa + commitmentRwa;
+  const irrbbSensitivities = computeIrrbbSensitivities(state, config);
+  const pillar2A = ensurePillar2AAssessment({
+    state,
+    config,
+    rwa,
+    eveSensitivity100bp: irrbbSensitivities.eveSensitivity100bp,
+  });
   const derivativeBook = assets.reduce(
     (sum, item) => sum + (DERIVATIVE_LEVERAGE_PRODUCTS.has(item.productType) ? Math.max(0, item.balance) : 0),
     0
@@ -478,7 +486,7 @@ export const calculateRiskMetrics = ({
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
   const tier2 = eligibleTier2OwnFunds(state);
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
-  const minima = ownFundsRequirements(config.riskLimits, rwa);
+  const minima = ownFundsRequirements(config.riskLimits, rwa, pillar2A.assessedRate);
   const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - (state.financial.capital.at1 + tier2) / rwa) : minima.cet1;
   const cet1Requirement = computeCet1Requirement(config.riskLimits) + ownFundsCet1Floor - config.riskLimits.minCet1Ratio;
   const praBufferTarget = cet1Requirement + Math.max(0, config.riskLimits.praBufferRatio ?? 0);
@@ -510,7 +518,7 @@ export const calculateRiskMetrics = ({
   const managementLcr = stressNet > 0 ? hqla / stressNet : Infinity;
   const stressAsf = adjustedCet1 + state.financial.capital.at1 + lines.reduce((sum, l) => sum + l.asf * (isCustomerDeposit(l.productType) ? liquidityFactors.asfMultiplier : 1), 0);
   const managementNsfr = rsf > 0 ? stressAsf / rsf : Infinity;
-  const { niiSensitivity100bp, eveSensitivity100bp } = computeIrrbbSensitivities(state, config);
+  const { niiSensitivity100bp, eveSensitivity100bp } = irrbbSensitivities;
   const { fundingMaturing3m, fundingMaturing12m } = computeFundingMaturityMetrics(state);
   const { fundingStressIndex, fundingConfidenceScore } = computeFundingConfidenceMetrics({
     state,
@@ -568,6 +576,11 @@ export const calculateRiskMetrics = ({
     leverageExposure,
     cet1Ratio,
     cet1Requirement,
+    pillar2ARate: minima.pillar2A,
+    pillar2AAmount: minima.pillar2A * rwa,
+    pillar2AGrossRate: pillar2A.grossRate,
+    pillar2AOffsetRate: pillar2A.ps1520.initialOffsetRate + pillar2A.ps1520.additionalOffsetRate,
+    pillar2ANextAssessmentStep: pillar2A.nextAssessmentStep,
     minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
     tier1Requirement: Math.max(minima.tier1,minima.total) + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,
     totalCapitalRequirement: minima.total + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,
@@ -613,8 +626,10 @@ export const calculateRiskMetrics = ({
 };
 
 export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => ({
-  cet1Breached: !(metrics.cet1Ratio >= ownFundsRequirements(limits, metrics.rwa).cet1),
-  ownFundsBreached: !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= ownFundsRequirements(limits, metrics.rwa).tier1) || !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= ownFundsRequirements(limits, metrics.rwa).total),
+  cet1Breached: !(metrics.cet1Ratio >= (metrics.minimumCet1Ratio ?? limits.minCet1Ratio)),
+  ownFundsBreached:
+    !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (metrics.minimumTier1Ratio ?? limits.minTier1Ratio ?? 0.06)) ||
+    !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (metrics.minimumTotalCapitalRatio ?? limits.minTotalCapitalRatio ?? 0.08)),
   leverageBreached: !(metrics.leverageRatio >= limits.minLeverageRatio),
   lcrBreached: !(metrics.lcr >= limits.minLcr),
   nsfrBreached: !(metrics.nsfr >= limits.minNsfr),

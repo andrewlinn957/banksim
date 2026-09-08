@@ -214,15 +214,23 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
   });
 };
 
-// SS31/15: firm-specific P2A may contain an RWA rate and fixed nominal add-ons.
-export const ownFundsRequirements = (limits: SimulationConfig['riskLimits'], rwa: number) => {
+// The annual SREP engine supplies assessedP2ARate. A configured rate/fixed amount remains as a
+// backwards-compatible scenario floor. Capital-quality shares are explicit BankSim assumptions;
+// the uploaded PRA methodology/PS15/20 documents do not prescribe the full composition rule here.
+export const ownFundsRequirements = (
+  limits: SimulationConfig['riskLimits'],
+  rwa: number,
+  assessedP2ARate = 0
+) => {
   const p = limits.pillar2A;
-  const total =
+  const configured =
     Math.max(0, p?.totalRatio ?? 0) +
     (rwa > 0 ? Math.max(0, p?.fixedAmount ?? 0) / rwa : 0);
+  const total = Math.max(configured, Math.max(0, assessedP2ARate));
   const cet1Share = Math.max(0.5625, Math.min(1, p?.cet1Share ?? 0.5625));
   const tier1Share = Math.max(0.75, cet1Share, Math.min(1, p?.tier1Share ?? 0.75));
   return {
+    pillar2A: total,
     cet1: limits.minCet1Ratio + total * cet1Share,
     tier1: (limits.minTier1Ratio ?? 0.06) + total * tier1Share,
     total: (limits.minTotalCapitalRatio ?? 0.08) + total,

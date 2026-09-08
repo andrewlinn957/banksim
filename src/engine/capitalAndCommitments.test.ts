@@ -39,13 +39,14 @@ describe('Opening accounts, commitments and supervisory capital', () => {
     const cf=next.financial.cashFlowStatement;
     expect(Math.abs(cf.operatingCashFlow+cf.investingCashFlow+cf.financingCashFlow-cf.netChange)).toBeLessThan(1);
   });
-  it('applies P2A composition, fixed amounts and separates PRA buffer from MDA', () => {
+  it('applies P2A composition, fixed scenario floors and separates PRA buffer from MDA', () => {
     const c=structuredClone(baseConfig); c.riskLimits.pillar2A={totalRatio:.02,fixedAmount:1e6};
-    expect(ownFundsRequirements(c.riskLimits,1e8)).toEqual({cet1:.045+.03*.5625,tier1:.06+.03*.75,total:.11});
-    const m=calculateRiskMetrics({state:initialState,config:c});
+    expect(ownFundsRequirements(c.riskLimits,1e8)).toEqual({pillar2A:.03,cet1:.045+.03*.5625,tier1:.06+.03*.75,total:.11});
+    const m=calculateRiskMetrics({state:cloneBankState(initialState),config:c});
+    expect(m.pillar2ARate).toBeGreaterThanOrEqual(.02);
     expect(m.cet1Requirement).toBeGreaterThan(initialState.risk.riskMetrics.cet1Requirement);
     c.riskLimits.praBufferRatio=.5;
-    const buffer=calculateRiskMetrics({state:initialState,config:c});
+    const buffer=calculateRiskMetrics({state:cloneBankState(initialState),config:c});
     expect(buffer.cet1Requirement).toBe(m.cet1Requirement);
     expect(buffer.mdaTriggered).toBe(m.mdaTriggered);
     expect(buffer.praBufferBreached).toBe(true);

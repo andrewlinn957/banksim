@@ -11,7 +11,7 @@ import { BalanceSheet } from '../domain/balanceSheet';
 import { CashFlowStatement } from '../domain/cashflow';
 import { MarketState } from '../domain/market';
 import { IncomeStatement } from '../domain/pnl';
-import { ComplianceStatus, RiskMetrics } from '../domain/risks';
+import { ComplianceStatus, Pillar2AAssessmentState, RiskMetrics } from '../domain/risks';
 import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { ProductType } from '../domain/enums';
 
@@ -28,6 +28,15 @@ const cloneIncomeStatement = (p: IncomeStatement): IncomeStatement => ({ ...p })
 const cloneCashFlowStatement = (c: CashFlowStatement): CashFlowStatement => ({ ...c });
 const cloneRiskMetrics = (r: RiskMetrics): RiskMetrics => ({ ...r });
 const cloneCompliance = (c: ComplianceStatus): ComplianceStatus => ({ ...c });
+const clonePillar2A = (p: Pillar2AAssessmentState | undefined): Pillar2AAssessmentState | undefined =>
+  p ? {
+    ...p,
+    components: { ...p.components },
+    creditRisk: { ...p.creditRisk },
+    concentration: { ...p.concentration },
+    irrbb: { ...p.irrbb },
+    ps1520: { ...p.ps1520 },
+  } : undefined;
 
 const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   ...b,
@@ -109,6 +118,7 @@ export const cloneBankState = (state: BankState): BankState => ({
   risk: {
     riskMetrics: cloneRiskMetrics(state.risk.riskMetrics),
     compliance: cloneCompliance(state.risk.compliance),
+    pillar2A: clonePillar2A(state.risk.pillar2A),
   },
   board: { ...state.board },
   equityMarket: cloneEquityMarket(state.equityMarket),

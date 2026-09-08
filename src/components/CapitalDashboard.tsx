@@ -2,11 +2,12 @@ import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { eligibleCet1, ownFundsRequirements } from '../engine/prudential';
 import { formatCurrency, formatPct } from '../utils/formatters';
+import Pillar2APanel from './Pillar2APanel';
 
 export function capitalDashboardData(state: BankState, config: SimulationConfig) {
   const rwa = state.risk.riskMetrics.rwa;
   const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
-  const minima = ownFundsRequirements(config.riskLimits, rwa);
+  const minima = ownFundsRequirements(config.riskLimits, rwa, state.risk.riskMetrics.pillar2ARate ?? state.risk.pillar2A?.assessedRate ?? 0);
   const b = config.riskLimits.capitalBufferStack;
   const buffer = b.conservationBuffer + b.countercyclicalBuffer + b.systemicBuffer;
   const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - (at1 + tier2) / rwa - minima.cet1) : 0;
@@ -88,5 +89,6 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
         <p className="capital-payout"><strong>Bank policy payout cap: {formatPct(state.risk.riskMetrics.maxPayoutRatio)}</strong><br/>Maximum share of positive profit available for distributions under bank policy. This is not the PRA maximum distributable amount calculation.</p>
       </section>
     </div>
+    <Pillar2APanel state={state} config={config}/>
   </div>;
 }

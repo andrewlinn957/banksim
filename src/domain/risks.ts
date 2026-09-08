@@ -7,12 +7,61 @@ export interface CapitalState {
   accumulatedOCI: number;
 }
 
+export interface Pillar2AComponentAmounts {
+  creditRisk: number;
+  singleNameConcentration: number;
+  sectorConcentration: number;
+  geographicConcentration: number;
+  irrbb: number;
+}
+
+export interface Pillar2AAssessmentState {
+  /** Variable Pillar 2A rate fixed at the latest annual SREP assessment. */
+  assessedRate: number;
+  grossRate: number;
+  assessmentRwa: number;
+  assessmentStep: number;
+  assessmentDate: string;
+  nextAssessmentStep: number;
+  components: Pillar2AComponentAmounts;
+  creditRisk: {
+    benchmarkRwa: number;
+    pillar1CreditRwa: number;
+    shortfallRwa: number;
+  };
+  concentration: {
+    singleNameHhi: number;
+    sectorHhi: number;
+    geographicHhi: number;
+    wholesaleRwa: number;
+    geographicPortfolioRwa: number;
+  };
+  irrbb: {
+    worstLoss200bp: number;
+    policyLimit: number;
+    capitalConversionFactor: number;
+    assessedAmount: number;
+  };
+  ps1520: {
+    ukCcybPassThroughRate: number;
+    initialOffsetRate: number;
+    additionalOffsetRate: number;
+    lowRiskEligible: boolean;
+    mrelEqualsTcr: boolean;
+  };
+}
+
 export interface RiskMetrics {
   internalLeverageTargetRatio?: number;
   internalLcrTargetRatio?: number;
   internalNsfrTargetRatio?: number;
   tier1Requirement?: number;
   totalCapitalRequirement?: number;
+  pillar2ARate?: number;
+  pillar2AAmount?: number;
+  pillar2AGrossRate?: number;
+  pillar2AOffsetRate?: number;
+  pillar2ANextAssessmentStep?: number;
   rwa: number;
   tier1Ratio?: number;
   totalCapitalRatio?: number;
@@ -99,9 +148,29 @@ export interface RwaAddOnLimits {
   otherAdjustments?: number;
 }
 
+export interface Pillar2ALimits {
+  /** Optional scenario/manual floor retained for backwards-compatible scenario design. */
+  totalRatio?: number;
+  fixedAmount?: number;
+  /** Capital-quality shares are game assumptions, separate from the annual risk assessment. */
+  cet1Share?: number;
+  tier1Share?: number;
+  assessmentIntervalMonths?: number;
+  typicalWholesaleObligorExposure?: number;
+  defaultIrrbbEveLimit?: number;
+  /** BankSim scalar because the PRA does not publish a simple small-bank limit-to-capital conversion. */
+  irrbbCapitalConversionFactor?: number;
+  structuralCcybIncrease?: number;
+  initialOffsetShare?: number;
+  additionalOffsetShare?: number;
+  additionalFloor?: number;
+  /** BankSim assumptions until a full MREL / supervisory categorisation engine exists. */
+  lowRiskSmallBankEligible?: boolean;
+  mrelEqualsTcr?: boolean;
+}
+
 export interface RiskLimits {
-  /** Firm-specific additional requirements, not universal PRA rates. */
-  pillar2A?: { totalRatio: number; fixedAmount?: number; cet1Share?: number; tier1Share?: number };
+  pillar2A?: Pillar2ALimits;
   praBufferRatio?: number;
   minCet1Ratio: number;
   minTier1Ratio?: number;

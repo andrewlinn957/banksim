@@ -6,7 +6,7 @@ The game uses a simplified conventional GBP domestic bank under the standardised
 
 | Measure | Implementation and assumed eligibility |
 | --- | --- |
-| Own funds | CET1 4.5%, Tier 1 6%, total capital 8%. Configured Pillar 2A includes an RWA rate and optional fixed amount, with at least 56.25% CET1 and 75% Tier 1. No Tier 2, so Tier 1 and total capital coincide. OCI is included in eligible CET1. Standardised mortgage risk weight 35% assumes qualifying exposures; corporate loans use 100%. |
+| Own funds | CET1 4.5%, Tier 1 6%, total capital 8%. Pillar 2A is reassessed annually from the modelled bank's credit-risk benchmark shortfall, credit concentration and IRRBB, then held as a percentage of RWA until the next SREP. A scenario may impose a higher manual P2A floor. BankSim retains a simplified capital-quality assumption of at least 56.25% CET1 and 75% Tier 1 for P2A; the public Pillar 2 methodology and PS15/20 used for the annual assessment do not themselves provide that complete composition rule. OCI is included in eligible CET1. Standardised mortgage risk weight 35% assumes qualifying exposures; corporate loans use 100%. |
 | Buffers | 2.5% conservation buffer plus 2% UK CCyB. CET1 must also cover any Tier 1/total capital shortfall before meeting buffers. A configured PRA buffer sits above the combined buffer and informs the internal target. PRA-buffer use prompts recovery warnings but does not itself trigger MDA or failure. Internal management headroom is shown separately. |
 | Distributions | Bank policy suspends distributions inside the combined buffer. This conservative policy is not the statutory MDA calculation, which uses eligible profits and buffer quartiles. |
 | Leverage | 3.25% small-bank supervisory expectation. Central-bank claims are excluded only up to matching GBP customer deposits. Undrawn commitments use an assumed short-original-maturity 20% CCF. |
@@ -20,11 +20,35 @@ Prescribed LCR and NSFR factors do not change with game confidence. Separate man
 ### Primary sources
 
 - [UK CRR Article 92: own funds](https://www.legislation.gov.uk/eur/2013/575/article/92).
+- [PRA Statement of Policy: The PRA's methodologies for setting Pillar 2 capital](https://www.bankofengland.co.uk/prudential-regulation/publication/2015/the-pras-methodologies-for-setting-pillar-2-capital), especially the credit-risk, credit-concentration and IRRBB methodologies.
+- [PS15/20: Pillar 2A — Reconciling capital requirements and macroprudential buffers](https://www.bankofengland.co.uk/prudential-regulation/publication/2020/pillar-2a-reconciling-capital-requirements-and-macroprudential-buffers).
 - [PRA LCR rules](https://www.prarulebook.co.uk/pra-rules/liquidity-coverage-ratio-crr), especially Articles 4, 17, 24–28 and 31–33.
 - [PRA liquidity rules: NSFR](https://www.prarulebook.co.uk/pra-rules/liquidity-crr), especially Articles 428l–428o, 428p–428s, 428ad and 428af. UK Article 428r differs from generic Basel summaries: eligible unencumbered Level 1 securities receive 0% RSF.
 - [PRA leverage rules](https://www.prarulebook.co.uk/pra-rules/leverage-ratio-crr) and [2026 scope threshold change](https://www.bankofengland.co.uk/prudential-regulation/publication/2025/november/leverage-ratio-changes-to-the-retail-deposits-threshold-policy-statement). The full framework's retail-deposit threshold is £75bn on a three-year average from January 2026; this smaller bank uses the supervisory expectation.
 - [Capital buffers rules](https://www.prarulebook.co.uk/pra-rules/capital-buffers) and [UK CCyB](https://www.bankofengland.co.uk/financial-stability/the-countercyclical-capital-buffer).
 - [Basel 3.1 final rules](https://www.bankofengland.co.uk/prudential-regulation/publication/2026/january/implementation-of-the-basel-3-1-final-rules-policy-statement): effective January 2027, not applied early here.
+
+## Pillar 2A annual SREP assessment
+
+BankSim runs a Pillar 2A assessment at the opening date and then every twelve monthly closes. The assessed variable P2A percentage is frozen until the next review. Its nominal amount is not frozen: current P2A capital equals the assessed rate multiplied by current RWA. This deliberately reproduces the supervisory-review lag as a game mechanic rather than recalculating the requirement from the balance sheet every month.
+
+### Credit risk
+
+For performing standardised loan cohorts, the engine compares Pillar 1 RWA with the PRA's Table A2 IRB benchmark excluding expected losses. Mortgages use the published LTV bands; personal loans use 77.5%; BankSim SME/business corporate lending uses 59.8%, while cohorts explicitly classed as large corporate use 46.3%. The comparison is made in aggregate, so benchmark over-capitalisation in one portfolio can offset a benchmark shortfall in another. Any remaining benchmark RWA shortfall is multiplied by 8% to express the additional own-funds amount. This is a transparent implementation of the published benchmark comparison, not a reproduction of supervisory judgement around benchmark ranges or portfolio quality.
+
+### Credit concentration
+
+The engine follows the PRA's published HHI structure for single-name, sector and international geographic concentration. HHI shares are based on the relevant portfolio's RWA. Single-name and sector assessments use the wholesale corporate book; geographic concentration uses non-mortgage credit. The capital add-on uses the midpoint of the applicable published Figure 1 range, consistent with the PRA statement that the midpoint is the starting point for supervisory judgement, and the three concentration components are summed.
+
+BankSim does not yet track named corporate obligors. Single-name HHI therefore assumes equal-sized obligors within each wholesale cohort, with a representative £5m exposure per obligor. Existing BankSim corporate sectors are mapped into the PRA sector set: commercial real estate remains CRE, large corporate maps to manufacturing, SME maps to services/other and the residual category maps to wholesale/retail trade. The game currently models a domestic UK bank, so its UK regional cohort labels all map to the PRA's United Kingdom international-geography bucket. These mappings and the equal-obligor assumption are game abstractions, not PRA policy.
+
+### IRRBB
+
+For a smaller/less-complex bank the PRA standard methodology reviews internal policy limits, most commonly based on the economic effect of a 200bp interest-rate shift. BankSim therefore calculates the absolute ±200bp EVE loss from its duration model and compares it with the board's IRRBB EVE policy limit. The greater amount is the supervisory risk measure. The public policy does not publish a simple mechanical conversion from that policy limit to a Pillar 2A capital amount, so BankSim applies an explicit 20% capitalisation scalar. The scalar is a game calibration and is shown in the dashboard rather than presented as a PRA rule. Swaps, mortgage fixing periods, gilt duration and funding duration can therefore change the next annual IRRBB assessment.
+
+### PS15/20 offset
+
+The gross variable P2A rate is reduced using the PS15/20 structural-CCyB logic. BankSim calculates a UK CCyB pass-through proxy as UK credit RWA divided by total credit RWA. The initial reduction is 50% of the one percentage point structural UK CCyB increase multiplied by that pass-through. The current sandbox assumes the small bank is low-risk and that MREL equals TCR, because it does not yet contain a full MREL or supervisory-categorisation engine; it therefore applies the potential additional 50% reduction subject to the PS15/20 rule that the additional reduction cannot take variable P2A below 1%. If the initial reduction alone takes P2A below 1%, the additional reduction is zero. The offset is tied to the structural standard-risk CCyB change and does not move mechanically with the live cyclical CCyB setting between SREPs.
 
 ## Funded-loan accounting
 
@@ -42,11 +66,11 @@ Undrawn offer ECL uses the loan term, probability-weighted PD paths and effectiv
 
 Under [UK CRR Article 127](https://www.legislation.gov.uk/eur/2013/575/article/127/data.html), qualifying defaulted mortgages receive 100% risk weight on net exposure. Unsecured corporate defaults receive 150% below 20% provision coverage and 100% at or above it. Individual model ECL weights allocate the booked product allowance to cohorts and workouts. Stage 3/workout status is the model's default proxy; it does not reproduce every Article 178 test.
 
-Pillar 2A and PRA-buffer treatment follows [SS31/15](https://www.bankofengland.co.uk/prudential-regulation/publication/2013/the-internal-capital-adequacy-assessment-process-and-supervisory-review-ss), including its 2026 effective version. The new supervisory-review scenario uses **fictional** 1.5% P2A and 1% PRA-buffer inputs. The ordinary sandbox leaves them unspecified at zero; these are not published requirements for a real bank.
+Pillar 2A is now generated by the annual methodology above. The `supervisory-review` scenario retains a fictional 1.5% manual P2A floor and a 1% PRA-buffer input as scenario design choices; they are not published requirements for a real bank.
 
 ## Deliberate limits and remaining gaps
 
-- No MREL eligibility engine, IRB, SDDT election or full COREP/FINREP reporting. These are separate resolution, modelling and reporting regimes, not interchangeable extensions to this standardised bank. Ratios are monthly point-in-time estimates, not regulatory averaging returns.
+- No MREL eligibility engine, IRB permission, SDDT election or full COREP/FINREP reporting. For PS15/20 gameplay the domestic small bank is assumed low-risk with MREL equal to TCR; this is explicit model configuration, not an inferred regulatory status.
 - Standardised risk weights are simplified: individual LTV eligibility, collateral substitution and SFT counterparty exposure and credit valuation adjustment capital are not comprehensively modelled. The supported vanilla swap calculation is described below. Generic Level 2B treatment is not a universal eligibility engine; the opening liquidity portfolio uses Level 1 assets.
 - Retail categories assume the stated insurance/relationship eligibility; higher-risk deposit flags are not individually modelled. One monthly payment is a proxy for the 30-day liquidity horizon.
 - Repos roll monthly; there is no full trade-level settlement or collateral substitution ledger. Unsupported tenors and collateral are rejected.
@@ -61,7 +85,7 @@ The old liquidity envelopes incorporated behavioural stress into regulatory rati
 
 Quarterly badges recognise actual customer, earnings, capital and shareholder outcomes, frozen at each three-month deadline. They create no accounting gains or regulatory relief. When internal capital headroom is negative, a real equity-raising proposal replaces aggressive growth; dilution and issuance costs still apply. The supervisory-review scenario combines a disclosed capital decision with competition and credit shocks.
 
-Targeted checks cover opening balances, commitment booking/release, non-cash reconciliation, P2A composition, PRA-buffer/MDA separation, default risk weights, scenario consistency and quarterly deadlines. The existing deterministic and long-run regression suites remain in place.
+Targeted checks cover opening balances, commitment booking/release, non-cash reconciliation, annual P2A assessment and PS15/20 offsets, PRA-buffer/MDA separation, default risk weights, scenario consistency and quarterly deadlines. The existing deterministic and long-run regression suites remain in place.
 
 ## Securities and treasury
 
