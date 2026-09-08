@@ -23,6 +23,7 @@ jobs:
       - name: Normalise source EOF
         run: printf '\n' >> src/engine/pillar2A.ts
       - run: python .github/scripts/fix_architecture_regressions.py
+      - run: python .github/scripts/fix_tier2_boundary_test.py
       - run: npm ci
       - run: npm run test:fast
       - run: npm run test:regression
