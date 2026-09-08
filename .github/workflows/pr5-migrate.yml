@@ -1,0 +1,59 @@
+name: PR5 migration
+
+on:
+  push:
+    branches:
+      - refactor/config-ui-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/config-ui-cleanup
+          fetch-depth: 0
+      - name: Replace remaining liquidity config reads
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/engine/simulation.ts')
+          text = path.read_text()
+          old_import = "import { PRODUCTS } from '../products/catalogue';"
+          new_import = old_import + "\nimport { liquidityTagForProduct } from '../products/regulatory';"
+          if "liquidityTagForProduct" not in text:
+              text = text.replace(old_import, new_import)
+          text = text.replace(
+              'Used for actions that create positions not present in the initial balance sheet (e.g. repo,\n * wholesale funding). Liquidity metadata is sourced from the simulation config.',
+              'Used for actions that create positions not present in the initial balance sheet (e.g. repo,\n * wholesale funding). Liquidity metadata is derived from the regulatory product classification.'
+          )
+          text, count = re.subn(r'config\.liquidityTags\[([^\]]+)\]', r'liquidityTagForProduct(\1)', text)
+          if count == 0:
+              raise SystemExit('No simulation liquidityTags reads found to migrate')
+          path.write_text(text)
+
+          remaining = []
+          for candidate in Path('src').rglob('*'):
+              if candidate.suffix not in {'.ts', '.tsx'}:
+                  continue
+              candidate_text = candidate.read_text()
+              if 'config.liquidityTags' in candidate_text:
+                  remaining.append(str(candidate))
+          if remaining:
+              raise SystemExit(f'Remaining config.liquidityTags reads: {remaining}')
+          print(f'Migrated {count} simulation liquidity-tag reads')
+          PY
+      - name: Remove temporary migration workflow and commit
+        run: |
+          rm .github/workflows/pr5-migrate.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/engine/simulation.ts .github/workflows/pr5-migrate.yml
+          git commit -m "Remove final liquidity config compatibility reads"
+          git push origin HEAD:refactor/config-ui-cleanup
