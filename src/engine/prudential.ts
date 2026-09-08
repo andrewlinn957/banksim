@@ -55,7 +55,7 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
     inflow=asset?receipts:0;outflow=asset?0:payments;asf=0;
     rsf=asset?Math.max(0,assets-liabilities):liabilities*.05;
   }
-  if ([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt].includes(p as LiabilityProductType)) {
+  if (([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt] as LiabilityProductType[]).includes(p as LiabilityProductType)) {
     const buckets = s.fundingLadders?.[p];
     if (buckets?.length) {
       outflow = buckets.reduce((sum, f) => {

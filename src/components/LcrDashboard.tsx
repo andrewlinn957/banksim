@@ -13,12 +13,12 @@ export function lcrDashboardData(state:BankState,config:SimulationConfig) {
  const hqla=computeHqlaComposition(state.financial.balanceSheet.items);
  const commitments=commitmentLiquidity(state).outflow;
  const outGroups:Record<string,number>={'Retail deposits':0,'Business deposits':0,'Wholesale funding':0,'Secured funding':0,'Committed facilities':commitments,'Derivatives & other':0};
- const inGroups:Record<string,number>={'Loan repayments':0,'Secured lending':0,'Derivatives & other':0};
+ const inGroups:Record<string,number>={'Loan repayments':0,'Derivatives & other':0};
  for(const l of lines){
   const p=l.productType;
-  const outKey=([L.RetailDeposits,L.RetailCurrentAccounts] as string[]).includes(p)?'Retail deposits':([L.CorporateDeposits,L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.RepurchaseAgreements?'Secured funding':'Derivatives & other';
+  const outKey=([L.RetailCurrentAccounts,L.RetailTermDeposits] as string[]).includes(p)?'Retail deposits':([L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.BankOfEnglandFunding?'Secured funding':'Derivatives & other';
   outGroups[outKey]+=l.outflow;
-  inGroups[p===A.Mortgages||p===A.CorporateLoans?'Loan repayments':p===A.ReverseRepo?'Secured lending':'Derivatives & other']+=l.inflow;
+  inGroups[p===A.Mortgages||p===A.ConsumerLoans||p===A.CorporateLoans?'Loan repayments':'Derivatives & other']+=l.inflow;
  }
  const outgoing=Object.values(outGroups).reduce((a,b)=>a+b,0),incoming=Object.values(inGroups).reduce((a,b)=>a+b,0);
  const cap=outgoing*.75,recognised=Math.min(incoming,cap),net=outgoing-recognised;

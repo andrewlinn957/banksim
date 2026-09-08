@@ -10,7 +10,7 @@ import { cohortEcl, workoutPresentValue, workoutRecoveryEstimator } from './impa
 export const assetCreditRwa = (state: BankState, config: SimulationConfig, item: BalanceSheetItem): number => {
   const p = item.productType, performingWeight = config.productParameters[p]?.riskWeight ?? 0;
   if (p === AssetProductType.DerivativeAssets) return hedgeExposures(state).credit * performingWeight;
-  if (![AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans].includes(p as AssetProductType)) {
+  if (!([AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as AssetProductType[]).includes(p as AssetProductType)) {
     return Math.max(0,item.balance) * performingWeight;
   }
   const recovery = workoutRecoveryEstimator(state,config,p);

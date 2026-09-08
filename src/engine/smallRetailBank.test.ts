@@ -12,9 +12,7 @@ const balance = (state: typeof initialState, product: A | L) =>
 const engine = createSimulationEngine();
 
 describe('small UK retail-bank model', () => {
-  it('opens as a retail-heavy bank without generic repo positions', () => {
-    expect(initialState.financial.balanceSheet.items.some(i => i.productType === A.ReverseRepo)).toBe(false);
-    expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);
+  it('opens as a retail-heavy bank', () => {
     expect(balance(initialState, L.RetailCurrentAccounts)).toBe(7.0e9);
     expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailCurrentAccounts)?.label).toBe('Retail current accounts');
     expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailCurrentAccounts)?.interestRate).toBeCloseTo(0.017, 8);
@@ -61,7 +59,7 @@ describe('small UK retail-bank model', () => {
     expect(out.behaviour.treasuryPolicy?.giltDurationYears).toBe(2);
   });
 
-  it('uses BoE secured funding as collateralised liquidity rather than repo', () => {
+  it('uses BoE secured funding as collateralised liquidity', () => {
     const state = cloneBankState(initialState);
     const cash0 = balance(state, A.CashReserves);
     const out = engine.step({
@@ -74,7 +72,6 @@ describe('small UK retail-bank model', () => {
     expect(balance(out, A.CashReserves)).toBeGreaterThan(cash0 - 250e6); // ordinary monthly flows continue too.
     const gilts = out.financial.balanceSheet.items.find(i => i.productType === A.Gilts)!;
     expect(gilts.encumbrance.encumberedAmount).toBeGreaterThan(0);
-    expect(out.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);
   });
 
   it('Tier 2 improves total capital but not CET1 or leverage numerator', () => {

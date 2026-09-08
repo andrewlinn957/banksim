@@ -32,7 +32,6 @@ import {
   SetMortgagePolicyAction,
   SetTreasuryPolicyAction,
   SetTermDepositPolicyAction,
-  EnterRepoAction,
   SetUnderwritingAction,
   EnterHedgeAction,
   SetCapitalPolicyAction,
@@ -139,18 +138,6 @@ const actionHandlers: ActionHandlerMap = {
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
   setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => { ctx.state.behaviour.treasuryPolicy={giltShareOfHqla:clamp(action.giltShareOfHqla,0,1),giltDurationYears:clamp(action.giltDurationYears,.25,15)}; applyTreasuryPolicy(ctx.state,ctx.config,ctx.events); },
   setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
-  enterRepo: (action: EnterRepoAction, ctx) => {
-    applyEnterRepo(
-      ctx.state,
-      ctx.config,
-      action.direction,
-      action.collateralProduct,
-      action.amount,
-      action.haircut,
-      action.rate ?? ctx.state.market.baseRate,
-      ctx.events
-    );
-  },
   setUnderwriting: (action: SetUnderwritingAction, ctx) => {
     if (!ctx.state.behaviour.underwritingTightness) {
       ctx.state.behaviour.underwritingTightness = {};
@@ -591,8 +578,8 @@ const blendRate = (existingBalance: number, existingRate: number, newAmount: num
 };
 
 type FundingProduct =
-  | LiabilityProductType.WholesaleFundingST
-  | LiabilityProductType.WholesaleFundingLT;
+  | typeof LiabilityProductType.WholesaleFundingST
+  | typeof LiabilityProductType.WholesaleFundingLT;
 
 const FUNDING_PRODUCTS: FundingProduct[] = [
   LiabilityProductType.WholesaleFundingST,
@@ -1053,108 +1040,6 @@ const ensureLineItem = (
   return newItem;
 };
 
-const applyRepoBorrow = (
-  state: BankState,
-  config: SimulationConfig,
-  collateralProduct: AssetProductType,
-  amount: number,
-  haircut: number | undefined,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-
-  const collateral = findItem(state.financial.balanceSheet, collateralProduct);
-  const effectiveHaircut = clamp(haircut ?? 0, 0, 1);
-  const collateralRequirement = effectiveHaircut < 1 ? 1 / (1 - effectiveHaircut) : Infinity;
-  const availableCollateral = collateral
-    ? Math.max(0, collateral.balance - (collateral.encumbrance?.encumberedAmount ?? 0))
-    : 0;
-  const maxBorrow = collateralRequirement > 0 ? availableCollateral / collateralRequirement : 0;
-  const borrowAmount = Math.min(amount, maxBorrow);
-
-  if (borrowAmount <= 0) {
-    events.push(
-      createEvent('warning', `Repo borrow failed: insufficient unencumbered ${collateralProduct}`)
-    );
-    return;
-  }
-
-  const funding = ensureLineItem(
-    state,
-    BalanceSheetSide.Liability,
-    LiabilityProductType.RepurchaseAgreements,
-    'Repo Borrowing',
-    rate,
-    config
-  );
-  funding.interestRate = blendRate(funding.balance, funding.interestRate, borrowAmount, rate);
-  funding.balance += borrowAmount;
-  cash.balance += borrowAmount;
-  if (collateral) {
-    const encumbered = Math.min(collateral.balance, borrowAmount * collateralRequirement);
-    if (!collateral.encumbrance) {
-      collateral.encumbrance = { encumberedAmount: 0 };
-    }
-    collateral.encumbrance.remainingMonths = 1;
-    collateral.encumbrance.encumberedAmount = clamp(
-      (collateral.encumbrance.encumberedAmount ?? 0) + encumbered,
-      0,
-      collateral.balance
-    );
-  }
-  const partial = borrowAmount + 1e-9 < amount;
-  const amountText = partial
-    ? `+${borrowAmount.toFixed(2)} funding (requested ${amount.toFixed(2)})`
-    : `+${borrowAmount.toFixed(2)} funding`;
-  events.push(createEvent('info', `Repo borrow: ${amountText}, collateral ${collateralProduct} encumbered`));
-};
-
-const applyRepoLend = (
-  state: BankState,
-  config: SimulationConfig,
-  amount: number,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-
-  const reverseRepo = ensureLineItem(
-    state,
-    BalanceSheetSide.Asset,
-    AssetProductType.ReverseRepo,
-    'Reverse Repo',
-    rate,
-    config
-  );
-  const lendAmount = Math.min(Math.max(0, cash.balance), amount);
-  reverseRepo.interestRate = blendRate(reverseRepo.balance, reverseRepo.interestRate, lendAmount, rate);
-  reverseRepo.balance += lendAmount;
-  cash.balance -= lendAmount;
-  events.push(createEvent('info', `Repo lend: -${lendAmount.toFixed(2)} cash, +reverse repo asset`));
-};
-
-const applyEnterRepo = (
-  state: BankState,
-  config: SimulationConfig,
-  direction: 'borrow' | 'lend',
-  collateralProduct: AssetProductType,
-  amount: number,
-  haircut: number | undefined,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  // Repo "borrow" = raise cash secured on collateral (creates a repo liability and encumbers assets).
-  // Repo "lend"   = deploy cash into reverse repo (creates an asset).
-  if (direction === 'borrow') {
-    applyRepoBorrow(state, config, collateralProduct, amount, haircut, rate, events);
-    return;
-  }
-  applyRepoLend(state, config, amount, rate, events);
-};
-
 const applyCounterpartyDefault = (
   shock: CounterpartyDefaultShock,
   extraLosses: Partial<Record<ProductType, number>>,
@@ -1323,10 +1208,6 @@ export const applyActions = (
   actions.forEach(action => {
     if (Object.values(action).some(v => typeof v === 'number' && !Number.isFinite(v)) || ('amount' in action && action.amount < 0) || ('notional' in action && action.notional < 0)) {
       events.push(createEvent('warning', 'Invalid transaction amount or rate. Action rejected.'));
-      return;
-    }
-    if (action.type === 'enterRepo' && (action.collateralProduct !== AssetProductType.Gilts || (action.maturityMonths !== undefined && action.maturityMonths !== 1))) {
-      events.push(createEvent('warning', 'This portfolio supports rolling one-month gilt repos only. Unsupported collateral or tenor rejected.'));
       return;
     }
     dispatchAction(action, actionContext);
@@ -2922,13 +2803,10 @@ const computeBalanceFlows = (
 
   const operatingLiabilityProducts = new Set<ProductType>([
     LiabilityProductType.DerivativeLiabilities,
-    LiabilityProductType.RetailDeposits,
-    LiabilityProductType.CorporateDeposits,
       LiabilityProductType.RetailCurrentAccounts,
     LiabilityProductType.CorporateOperatingDeposits,
     LiabilityProductType.CorporateNonOperatingDeposits,
     LiabilityProductType.WholesaleFundingST,
-    LiabilityProductType.RepurchaseAgreements,
   ]);
 
   const investingAssetProducts = new Set<ProductType>([AssetProductType.Gilts]);
