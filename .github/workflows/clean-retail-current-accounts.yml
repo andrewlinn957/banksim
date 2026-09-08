@@ -1,0 +1,183 @@
+name: Clean retail current-account model
+
+on:
+  push:
+    branches: [clean-retail-current-accounts]
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: clean-retail-current-accounts
+      - name: Refactor retail deposits
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+
+          # Remove the old transactional product before renaming the surviving sight-deposit product.
+          p = Path('src/domain/enums.ts')
+          s = p.read_text()
+          s = s.replace("  RetailTransactionalDeposits = 'RetailTransactionalDeposits',\n", '')
+          p.write_text(s)
+
+          p = Path('src/domain/productMeta.ts')
+          s = p.read_text()
+          s = re.sub(r"\n  \[LiabilityProductType\.RetailTransactionalDeposits\]: \{[^\n]+\},", '', s)
+          p.write_text(s)
+
+          p = Path('src/config/baseConfig.ts')
+          s = p.read_text()
+          s = re.sub(r"\n  \[LiabilityProductType\.RetailTransactionalDeposits\]: \{\n(?:.*\n)*?  \},\n  \[LiabilityProductType\.RetailSavingsDeposits\]", "\n  [LiabilityProductType.RetailSavingsDeposits]", s, count=1)
+          s = re.sub(r"\n  \[LiabilityProductType\.RetailTransactionalDeposits\]: \{\n(?:.*\n)*?  \},\n  \[LiabilityProductType\.RetailSavingsDeposits\]", "\n  [LiabilityProductType.RetailSavingsDeposits]", s, count=1)
+          s = re.sub(r"\n    \[LiabilityProductType\.RetailTransactionalDeposits\]: \{\n(?:.*\n)*?    \},\n    \[LiabilityProductType\.RetailSavingsDeposits\]", "\n    [LiabilityProductType.RetailSavingsDeposits]", s, count=1)
+          p.write_text(s)
+
+          # Rename the surviving product and the related pricing fields throughout source/docs/tests.
+          replacements = {
+              'RetailSavingsDeposits': 'RetailCurrentAccounts',
+              'competitorRetailDepositRate': 'competitorRetailCurrentAccountRate',
+              'competitorDepositReactionSpeed': 'competitorRetailCurrentAccountReactionSpeed',
+              'retailDepositRate': 'retailCurrentAccountRate',
+              'Instant retail offer': 'Retail current account rate',
+              'Instant retail': 'Retail current accounts',
+              'instant retail': 'retail current accounts',
+              'Instant-retail': 'Retail-current-account',
+              'instant-retail': 'retail-current-account',
+          }
+          for path in list(Path('src').rglob('*')) + [Path('README.md'), Path('player_guide.md')]:
+              if not path.is_file() or path.suffix not in {'.ts', '.tsx', '.md'}:
+                  continue
+              text = path.read_text()
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text)
+          for path in Path('docs').rglob('*.md'):
+              text = path.read_text()
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text)
+
+          # Give the product clean current-account behavioural parameters rather than blended historical ones.
+          p = Path('src/config/baseConfig.ts')
+          s = p.read_text()
+          s = re.sub(
+              r"\[LiabilityProductType\.RetailCurrentAccounts\]: \{\n      // Blended Retail current accounts assumptions from the former 2/7 transactional \+ 5/7 savings mix\.\n(?:.*\n)*?    \},",
+              """[LiabilityProductType.RetailCurrentAccounts]: {\n      baselineGrowthMonthly: 0.002,\n      baseChurnMonthly: 0.0035,\n      policyRateBeta: 0.02,\n      competitorSensitivity: 0.45,\n      passThroughLag: 0.45,\n      underpricingConvexity: 20,\n      underpricingDurationSensitivity: 0.08,\n      franchiseDecayRate: 0.5,\n      franchiseRecoveryRate: 0.04,\n      reacquisitionDrag: 0.35,\n      stabilityDecayRate: 0.5,\n      stabilityRecoveryRate: 0.06,\n      mixMigrationRate: 0,\n      mixMigrationDurationSensitivity: 0,\n    },""",
+              s,
+              count=1,
+          )
+          s = s.replace('volumeElasticityToRate: 0.4642857142857143,', 'volumeElasticityToRate: 0.25,', 1)
+          # The liquidity tag is only a conservative fallback; prudential.ts applies the explicit stable/other split.
+          s = s.replace('lcrOutflowRate: 0.08571428571428572,\n    nsfrAsfFactor: 0.9142857142857143,', 'lcrOutflowRate: 0.10,\n    nsfrAsfFactor: 0.90,', 1)
+          p.write_text(s)
+
+          # Clean opening state: round current-account pricing and explicit regulatory classification share.
+          p = Path('src/config/initialState.ts')
+          s = p.read_text()
+          s = s.replace("'Retail current accounts', 7.0e9, 0.016785714285714286", "'Retail current accounts', 7.0e9, 0.017")
+          s = s.replace('[LiabilityProductType.RetailCurrentAccounts]: 0.016785714285714286,', '[LiabilityProductType.RetailCurrentAccounts]: 0.017,')
+          s = s.replace('[LiabilityProductType.RetailCurrentAccounts]: 1.0760714285714286,', '[LiabilityProductType.RetailCurrentAccounts]: 1.0,')
+          s = s.replace('  insuredRetailDepositShare: 0.9,', '  insuredRetailDepositShare: 0.9,\n  stableRetailDepositShare: 0.9,')
+          p.write_text(s)
+
+          p = Path('src/domain/bankState.ts')
+          s = p.read_text()
+          s = s.replace(
+              '  /** Approximate share of retail deposits protected by FSCS limits. */\n  insuredRetailDepositShare?: number;',
+              '  /** Approximate share of retail deposits protected by FSCS limits. */\n  insuredRetailDepositShare?: number;\n  /** Share of retail deposits that meet the prudential stable-retail criteria. Capped by the insured share. */\n  stableRetailDepositShare?: number;'
+          )
+          p.write_text(s)
+
+          # Make the LCR/NSFR classification explicit. Stable retail: 5% LCR / 95% ASF; other retail: 10% / 90%.
+          p = Path('src/engine/prudential.ts')
+          s = p.read_text()
+          insert = """\nconst clamp01 = (v: number): number => Math.max(0, Math.min(1, v));\n\nexport const retailDepositRegulatoryFactors = (s: BankState) => {\n  const insuredShare = clamp01(s.behaviour.insuredRetailDepositShare ?? 0);\n  const stableShare = Math.min(insuredShare, clamp01(s.behaviour.stableRetailDepositShare ?? insuredShare));\n  const otherShare = 1 - stableShare;\n  return {\n    stableShare,\n    otherShare,\n    lcrOutflowFactor: stableShare * 0.05 + otherShare * 0.10,\n    nsfrAsfFactor: stableShare * 0.95 + otherShare * 0.90,\n  };\n};\n"""
+          marker = "// 2026 UK standardised portfolio assumptions: docs/model-basis.md.\n"
+          if 'retailDepositRegulatoryFactors' not in s:
+              s = s.replace(marker, marker + insert)
+          needle = "  let rsf = asset ? b * (tag?.nsfrRsfFactor ?? 0) : 0;\n"
+          replacement = needle + "  const retailFactors = retailDepositRegulatoryFactors(s);\n  if (p === LiabilityProductType.RetailCurrentAccounts) {\n    outflow = b * retailFactors.lcrOutflowFactor;\n    asf = b * retailFactors.nsfrAsfFactor;\n  }\n"
+          s = s.replace(needle, replacement, 1)
+          old = """      outflow = buckets.reduce((sum, f) => sum + (f.monthsToMaturity <= 1 ? f.notional * (1 + f.rate / 12) : 0), 0);\n      asf = buckets.reduce((sum, f) => {\n        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : .95);\n        return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? .5 : 0);\n      }, 0);"""
+          new = """      outflow = buckets.reduce((sum, f) => {\n        if (f.monthsToMaturity > 1) return sum;\n        // Retail term balances entering the 30-day window receive the other-retail runoff rate; wholesale funding is contractual.\n        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * 0.10;\n        return sum + f.notional * (1 + f.rate / 12);\n      }, 0);\n      asf = buckets.reduce((sum, f) => {\n        if (p === LiabilityProductType.RetailTermDeposits) {\n          return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : retailFactors.nsfrAsfFactor);\n        }\n        return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? .5 : 0);\n      }, 0);"""
+          if old not in s:
+              raise SystemExit('prudential term-funding block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # Remove tests that only existed to compare the now-deleted retail product split.
+          p = Path('src/engine/depositSegmentation.test.ts')
+          s = p.read_text()
+          s = re.sub(r"\n  it\('retail segments react differently to the same pricing change', \(\) => \{.*?\n  \}\);\n", '\n', s, flags=re.S)
+          p.write_text(s)
+
+          p = Path('src/engine/smallRetailBank.test.ts')
+          s = p.read_text()
+          s = re.sub(r"\n    expect\(initialState\.financial\.balanceSheet\.items\.some\(i => i\.productType === L\.RetailTransactionalDeposits\)\)\.toBe\(false\);", '', s)
+          s = re.sub(r"\n    expect\(out\.financial\.balanceSheet\.items\.some\(i => i\.productType === L\.RetailTransactionalDeposits\)\)\.toBe\(false\);", '', s)
+          s = s.replace("toBeCloseTo(0.0167857143, 8)", "toBeCloseTo(0.017, 8)")
+          p.write_text(s)
+
+          p = Path('src/engine/prudential.test.ts')
+          s = p.read_text()
+          s = s.replace("import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines } from './prudential';", "import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines, retailDepositRegulatoryFactors } from './prudential';")
+          s = re.sub(
+              r"  it\('uses retail/corporate liquidity factors independently of reputation', \(\) => \{.*?\n  \}\);",
+              """  it('uses explicit stable and other retail classifications for LCR and NSFR', () => {\n    const factors = retailDepositRegulatoryFactors(initialState);\n    expect(factors.stableShare).toBeCloseTo(0.9);\n    expect(factors.otherShare).toBeCloseTo(0.1);\n    expect(factors.lcrOutflowFactor).toBeCloseTo(0.055);\n    expect(factors.nsfrAsfFactor).toBeCloseTo(0.945);\n    const lines = prudentialLiquidityLines(initialState, baseConfig);\n    const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;\n    expect(retail.outflow / retail.balance).toBeCloseTo(0.055);\n    expect(retail.asf / retail.balance).toBeCloseTo(0.945);\n    const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;\n    const nonOperating = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;\n    expect(operating.outflow / operating.balance).toBeCloseTo(0.25);\n    expect(operating.asf / operating.balance).toBeCloseTo(0.5);\n    expect(nonOperating.outflow / nonOperating.balance).toBeCloseTo(0.4);\n    expect(nonOperating.asf / nonOperating.balance).toBeCloseTo(0.5);\n  });""",
+              s,
+              count=1,
+              flags=re.S,
+          )
+          s = s.replace('line(s,L.RetailTransactionalDeposits).balance=100;', 'line(s,L.RetailCurrentAccounts).balance=100;')
+          p.write_text(s)
+
+          # Remove old enum from LCR grouping if still present after renames.
+          p = Path('src/components/LcrDashboard.tsx')
+          s = p.read_text().replace(',L.RetailTransactionalDeposits', '')
+          p.write_text(s)
+
+          # Make Help state the regulatory classification explicitly rather than implying product-level blended factors.
+          p = Path('src/content/mechanicsRegistry.ts')
+          s = p.read_text()
+          s = s.replace(
+              "'A high insured retail share and a low large-depositor share improve deposit quality.',",
+              "'For LCR and NSFR, retail balances are split between stable and other retail deposits. Stable balances receive the lower runoff and higher ASF factors.',"
+          )
+          p.write_text(s)
+
+          # Keep the product-facing control label explicit.
+          p = Path('src/components/ActionsPanel.tsx')
+          s = p.read_text().replace('label="Retail current accounts offer"', 'label="Retail current account rate"')
+          s = s.replace("'Retail current accounts offer'", "'Retail current account rate'")
+          s = s.replace('Main retail current accounts funding price.', 'Interest rate paid on retail current-account balances.')
+          p.write_text(s)
+
+          # Ensure the deleted compatibility path and the old savings nomenclature are genuinely gone.
+          forbidden = ['RetailTransactionalDeposits', 'RetailSavingsDeposits', 'Instant retail', 'instant retail', 'competitorRetailDepositRate', 'retailDepositRate']
+          offenders = []
+          for path in Path('src').rglob('*'):
+              if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
+                  continue
+              text = path.read_text()
+              for token in forbidden:
+                  if token in text:
+                      offenders.append(f'{path}: {token}')
+          if offenders:
+              raise SystemExit('Stale retail-deposit compatibility/naming remains:\n' + '\n'.join(offenders))
+          PY
+
+      - name: Commit refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src README.md docs player_guide.md
+          git commit -m "Model retail current accounts explicitly"
+          git push origin HEAD:clean-retail-current-accounts
