@@ -67,102 +67,17 @@ const makeItem = (
 
 const balanceSheet: BalanceSheet = {
   items: [
-    makeItem(
-      BalanceSheetSide.Asset,
-      AssetProductType.CashReserves,
-      'Cash & Reserves',
-      2.811e9,
-      0.031,
-      MaturityBucket.Overnight
-    ),
-    makeItem(
-      BalanceSheetSide.Asset,
-      AssetProductType.Gilts,
-      'Gilts',
-      5.758e9,
-      0.029,
-      MaturityBucket.GreaterThan5Y
-    ),
-    makeItem(
-      BalanceSheetSide.Asset,
-      AssetProductType.Mortgages,
-      'Mortgages',
-      5.145e9,
-      0.05,
-      MaturityBucket.GreaterThan5Y
-    ),
-    makeItem(
-      BalanceSheetSide.Asset,
-      AssetProductType.CorporateLoans,
-      'Corporate Loans',
-      3.868e9,
-      0.058,
-      MaturityBucket.ThreeToFiveY
-    ),
-    makeItem(
-      BalanceSheetSide.Asset,
-      AssetProductType.ReverseRepo,
-      'Reverse Repo',
-      0,
-      0.047,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.RetailTransactionalDeposits,
-      'Retail Transactional Deposits',
-      1.646e9,
-      0.007,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.RetailSavingsDeposits,
-      'Retail Savings Deposits',
-      6.107e9,
-      0.0215,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.CorporateOperatingDeposits,
-      'Corporate Operating Deposits',
-      6.505e9,
-      0.0205,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.CorporateNonOperatingDeposits,
-      'Corporate Non-Operating Deposits',
-      0.2e9,
-      0.03,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.WholesaleFundingST,
-      'Wholesale Funding ST',
-      0.4e9,
-      0.05,
-      MaturityBucket.LessThan1Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.WholesaleFundingLT,
-      'Wholesale Funding LT',
-      1.372e9,
-      0.053,
-      MaturityBucket.GreaterThan5Y
-    ),
-    makeItem(
-      BalanceSheetSide.Liability,
-      LiabilityProductType.RepurchaseAgreements,
-      'Repo Borrowing',
-      0.391e9,
-      0.048,
-      MaturityBucket.LessThan1Y
-    ),
+    makeItem(BalanceSheetSide.Asset, AssetProductType.CashReserves, 'Cash & Reserves', 1.5e9, 0.031, MaturityBucket.Overnight),
+    makeItem(BalanceSheetSide.Asset, AssetProductType.Gilts, 'Gilts / Liquidity Portfolio', 2.5e9, 0.041, MaturityBucket.GreaterThan5Y),
+    makeItem(BalanceSheetSide.Asset, AssetProductType.Mortgages, 'Residential Mortgages', 7.0e9, 0.050, MaturityBucket.GreaterThan5Y),
+    makeItem(BalanceSheetSide.Asset, AssetProductType.ConsumerLoans, 'Personal Loans & Revolving Credit', 0.7e9, 0.105, MaturityBucket.OneToThreeY),
+    makeItem(BalanceSheetSide.Asset, AssetProductType.CorporateLoans, 'SME & Business Lending', 2.261e9, 0.068, MaturityBucket.ThreeToFiveY),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.RetailTransactionalDeposits, 'Retail Current Accounts', 2.0e9, 0.005, MaturityBucket.LessThan1Y),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.RetailSavingsDeposits, 'Instant-Access Savings', 5.0e9, 0.0215, MaturityBucket.LessThan1Y),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.RetailTermDeposits, 'Fixed-Term Savings', 1.5e9, 0.038, MaturityBucket.OneToThreeY),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.CorporateOperatingDeposits, 'SME / Business Operating Deposits', 3.0e9, 0.0205, MaturityBucket.LessThan1Y),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.CorporateNonOperatingDeposits, 'Other Business Deposits', 0.3e9, 0.030, MaturityBucket.LessThan1Y),
+    makeItem(BalanceSheetSide.Liability, LiabilityProductType.WholesaleFundingLT, 'Long-Term Debt', 1.2e9, 0.053, MaturityBucket.GreaterThan5Y),
   ],
 };
 
@@ -171,6 +86,7 @@ const capital: CapitalState = {
   // while keeping total opening equity unchanged for balance-sheet consistency.
   cet1: 0.808e9,
   at1: 0.136e9,
+  tier2: 0,
   accumulatedOCI: 0.017e9,
 };
 
@@ -280,13 +196,16 @@ const market: MarketState = {
   riskFreeShort: giltYields.y1,
   riskFreeLong: giltYields.y30,
   mortgageSpread: 0.013,
+  consumerLoanSpread: 0.057,
   corporateLoanSpread: 0.021,
   wholesaleFundingSpread: 0.012,
   seniorDebtSpread: 0.014,
   giltRepoHaircut: 0.02,
   corpBondRepoHaircut: 0.05,
   competitorRetailDepositRate: 0.019,
+  competitorTermDepositRate: 0.038,
   competitorMortgageRate: 0.049,
+  competitorConsumerLoanRate: 0.105,
   competitorCorporateDepositRate: 0.021,
 
   gdpGrowthMoM: 0.0002,
@@ -314,25 +233,34 @@ const behaviour: BehaviouralState = {
   depositRateLagMemory: {
     [LiabilityProductType.RetailTransactionalDeposits]: 0.007,
     [LiabilityProductType.RetailSavingsDeposits]: 0.0215,
+    [LiabilityProductType.RetailTermDeposits]: 0.038,
     [LiabilityProductType.CorporateOperatingDeposits]: 0.0205,
     [LiabilityProductType.CorporateNonOperatingDeposits]: 0.03,
   },
   depositUnderpricingMonths: {
     [LiabilityProductType.RetailTransactionalDeposits]: 0,
     [LiabilityProductType.RetailSavingsDeposits]: 0,
+    [LiabilityProductType.RetailTermDeposits]: 0,
     [LiabilityProductType.CorporateOperatingDeposits]: 0,
     [LiabilityProductType.CorporateNonOperatingDeposits]: 0,
   },
   depositStabilityIndex: {
     [LiabilityProductType.RetailTransactionalDeposits]: 1.035,
     [LiabilityProductType.RetailSavingsDeposits]: 1.0925,
+    [LiabilityProductType.RetailTermDeposits]: 1.1,
     [LiabilityProductType.CorporateOperatingDeposits]: 0.92,
     [LiabilityProductType.CorporateNonOperatingDeposits]: 0.667,
   },
   underwritingTightness: {
     [AssetProductType.Mortgages]: 0,
-    [AssetProductType.CorporateLoans]: 0,
+    [AssetProductType.ConsumerLoans]: 0.35,
+    [AssetProductType.CorporateLoans]: 0.25,
   },
+  mortgagePolicy: { maxLtv: 0.85, fixedPeriodMonths: 24 },
+  treasuryPolicy: { giltShareOfHqla: 0.625, giltDurationYears: 5 },
+  termDepositTenorMonths: 12,
+  insuredRetailDepositShare: 0.9,
+  largeDepositorShare: 0.04,
   capitalPolicy: {
     dividendPayoutRatio: baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio,
     at1CouponMode: 'auto',
@@ -413,6 +341,7 @@ const seedState: BankState = {
       approvedNotional: 0,
       committedNotional: 0,
     },
+    [AssetProductType.ConsumerLoans]: { demandNotional: 0, approvedNotional: 0, committedNotional: 0 },
     [AssetProductType.CorporateLoans]: {
       demandNotional: 0,
       approvedNotional: 0,
@@ -421,19 +350,18 @@ const seedState: BankState = {
   },
   workoutPipelines: {
     [AssetProductType.Mortgages]: [],
+    [AssetProductType.ConsumerLoans]: [],
     [AssetProductType.CorporateLoans]: [],
   },
   fundingLadders: {
-    [LiabilityProductType.WholesaleFundingST]: [
-      { tenorMonths: 1, monthsToMaturity: 1, notional: 133e6, rate: 0.05 },
-      { tenorMonths: 3, monthsToMaturity: 3, notional: 133e6, rate: 0.05 },
-      { tenorMonths: 6, monthsToMaturity: 6, notional: 134e6, rate: 0.05 },
-    ],
+    [LiabilityProductType.RetailTermDeposits]: Array.from({ length: 12 }, (_, i) => ({ tenorMonths: 12, monthsToMaturity: i + 1, notional: 125e6, rate: 0.038 })),
     [LiabilityProductType.WholesaleFundingLT]: [
-      { tenorMonths: 24, monthsToMaturity: 24, notional: 450e6, rate: 0.053 },
-      { tenorMonths: 36, monthsToMaturity: 36, notional: 450e6, rate: 0.053 },
-      { tenorMonths: 60, monthsToMaturity: 60, notional: 472e6, rate: 0.053 },
+      { tenorMonths: 24, monthsToMaturity: 24, notional: 400e6, rate: 0.053 },
+      { tenorMonths: 36, monthsToMaturity: 36, notional: 400e6, rate: 0.053 },
+      { tenorMonths: 60, monthsToMaturity: 60, notional: 400e6, rate: 0.053 },
     ],
+    [LiabilityProductType.BankOfEnglandFunding]: [],
+    [LiabilityProductType.Tier2Debt]: [],
   },
   status,
 };
@@ -468,12 +396,9 @@ const seedLoanCohorts = (productType: AssetProductType): void => {
   for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) seedState.financial.provisionStock[stage] += allowance[stage];
 };
 
-// Opening repo stock is secured on gilts; assume a 2% haircut and monthly rollover.
-const openingRepo = seedState.financial.balanceSheet.items.find(i => i.productType === LiabilityProductType.RepurchaseAgreements)!;
-const openingGilts = seedState.financial.balanceSheet.items.find(i => i.productType === AssetProductType.Gilts)!;
-openingGilts.encumbrance = { encumberedAmount: Math.min(openingGilts.balance, openingRepo.balance / .98), remainingMonths: 1 };
 
 seedLoanCohorts(AssetProductType.Mortgages);
+seedLoanCohorts(AssetProductType.ConsumerLoans);
 seedLoanCohorts(AssetProductType.CorporateLoans);
 
 seedState.financial.balanceSheet.items.forEach((item) => {

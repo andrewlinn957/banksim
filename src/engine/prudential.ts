@@ -6,7 +6,7 @@ import { PRODUCT_META } from '../domain/productMeta';
 // 2026 UK standardised portfolio assumptions: docs/model-basis.md.
 export const committedExposure = (s: BankState, product?: ProductType): number =>
   Object.entries(s.loanPipelines ?? {}).reduce((sum, [p, b]) => sum + (!product || p === product ? Math.max(0, b?.committedNotional ?? 0) : 0), 0);
-export const commitmentLiquidity = (s: BankState) => ({ outflow: committedExposure(s, AssetProductType.Mortgages) * .05 + committedExposure(s, AssetProductType.CorporateLoans) * .1, rsf: committedExposure(s) * .05 });
+export const commitmentLiquidity = (s: BankState) => ({ outflow: committedExposure(s, AssetProductType.Mortgages) * .05 + committedExposure(s, AssetProductType.ConsumerLoans) * .1 + committedExposure(s, AssetProductType.CorporateLoans) * .1, rsf: committedExposure(s) * .05 });
 export const eligibleCet1 = (s: BankState, c: SimulationConfig) => s.financial.capital.cet1 + s.financial.capital.accumulatedOCI * Math.max(0, Math.min(1, c.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1));
 export const centralBankExclusion = (s: BankState) => {
   const cash = s.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves);
@@ -37,11 +37,14 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
     inflow=asset?receipts:0;outflow=asset?0:payments;asf=0;
     rsf=asset?Math.max(0,assets-liabilities):liabilities*.05;
   }
-  if (p === LiabilityProductType.WholesaleFundingST || p === LiabilityProductType.WholesaleFundingLT) {
+  if ([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt].includes(p as LiabilityProductType)) {
     const buckets = s.fundingLadders?.[p];
     if (buckets?.length) {
       outflow = buckets.reduce((sum, f) => sum + (f.monthsToMaturity <= 1 ? f.notional * (1 + f.rate / 12) : 0), 0);
-      asf = buckets.reduce((sum, f) => sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? .5 : 0), 0);
+      asf = buckets.reduce((sum, f) => {
+        if (p === LiabilityProductType.RetailTermDeposits) return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : .95);
+        return sum + f.notional * (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? .5 : 0);
+      }, 0);
     }
   }
   if (PRODUCT_META[p]?.behaviour?.isLoan) {

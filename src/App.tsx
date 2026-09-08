@@ -146,27 +146,38 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>({
-    retailDepositRate: formatRateInputPct(getGroupDepositRate(bankState, 'retail')),
+    retailDepositRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailSavingsDeposits)?.interestRate ?? bankState.market.competitorRetailDepositRate),
+    termDepositRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? bankState.market.competitorTermDepositRate),
+    termDepositTenorMonths: String(bankState.behaviour.termDepositTenorMonths ?? 12),
     corporateDepositRate: formatRateInputPct(getGroupDepositRate(bankState, 'corporate')),
     mortgageRate: formatRateInputPct(
       bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
         ?.interestRate
     ),
+    consumerLoanRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.ConsumerLoans)?.interestRate ?? bankState.market.competitorConsumerLoanRate),
     corporateLoanRate: formatRateInputPct(
       bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
         ?.interestRate
     ),
     mortgageUnderwritingTightness:
       (bankState.behaviour.underwritingTightness?.[AssetProductType.Mortgages] ?? 0).toString(),
+    consumerUnderwritingTightness: (bankState.behaviour.underwritingTightness?.[AssetProductType.ConsumerLoans] ?? 0.35).toString(),
     corporateUnderwritingTightness:
       (bankState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
+    mortgageMaxLtv: String(bankState.behaviour.mortgagePolicy?.maxLtv ?? .85),
+    mortgageFixedPeriodMonths: String(bankState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
     issueLTDebtAmount: '',
     issueEquityAmount: '',
+    issueTier2Amount: '',
     dividendPayoutRatio: (
       bankState.behaviour.capitalPolicy?.dividendPayoutRatio ??
       baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
     ).toString(),
     at1CouponMode: bankState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
+    giltShareOfHqla: String(bankState.behaviour.treasuryPolicy?.giltShareOfHqla ?? .625),
+    giltDurationYears: String(bankState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
+    boeFacility: 'none',
+    boeFundingAmount: '',
     hedgeDirection: 'none',
     hedgeNotional: '',
     hedgeFixedRate: '',
@@ -458,27 +469,38 @@ const App = () => {
     setCurrentTimeline([]);
     setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
     setActionForm({
-      retailDepositRate: formatRateInputPct(getGroupDepositRate(scenarioState, 'retail')),
+      retailDepositRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailSavingsDeposits)?.interestRate ?? scenarioState.market.competitorRetailDepositRate),
+      termDepositRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? scenarioState.market.competitorTermDepositRate),
+      termDepositTenorMonths: String(scenarioState.behaviour.termDepositTenorMonths ?? 12),
       corporateDepositRate: formatRateInputPct(getGroupDepositRate(scenarioState, 'corporate')),
       mortgageRate: formatRateInputPct(
         scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
           ?.interestRate
       ),
+      consumerLoanRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.ConsumerLoans)?.interestRate ?? scenarioState.market.competitorConsumerLoanRate),
       corporateLoanRate: formatRateInputPct(
         scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
           ?.interestRate
       ),
       mortgageUnderwritingTightness:
         (scenarioState.behaviour.underwritingTightness?.[AssetProductType.Mortgages] ?? 0).toString(),
+      consumerUnderwritingTightness: (scenarioState.behaviour.underwritingTightness?.[AssetProductType.ConsumerLoans] ?? 0.35).toString(),
       corporateUnderwritingTightness:
         (scenarioState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
+      mortgageMaxLtv: String(scenarioState.behaviour.mortgagePolicy?.maxLtv ?? .85),
+      mortgageFixedPeriodMonths: String(scenarioState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
       issueLTDebtAmount: '',
       issueEquityAmount: '',
+      issueTier2Amount: '',
       dividendPayoutRatio: (
         scenarioState.behaviour.capitalPolicy?.dividendPayoutRatio ??
         scenarioConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
       ).toString(),
       at1CouponMode: scenarioState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
+      giltShareOfHqla: String(scenarioState.behaviour.treasuryPolicy?.giltShareOfHqla ?? .625),
+      giltDurationYears: String(scenarioState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
+      boeFacility: 'none',
+      boeFundingAmount: '',
       hedgeDirection: 'none',
       hedgeNotional: '',
       hedgeFixedRate: '',
@@ -1177,10 +1199,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
   const values: Partial<Record<keyof ActionFormState, number>> = {};
 
   const rateFields: Array<keyof ActionFormState> = [
-    'retailDepositRate',
-    'corporateDepositRate',
-    'mortgageRate',
-    'corporateLoanRate',
+    'retailDepositRate', 'termDepositRate', 'corporateDepositRate', 'mortgageRate', 'consumerLoanRate', 'corporateLoanRate',
   ];
   rateFields.forEach((field) => {
     const parsed = parseRateInput(state[field]);
@@ -1194,8 +1213,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
   });
 
   const underwritingFields: Array<keyof ActionFormState> = [
-    'mortgageUnderwritingTightness',
-    'corporateUnderwritingTightness',
+    'mortgageUnderwritingTightness', 'consumerUnderwritingTightness', 'corporateUnderwritingTightness',
   ];
   underwritingFields.forEach((field) => {
     const parsed = parseRateInput(state[field]);
@@ -1212,7 +1230,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     }
   });
 
-  const amountFields: Array<keyof ActionFormState> = ['issueLTDebtAmount', 'issueEquityAmount', 'hedgeNotional'];
+  const amountFields: Array<keyof ActionFormState> = ['issueLTDebtAmount','issueEquityAmount','issueTier2Amount','boeFundingAmount','hedgeNotional'];
   amountFields.forEach((field) => {
     const parsed = parseMoneyInput(state[field]);
     if (parsed.error) {
@@ -1223,6 +1241,10 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
       values[field] = parsed.value;
     }
   });
+
+  for (const field of ['mortgageMaxLtv','giltShareOfHqla'] as Array<keyof ActionFormState>) { const parsed=parseRateInput(state[field]); if(parsed.error) errors[field]=parsed.error; else if(parsed.value!==undefined){ if(parsed.value<0||parsed.value>1) errors[field]='Must be between 0 and 1'; else values[field]=parsed.value; } }
+  for (const field of ['mortgageFixedPeriodMonths','termDepositTenorMonths','giltDurationYears'] as Array<keyof ActionFormState>) { const raw=Number(state[field]); if(!Number.isFinite(raw)||raw<=0) errors[field]='Must be a positive number'; else values[field]=raw; }
+  if(state.boeFacility!=='none' && (values.boeFundingAmount??0)<=0) errors.boeFundingAmount='Enter an amount for the selected Bank of England facility';
 
   const payoutParsed = parseRateInput(state.dividendPayoutRatio);
   if (payoutParsed.error) {
@@ -1265,7 +1287,7 @@ const buildActionsFromParsed = (
   const values = parsed.values;
 
   if (values.retailDepositRate !== undefined) {
-    [LiabilityProductType.RetailTransactionalDeposits, LiabilityProductType.RetailSavingsDeposits].forEach(
+    [LiabilityProductType.RetailSavingsDeposits].forEach(
       (productType) => {
         actions.push({
           type: 'adjustRate',
@@ -1275,6 +1297,8 @@ const buildActionsFromParsed = (
       }
     );
   }
+  if (values.termDepositRate !== undefined) actions.push({type:'adjustRate',productType:LiabilityProductType.RetailTermDeposits,newRate:values.termDepositRate});
+  if (values.termDepositTenorMonths !== undefined) actions.push({type:'setTermDepositPolicy',tenorMonths:values.termDepositTenorMonths});
   if (values.corporateDepositRate !== undefined) {
     [
       LiabilityProductType.CorporateOperatingDeposits,
@@ -1294,6 +1318,7 @@ const buildActionsFromParsed = (
       newRate: values.mortgageRate,
     });
   }
+  if (values.consumerLoanRate !== undefined) actions.push({type:'adjustRate',productType:AssetProductType.ConsumerLoans,newRate:values.consumerLoanRate});
   if (values.corporateLoanRate !== undefined) {
     actions.push({
       type: 'adjustRate',
@@ -1308,6 +1333,7 @@ const buildActionsFromParsed = (
       tightness: values.mortgageUnderwritingTightness,
     });
   }
+  if (values.consumerUnderwritingTightness !== undefined) actions.push({type:'setUnderwriting',productType:AssetProductType.ConsumerLoans,tightness:values.consumerUnderwritingTightness});
   if (values.corporateUnderwritingTightness !== undefined) {
     actions.push({
       type: 'setUnderwriting',
@@ -1315,6 +1341,10 @@ const buildActionsFromParsed = (
       tightness: values.corporateUnderwritingTightness,
     });
   }
+  if (values.mortgageMaxLtv!==undefined && values.mortgageFixedPeriodMonths!==undefined) actions.push({type:'setMortgagePolicy',maxLtv:values.mortgageMaxLtv,fixedPeriodMonths:values.mortgageFixedPeriodMonths});
+  if (values.giltShareOfHqla!==undefined && values.giltDurationYears!==undefined) actions.push({type:'setTreasuryPolicy',giltShareOfHqla:values.giltShareOfHqla,giltDurationYears:values.giltDurationYears});
+  if (state.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:state.boeFacility,amount:values.boeFundingAmount});
+  if (values.issueTier2Amount!==undefined && values.issueTier2Amount>0) actions.push({type:'issueTier2',amount:values.issueTier2Amount,maturityMonths:60});
   if (values.issueLTDebtAmount !== undefined && values.issueLTDebtAmount > 0) {
     actions.push({
       type: 'issueDebt',

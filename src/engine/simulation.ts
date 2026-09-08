@@ -27,6 +27,11 @@ import {
   BuySellAssetAction,
   IssueDebtAction,
   IssueEquityAction,
+  IssueTier2Action,
+  DrawBoeFundingAction,
+  SetMortgagePolicyAction,
+  SetTreasuryPolicyAction,
+  SetTermDepositPolicyAction,
   EnterRepoAction,
   SetUnderwritingAction,
   EnterHedgeAction,
@@ -129,6 +134,11 @@ const actionHandlers: ActionHandlerMap = {
   buySellAsset: (action: BuySellAssetAction, ctx) => {
     applyBuySellAsset(ctx.state, ctx.config, action.productType, action.amountDelta, ctx.events);
   },
+  issueTier2: (action: IssueTier2Action, ctx) => { applyIssueTier2(ctx.state,ctx.config,action.amount,action.maturityMonths,ctx.events); },
+  drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
+  setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
+  setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => { ctx.state.behaviour.treasuryPolicy={giltShareOfHqla:clamp(action.giltShareOfHqla,0,1),giltDurationYears:clamp(action.giltDurationYears,.25,15)}; applyTreasuryPolicy(ctx.state,ctx.config,ctx.events); },
+  setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
   enterRepo: (action: EnterRepoAction, ctx) => {
     applyEnterRepo(
       ctx.state,
@@ -771,6 +781,46 @@ const applyIssueDebt = (
         ['funding']
       )
     );
+  }
+};
+
+const genericFundingBuckets = (state: BankState, productType: ProductType): FundingMaturityBucket[] => {
+  state.fundingLadders ??= {};
+  return state.fundingLadders[productType] ?? (state.fundingLadders[productType] = []);
+};
+
+const applyIssueTier2 = (state: BankState, config: SimulationConfig, amount: number, maturityMonths: number | undefined, events: SimulationEvent[]): void => {
+  const issued=Math.max(0,amount); if(!issued)return; const cash=findItem(state.financial.balanceSheet,AssetProductType.CashReserves); if(!cash)return;
+  const tenor=Math.max(60,Math.round(maturityMonths??60)); const rate=Math.max(0,state.market.riskFreeLong+state.market.seniorDebtSpread+.015);
+  const line=ensureLineItem(state,BalanceSheetSide.Liability,LiabilityProductType.Tier2Debt,'Tier 2 Subordinated Debt',rate,config);
+  genericFundingBuckets(state,LiabilityProductType.Tier2Debt).push({tenorMonths:tenor,monthsToMaturity:tenor,notional:issued,rate});
+  line.balance+=issued; line.interestRate=blendRate(Math.max(0,line.balance-issued),line.interestRate,issued,rate); state.financial.capital.tier2=(state.financial.capital.tier2??0)+issued; cash.balance+=issued;
+  events.push(createEvent('info',`Issued Tier 2 ${issued.toFixed(2)} at ${(rate*100).toFixed(2)}% for ${tenor}m`,['capital','funding']));
+};
+
+const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: 'STR'|'ILTR', amount: number, events: SimulationEvent[]): void => {
+  const requested=Math.max(0,amount); if(!requested)return; const cash=findItem(state.financial.balanceSheet,AssetProductType.CashReserves); const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts); if(!cash||!gilts)return;
+  const p=config.behaviour.boeFunding; const haircut=clamp(Math.max(p?.levelAHaircut??.03,state.market.giltRepoHaircut),0,.25); const available=Math.max(0,gilts.balance-(gilts.encumbrance?.encumberedAmount??0)); const executable=Math.min(requested,available*(1-haircut));
+  if(executable<=0){events.push(createEvent('warning','Bank of England drawing rejected: no unencumbered eligible gilt collateral.'));return;}
+  const tenor=facility==='STR'?(p?.strTenorMonths??1):(p?.iltrTenorMonths??6); const spread=(facility==='STR'?(p?.strSpreadBps??0):(p?.iltrSpreadBps??3))/10000; const rate=Math.max(0,state.market.baseRate+spread);
+  const line=ensureLineItem(state,BalanceSheetSide.Liability,LiabilityProductType.BankOfEnglandFunding,'Bank of England Secured Funding',rate,config); genericFundingBuckets(state,LiabilityProductType.BankOfEnglandFunding).push({tenorMonths:tenor,monthsToMaturity:tenor,notional:executable,rate}); line.balance+=executable; line.interestRate=blendRate(Math.max(0,line.balance-executable),line.interestRate,executable,rate); cash.balance+=executable;
+  gilts.encumbrance??={encumberedAmount:0}; gilts.encumbrance.encumberedAmount=Math.min(gilts.balance,(gilts.encumbrance.encumberedAmount??0)+executable/(1-haircut)); gilts.encumbrance.remainingMonths=Math.max(gilts.encumbrance.remainingMonths??0,tenor);
+  events.push(createEvent('info',`${facility} drawing ${executable.toFixed(2)} at ${(rate*100).toFixed(2)}%, secured on gilts`,['funding','liquidity']));
+};
+
+const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events: SimulationEvent[]): void => {
+  const policy=state.behaviour.treasuryPolicy; if(!policy)return; const cash=findItem(state.financial.balanceSheet,AssetProductType.CashReserves); const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts); if(!cash||!gilts)return;
+  const total=Math.max(0,cash.balance)+Math.max(0,gilts.balance); const target=total*clamp(policy.giltShareOfHqla,0,1); const delta=target-gilts.balance; if(Math.abs(delta)>1e4) applyBuySellAsset(state,config,AssetProductType.Gilts,delta,events);
+  if(gilts.security) gilts.security.effectiveDurationYears=clamp(policy.giltDurationYears,.25,15);
+};
+
+const stepContractualRetailFunding = (state: BankState, config: SimulationConfig, dtMonths: number, events: SimulationEvent[]): void => {
+  const products=[LiabilityProductType.RetailTermDeposits,LiabilityProductType.BankOfEnglandFunding,LiabilityProductType.Tier2Debt] as ProductType[];
+  for(const productType of products){ const buckets=genericFundingBuckets(state,productType); if(!buckets.length)continue; let matured=0, releasedCollateral=0; const before=buckets.reduce((s,b)=>s+b.notional,0); const keep:FundingMaturityBucket[]=[];
+    for(const b of buckets){const m=b.monthsToMaturity-dtMonths;if(m<=0)matured+=Math.max(0,b.notional);else keep.push({...b,monthsToMaturity:m});} state.fundingLadders[productType]=keep; if(matured<=0)continue; const paid=applyCashOutflowOrFail(state,matured,events); const line=findItem(state.financial.balanceSheet,productType); if(line)line.balance=Math.max(0,(line.balance??before)-paid);
+    if(productType===LiabilityProductType.Tier2Debt) state.financial.capital.tier2=Math.max(0,(state.financial.capital.tier2??0)-paid);
+    if(productType===LiabilityProductType.BankOfEnglandFunding){const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts);if(gilts?.encumbrance&&before>0){releasedCollateral=(gilts.encumbrance.encumberedAmount??0)*Math.min(1,paid/before);gilts.encumbrance.encumberedAmount=Math.max(0,(gilts.encumbrance.encumberedAmount??0)-releasedCollateral);}}
+    events.push(createEvent('info',`${PRODUCT_META[productType]?.label??productType} matured ${paid.toFixed(2)}`,['funding']));
   }
 };
 
@@ -1432,6 +1482,7 @@ export const stepFundingLadders = (
 const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
   LiabilityProductType.RetailTransactionalDeposits,
   LiabilityProductType.RetailSavingsDeposits,
+  LiabilityProductType.RetailTermDeposits,
 ];
 
 const CORPORATE_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
@@ -1861,10 +1912,7 @@ export const applyDepositBehaviour = (
   depositItems.forEach((item) => {
       const meta = PRODUCT_META[item.productType];
       const byProduct = config.behaviour.depositByProduct?.[item.productType];
-      const competitor =
-        meta.behaviour.depositSegment === 'corporate'
-          ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate
-          : state.market.competitorRetailDepositRate;
+      const competitor = meta.behaviour.isTermDeposit ? state.market.competitorTermDepositRate : meta.behaviour.depositSegment === 'corporate' ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate : state.market.competitorRetailDepositRate;
       const passThroughLag = clamp(byProduct?.passThroughLag ?? 1, 0, 1);
       const laggedRateBefore = state.behaviour.depositRateLagMemory?.[item.productType] ?? item.interestRate;
       const laggedRate = laggedRateBefore + passThroughLag * (item.interestRate - laggedRateBefore);
@@ -1896,10 +1944,15 @@ export const applyDepositBehaviour = (
       const growthFactor = Math.max(0, 1 + g * dtMonths);
       const before = item.balance;
       const desiredBalance = before * growthFactor;
-      const desiredDelta = desiredBalance - before;
+      const rawDesiredDelta = desiredBalance - before;
+      const desiredDelta = meta.behaviour.isTermDeposit ? Math.max(0, rawDesiredDelta) : rawDesiredDelta;
       if (desiredDelta >= 0) {
-        item.balance = desiredBalance;
+        item.balance = before + desiredDelta;
         adjustCashOrFail(state, desiredDelta, events);
+        if (meta.behaviour.isTermDeposit && desiredDelta > 0) {
+          const tenor = Math.max(6, state.behaviour.termDepositTenorMonths ?? 12);
+          genericFundingBuckets(state, item.productType).push({ tenorMonths: tenor, monthsToMaturity: tenor, notional: desiredDelta, rate: item.interestRate });
+        }
       } else {
         const requestedOutflow = -desiredDelta;
         const paidOutflow = applyCashOutflowOrFail(state, requestedOutflow, events);
@@ -2022,9 +2075,7 @@ export const applyLoanBehaviour = (
       const productType = item.productType as AssetProductType;
       const meta = PRODUCT_META[item.productType];
       const benchmark =
-        meta.behaviour.loanBenchmark === 'mortgage'
-          ? state.market.competitorMortgageRate
-          : state.market.riskFreeLong + state.market.corporateLoanSpread;
+        meta.behaviour.loanBenchmark === 'mortgage' ? state.market.competitorMortgageRate : meta.behaviour.loanBenchmark === 'consumer' ? state.market.competitorConsumerLoanRate : state.market.riskFreeLong + state.market.corporateLoanSpread;
       const rel = item.interestRate - benchmark;
       const pricingGap = benchmark - item.interestRate;
       const elasticity = config.productParameters[item.productType].volumeElasticityToRate;
@@ -2072,8 +2123,8 @@ export const applyLoanBehaviour = (
         const addressableMarket = referenceMarketSize * macroMarketMultiplier;
         const neutralBankOpportunity = addressableMarket * referenceBankShare;
         const pricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);
-        const demand =
-          neutralBankOpportunity * pipelineParams.baseDemandRateMonthly * dtMonths * pricingCapture;
+        const ltvDemandMultiplier = productType === AssetProductType.Mortgages ? clamp(1 + ((state.behaviour.mortgagePolicy?.maxLtv ?? .85) - .85) * 1.5, .75, 1.2) : 1;
+        const demand = neutralBankOpportunity * pipelineParams.baseDemandRateMonthly * dtMonths * pricingCapture * ltvDemandMultiplier;
 
         const approvalRate = clamp(
           pipelineParams.baseApprovalRate +
@@ -3019,6 +3070,8 @@ export const createSimulationEngine = (): SimulationEngine => {
           nonCashAdjustmentsByProduct: {},
         };
     applyActions(state, activeConfig, actions, events);
+    stepContractualRetailFunding(state, activeConfig, dtMonths, events);
+    applyTreasuryPolicy(state, activeConfig, events);
     stepCompetitorReaction(state, activeConfig, dtMonths, events);
     const fundingLifecycle = featureFlags.fundingLadder
       ? stepFundingLadders(state, activeConfig, dtMonths, shockEffects, events)

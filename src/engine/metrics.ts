@@ -18,9 +18,7 @@ export const HQLA_FACTORS: Record<HQLALevel, number> = {
   [HQLALevel.None]: 0,
 };
 
-const FUNDING_PRODUCTS: Array<
-  LiabilityProductType.WholesaleFundingST | LiabilityProductType.WholesaleFundingLT
-> = [LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT];
+const FUNDING_PRODUCTS: ProductType[] = [LiabilityProductType.RetailTermDeposits, LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt];
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
@@ -66,7 +64,12 @@ const computeDepositQualityIndex = (state: BankState): number => {
     const quality = clamp(qualityMap[item.productType] ?? 1, 0.4, 1.1);
     return sum + balance * quality;
   }, 0);
-  return clamp(weighted / total, 0.4, 1.1);
+  const retail = deposits.filter(i => PRODUCT_META[i.productType]?.behaviour?.depositSegment === 'retail').reduce((s,i)=>s+Math.max(0,i.balance),0);
+  const insured = clamp(state.behaviour.insuredRetailDepositShare ?? .9, 0, 1);
+  const large = clamp(state.behaviour.largeDepositorShare ?? .04, 0, .5);
+  const uninsuredPenalty = retail > 0 ? (1-insured) * .18 : 0;
+  const concentrationPenalty = large * .35;
+  return clamp(weighted / total - uninsuredPenalty - concentrationPenalty, 0.4, 1.1);
 };
 
 const computeLiquidityDynamicsFactors = (
@@ -130,38 +133,34 @@ const computeIrrbbSensitivities = (
   state: BankState,
   config: SimulationConfig
 ): { niiSensitivity100bp: number; eveSensitivity100bp: number } => {
-  const irrbb = config.behaviour.irrbb;
-  const assetDurationYears = Math.max(0.1, irrbb?.baseAssetDurationYears ?? 3);
-  const liabilityDurationYears = Math.max(0.1, irrbb?.baseLiabilityDurationYears ?? 1.5);
-
-  const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
-  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
-  const assetExposure = assets.reduce((sum, item) => sum + Math.max(0, item.balance), 0);
-  const liabilityExposure = liabilities.reduce((sum, item) => sum + Math.max(0, item.balance), 0);
-
-  const assetRepricingShare = clamp(1 / (1 + assetDurationYears), 0.05, 1);
-  const liabilityRepricingShare = clamp(1 / (1 + liabilityDurationYears), 0.05, 1);
-
-  const hedgeNiiOffset = (state.financial.hedges ?? []).reduce((sum, hedge) => {
-    const sign = hedge.direction === 'payFixedReceiveFloat' ? 1 : -1;
-    return sum + sign * hedge.notional;
-  }, 0);
-  const hedgeDurationOffset = (state.financial.hedges ?? []).reduce((sum, hedge) => {
-    const hedgeDuration = Math.max(0.25, Math.min(5, hedge.monthsRemaining / 12));
-    const sign = hedge.direction === 'payFixedReceiveFloat' ? -1 : 1;
-    return sum + sign * hedge.notional * hedgeDuration;
-  }, 0);
-
-  const niiSensitivity100bp =
-    (assetExposure * assetRepricingShare - liabilityExposure * liabilityRepricingShare + hedgeNiiOffset) * 0.01;
-  const eveSensitivity100bp =
-    -(
-      assetExposure * assetDurationYears -
-      liabilityExposure * liabilityDurationYears +
-      hedgeDurationOffset
-    ) * 0.01;
-
-  return { niiSensitivity100bp, eveSensitivity100bp };
+  const duration = (item: BalanceSheetItem): number => {
+    switch (item.productType) {
+      case AssetProductType.CashReserves: return 0.05;
+      case AssetProductType.Gilts: return Math.max(.25, state.behaviour.treasuryPolicy?.giltDurationYears ?? item.security?.effectiveDurationYears ?? 5);
+      case AssetProductType.Mortgages: return Math.max(.5, Math.min(5, (state.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24) / 12 * .85));
+      case AssetProductType.ConsumerLoans: return 1.25;
+      case AssetProductType.CorporateLoans: return 1.75;
+      case LiabilityProductType.RetailTransactionalDeposits: return .35;
+      case LiabilityProductType.RetailSavingsDeposits: return .45;
+      case LiabilityProductType.RetailTermDeposits: {
+        const b=state.fundingLadders?.[item.productType]??[]; const n=b.reduce((s,x)=>s+x.notional,0); return n>0?b.reduce((s,x)=>s+x.notional*Math.max(.08,x.monthsToMaturity/12),0)/n:1;
+      }
+      case LiabilityProductType.CorporateOperatingDeposits: return .25;
+      case LiabilityProductType.CorporateNonOperatingDeposits: return .15;
+      case LiabilityProductType.WholesaleFundingLT: case LiabilityProductType.BankOfEnglandFunding: case LiabilityProductType.Tier2Debt: {
+        const b=state.fundingLadders?.[item.productType]??[]; const n=b.reduce((s,x)=>s+x.notional,0); return n>0?b.reduce((s,x)=>s+x.notional*Math.max(.08,x.monthsToMaturity/12),0)/n:1;
+      }
+      default: return item.side===BalanceSheetSide.Asset ? (config.behaviour.irrbb?.baseAssetDurationYears ?? 3) : (config.behaviour.irrbb?.baseLiabilityDurationYears ?? 1.5);
+    }
+  };
+  let assetDv=0, liabilityDv=0, assetReprice=0, liabilityReprice=0;
+  for (const item of state.financial.balanceSheet.items) {
+    const b=Math.max(0,item.balance); if(!b) continue; const d=duration(item); const repr=clamp(1/(1+d),.04,1);
+    if(item.side===BalanceSheetSide.Asset){assetDv+=b*d;assetReprice+=b*repr;} else {liabilityDv+=b*d;liabilityReprice+=b*repr;}
+  }
+  const hedgeNiiOffset=(state.financial.hedges??[]).reduce((s,h)=>s+(h.direction==='payFixedReceiveFloat'?1:-1)*h.notional,0);
+  const hedgeDurationOffset=(state.financial.hedges??[]).reduce((s,h)=>s+(h.direction==='payFixedReceiveFloat'?-1:1)*h.notional*Math.max(.25,Math.min(5,h.monthsRemaining/12)),0);
+  return { niiSensitivity100bp:(assetReprice-liabilityReprice+hedgeNiiOffset)*.01, eveSensitivity100bp:-(assetDv-liabilityDv+hedgeDurationOffset)*.01 };
 };
 
 const CET1_GEOGRAPHY_FALLBACKS: LoanGeography[] = [
@@ -175,7 +174,7 @@ const CET1_GEOGRAPHY_FALLBACKS: LoanGeography[] = [
 ];
 
 const inferFallbackSector = (productType: ProductType): LoanSector =>
-  productType === AssetProductType.Mortgages ? 'retailMortgage' : 'largeCorporate';
+  productType === AssetProductType.Mortgages ? 'retailMortgage' : productType === AssetProductType.ConsumerLoans ? 'consumer' : 'sme';
 
 const inferFallbackGeography = (cohortId: number): LoanGeography =>
   CET1_GEOGRAPHY_FALLBACKS[Math.abs(Math.floor(cohortId)) % CET1_GEOGRAPHY_FALLBACKS.length];
@@ -442,9 +441,10 @@ export const calculateRiskMetrics = ({
   const leverageExposure = totalAssets - derivativeBook + hedgeExposures(state).leverage - centralBankExclusion(state) + committedExposure(state) * .2;
   const fvociInclusionRate = clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
+  const tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
   const minima = ownFundsRequirements(config.riskLimits, rwa);
-  const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - state.financial.capital.at1 / rwa) : minima.cet1;
+  const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - (state.financial.capital.at1 + tier2) / rwa) : minima.cet1;
   const cet1Requirement = computeCet1Requirement(config.riskLimits) + ownFundsCet1Floor - config.riskLimits.minCet1Ratio;
   const praBufferTarget = cet1Requirement + Math.max(0, config.riskLimits.praBufferRatio ?? 0);
   const cet1Headroom = cet1Ratio - cet1Requirement;
@@ -484,6 +484,9 @@ export const calculateRiskMetrics = ({
     lcr: managementLcr,
     nsfr: managementNsfr,
     depositQualityIndex,
+    insuredRetailDepositShare: clamp(state.behaviour.insuredRetailDepositShare ?? .9,0,1),
+    largeDepositorShare: clamp(state.behaviour.largeDepositorShare ?? .04,0,.5),
+    termDepositShare: (()=>{const deps=state.financial.balanceSheet.items.filter(i=>PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit).reduce((s,i)=>s+Math.max(0,i.balance),0); const term=state.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.balance??0; return deps>0?term/deps:0;})(),
     asf,
     fundingMaturing12m,
   });
@@ -545,7 +548,7 @@ export const calculateRiskMetrics = ({
     managementLcr,
     managementNsfr,
     tier1Ratio: rwa > 0 ? (adjustedCet1 + state.financial.capital.at1) / rwa : Infinity,
-    totalCapitalRatio: rwa > 0 ? (adjustedCet1 + state.financial.capital.at1) / rwa : Infinity,
+    totalCapitalRatio: rwa > 0 ? (adjustedCet1 + state.financial.capital.at1 + tier2) / rwa : Infinity,
     depositQualityIndex,
     asf,
     rsf,
