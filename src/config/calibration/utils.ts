@@ -13,7 +13,7 @@ import {
   requireProductPosition,
 } from '../../products/selectors';
 import { calculateProvisionTargetFromCohorts, sumLoanOutstanding } from '../../engine/loanCohorts';
-import { resetOpeningSupervisoryAssessments } from '../../engine/supervisoryAssessments';
+import { initializeOpeningSupervisoryAssessments, resetOpeningSupervisoryAssessments } from '../../engine/supervisoryAssessments';
 
 const cloneConfig = (): SimulationConfig => JSON.parse(JSON.stringify(baseConfig)) as SimulationConfig;
 
@@ -98,6 +98,7 @@ export const refreshRiskState = (state: BankState, config: SimulationConfig): vo
   calibrateAddressableMarketShares(state, config);
   state.financial.provisionStock = calculateProvisionTargetFromCohorts({ state, config });
   resetOpeningSupervisoryAssessments(state);
+  initializeOpeningSupervisoryAssessments(state, config);
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
 };

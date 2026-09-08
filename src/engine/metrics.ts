@@ -2,7 +2,7 @@ import { hedgeExposures } from './hedgeValuation';
 import { assetCreditRwa } from './creditRwa';
 import { ownFundsRequirements } from './prudential';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
-import { ensurePillar2AAssessment } from './pillar2A';
+import { pillar2AAssessmentForMetrics } from './pillar2A';
 import { calculateCapitalBufferFramework } from './capitalBuffers';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
@@ -463,7 +463,7 @@ export const calculateRiskMetrics = ({
   );
   const rwa = baseRwa + additionalRwa + commitmentRwa;
   const irrbbSensitivities = computeIrrbbSensitivities(state, config);
-  const pillar2A = ensurePillar2AAssessment({
+  const pillar2A = pillar2AAssessmentForMetrics({
     state,
     config,
     rwa,

@@ -235,10 +235,11 @@ export const productTypesWithLeverageTreatment = (treatment: LeverageRegulatoryC
  */
 export const eligibleTier2OwnFunds = (state: BankState): number => {
   const recorded = Math.max(0, state.financial.capital.tier2 ?? 0);
+  let hasClassifiedLine = false;
   const classifiedBalance = state.financial.balanceSheet.items.reduce((sum, item) => {
-    return getCapitalRule(item.productType).ownFundsTier === 'tier2'
-      ? sum + Math.max(0, item.balance)
-      : sum;
+    if (getCapitalRule(item.productType).ownFundsTier !== 'tier2') return sum;
+    hasClassifiedLine = true;
+    return sum + Math.max(0, item.balance);
   }, 0);
-  return classifiedBalance > 0 ? Math.min(recorded, classifiedBalance) : recorded;
+  return hasClassifiedLine ? Math.min(recorded, classifiedBalance) : recorded;
 };

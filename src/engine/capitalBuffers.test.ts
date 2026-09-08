@@ -4,7 +4,9 @@ import { initialState } from '../config/initialState';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import {
+  advanceOsiiAssessmentAtClose,
   calculateCapitalBufferFramework,
+  initializeOpeningOsiiAssessment,
   osiiRateForAverageLem,
   osiiThresholdsForYear,
 } from './capitalBuffers';
@@ -40,10 +42,12 @@ describe('UK capital buffer framework', () => {
     expect(b.osiiRate).toBe(0);
     expect(b.combinedBufferRate).toBeCloseTo(0.045);
     expect(b.osiiInScope).toBe(false);
+    expect(s.risk.osii).toBeUndefined();
   });
 
-  it('growth above the domestic scope and UK LEM thresholds produces an O-SII buffer at an assessment', () => {
+  it('growth above the domestic scope and UK LEM thresholds produces an O-SII buffer at opening assessment', () => {
     const s = makeLargeDomesticBank();
+    initializeOpeningOsiiAssessment(s, baseConfig);
     const opening = calculateCapitalBufferFramework({ state: s, config: baseConfig });
     expect(opening.osiiInScope).toBe(true);
     expect(opening.osiiScopeRoute).toBe('largeDomesticBank');
@@ -51,11 +55,11 @@ describe('UK capital buffer framework', () => {
     expect(s.risk.osii?.effectiveYear).toBe(2026);
   });
 
-  it('freezes O-SII between annual reviews and resets from the trailing quarter-end average', () => {
+  it('only mutates quarter-end history and the frozen O-SII rate at explicit closes', () => {
     const s = cloneBankState(initialState);
     s.risk.osii = undefined;
-    const first = calculateCapitalBufferFramework({ state: s, config: baseConfig });
-    expect(first.osiiRate).toBe(0);
+    initializeOpeningOsiiAssessment(s, baseConfig);
+    expect(calculateCapitalBufferFramework({ state: s, config: baseConfig }).osiiRate).toBe(0);
 
     const retail = s.financial.balanceSheet.items.find((i) => i.productType === LiabilityProductType.RetailCurrentAccounts)!;
     const mortgages = s.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)!;
@@ -64,11 +68,20 @@ describe('UK capital buffer framework', () => {
 
     for (const step of [2, 5, 8]) {
       s.time.step = step;
-      const mid = calculateCapitalBufferFramework({ state: s, config: baseConfig });
-      expect(mid.osiiRate).toBe(0);
+      const beforeRefresh = structuredClone(s.risk.osii!);
+      const refreshed = calculateCapitalBufferFramework({ state: s, config: baseConfig });
+      expect(refreshed.osiiRate).toBe(0);
+      expect(s.risk.osii).toEqual(beforeRefresh);
+      advanceOsiiAssessmentAtClose(s, baseConfig);
     }
 
     s.time.step = 11;
+    const preClose = structuredClone(s.risk.osii!);
+    const refresh = calculateCapitalBufferFramework({ state: s, config: baseConfig });
+    expect(refresh.osiiRate).toBe(0);
+    expect(s.risk.osii).toEqual(preClose);
+
+    advanceOsiiAssessmentAtClose(s, baseConfig);
     const reviewed = calculateCapitalBufferFramework({ state: s, config: baseConfig });
     expect(reviewed.osiiRate).toBeGreaterThan(0);
     expect(s.risk.osii?.assessmentStep).toBe(12);

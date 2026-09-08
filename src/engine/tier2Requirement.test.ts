@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
-import { LiabilityProductType } from '../domain/enums';
+import { LiabilityProductType, MaturityBucket } from '../domain/enums';
 import { capitalDashboardData } from '../components/CapitalDashboard';
 import { eligibleTier2OwnFunds } from '../products/regulatory';
+import { createPosition } from '../products/factory';
 import { cloneBankState } from './clone';
 import { createSimulationEngine } from './simulation';
 
@@ -62,6 +63,27 @@ describe('Tier 2 substitution in effective Tier 1 requirement', () => {
     expect(metrics.tier1Requirement).toBeCloseTo(expectedTier1Requirement(result), 12);
     expect(metrics.tier1Requirement ?? Infinity).toBeLessThan(oldWrongRequirement);
     expect(dashboardTier1Requirement(result)).toBeCloseTo(metrics.tier1Requirement ?? NaN, 12);
+  });
+
+  it('caps recorded Tier 2 at zero when a classified line exists but is empty', () => {
+    const s = cloneBankState(initialState);
+    s.financial.capital.tier2 = 100;
+    const line = createPosition(baseConfig, {
+      productType: LiabilityProductType.Tier2Debt,
+      balance: 1,
+      interestRate: 0.05,
+      maturityBucket: MaturityBucket.GreaterThan5Y,
+    });
+    s.financial.balanceSheet.items.push(line);
+    expect(eligibleTier2OwnFunds(s)).toBe(1);
+
+    line.balance = 0;
+    expect(eligibleTier2OwnFunds(s)).toBe(0);
+
+    s.financial.balanceSheet.items = s.financial.balanceSheet.items.filter(
+      (item) => item.productType !== LiabilityProductType.Tier2Debt
+    );
+    expect(eligibleTier2OwnFunds(s)).toBe(100);
   });
 
   it('restores the Tier 1 requirement when Tier 2 matures and keeps dashboard aligned', () => {

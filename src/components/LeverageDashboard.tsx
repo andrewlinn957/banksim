@@ -227,17 +227,28 @@ export default function LeverageDashboard({
     { label: 'AT1', value: d.at1, color: '#4d9ee3' },
   ];
 
-  const chartMax = Math.ceil(
-    Math.max(0.09, d.target * 1.2, Number.isFinite(d.ratio) ? d.ratio * 1.15 : 0) / 0.01
-  ) * 0.01;
-  const chartY = (n: number) => 250 - (Math.max(0, n) / chartMax) * 205;
-  const ticks = Array.from({ length: 5 }, (_, i) => (chartMax * i) / 4);
   let cumulative = 0;
   const positionedParts = parts.map(part => {
     const start = cumulative;
     cumulative += d.exposure > 0 ? part.value / d.exposure : 0;
     return { ...part, start, end: cumulative };
   });
+  const compositionMin = Math.min(0, ...positionedParts.flatMap(part => [part.start, part.end]));
+  const compositionMax = Math.max(0, ...positionedParts.flatMap(part => [part.start, part.end]));
+  const chartMin = compositionMin < 0
+    ? Math.floor((compositionMin * 1.15) / 0.01) * 0.01
+    : 0;
+  const chartMax = Math.ceil(
+    Math.max(
+      0.09,
+      d.target * 1.2,
+      Number.isFinite(d.ratio) ? d.ratio * 1.15 : 0,
+      compositionMax * 1.15
+    ) / 0.01
+  ) * 0.01;
+  const chartRange = Math.max(0.01, chartMax - chartMin);
+  const chartY = (n: number) => 250 - ((n - chartMin) / chartRange) * 205;
+  const ticks = Array.from({ length: 5 }, (_, i) => chartMin + (chartRange * i) / 4);
   const targetsGrouped = Math.abs(d.target - d.minimum) < 1e-10;
 
   return (
@@ -345,6 +356,14 @@ export default function LeverageDashboard({
                     </text>
                   </g>
                 ))}
+                {chartMin < 0 && (
+                  <path
+                    className="leverage-zero-axis"
+                    d={`M58 ${chartY(0)}H320`}
+                    stroke="var(--text)"
+                    strokeWidth="1.5"
+                  />
+                )}
                 <text transform="translate(16 150) rotate(-90)" textAnchor="middle">
                   % of leverage exposure
                 </text>
@@ -353,7 +372,16 @@ export default function LeverageDashboard({
                   const height = Math.abs(chartY(part.start) - chartY(part.end));
                   return (
                     <g key={part.label}>
-                      <rect x="104" y={top} width="165" height={height} fill={part.color} />
+                      <rect
+                        x="104"
+                        y={top}
+                        width="165"
+                        height={height}
+                        fill={part.color}
+                        data-capital-component={part.label}
+                        data-start-ratio={part.start}
+                        data-end-ratio={part.end}
+                      />
                       {height > 34 && (
                         <text x="186.5" y={top + height / 2 - 5} textAnchor="middle" className="stack-label">
                           {part.label}

@@ -146,32 +146,32 @@ const observationDate = (state: BankState, observationStep: number): Date =>
     ? advanceMonths(state.time.date, state.time.stepLengthMonths)
     : new Date(state.time.date);
 
-export const ensureOsiiAssessment = (state: BankState, config: SimulationConfig): OsiiAssessmentState => {
-  const existing = state.risk.osii;
-  const currentUkLem = calculateOsiiUkLeverageExposure(state);
+const addQuarterEndObservation = (
+  state: BankState,
+  observations: OsiiAssessmentState['quarterEndObservations'],
+  observationStep: number,
+  currentUkLem: number
+): OsiiAssessmentState['quarterEndObservations'] => {
+  if (observationStep !== 0 && observationStep % 3 !== 0) return observations;
+  if (observations.some((x) => x.step === observationStep)) return observations;
+  return [
+    ...observations,
+    {
+      step: observationStep,
+      date: observationDate(state, observationStep).toISOString(),
+      ukLeverageExposure: currentUkLem,
+    },
+  ].sort((a, b) => a.step - b.step).slice(-4);
+};
+
+const buildOsiiAssessment = (
+  state: BankState,
+  config: SimulationConfig,
+  assessmentStep: number,
+  observations: OsiiAssessmentState['quarterEndObservations'],
+  currentUkLem: number
+): OsiiAssessmentState => {
   const currentScope = calculateOsiiScope(state, config);
-  const closingStep = existing ? state.time.step + 1 : state.time.step;
-  let observations = existing?.quarterEndObservations.map((x) => ({ ...x })) ?? [];
-
-  if (closingStep === 0 || closingStep % 3 === 0) {
-    if (!observations.some((x) => x.step === closingStep)) {
-      observations.push({
-        step: closingStep,
-        date: observationDate(state, closingStep).toISOString(),
-        ukLeverageExposure: currentUkLem,
-      });
-      observations = observations.sort((a, b) => a.step - b.step).slice(-4);
-    }
-  }
-
-  const due = !existing || closingStep >= existing.nextAssessmentStep;
-  if (!due && existing) {
-    const updated = { ...existing, quarterEndObservations: observations };
-    state.risk.osii = updated;
-    return updated;
-  }
-
-  const assessmentStep = existing ? closingStep : state.time.step;
   const assessmentDate = observationDate(state, assessmentStep);
   const effectiveYear = assessmentDate.getUTCFullYear() + 1;
   const averageQuarterEndUkLeverageExposure = observations.length
@@ -181,7 +181,7 @@ export const ensureOsiiAssessment = (state: BankState, config: SimulationConfig)
     ? osiiRateForAverageLem(averageQuarterEndUkLeverageExposure, effectiveYear)
     : 0;
 
-  const assessment: OsiiAssessmentState = {
+  return {
     assessedRate,
     assessmentStep,
     nextAssessmentStep: assessmentStep + OSII_ASSESSMENT_INTERVAL_MONTHS,
@@ -191,6 +191,56 @@ export const ensureOsiiAssessment = (state: BankState, config: SimulationConfig)
     scopeRouteAtAssessment: currentScope.scopeRoute,
     quarterEndObservations: observations,
   };
+};
+
+/** Read-only view used by metric refreshes. */
+export const osiiAssessmentForMetrics = (
+  state: BankState,
+  config: SimulationConfig
+): OsiiAssessmentState => {
+  if (state.risk.osii) return state.risk.osii;
+  const currentUkLem = calculateOsiiUkLeverageExposure(state);
+  const observations = addQuarterEndObservation(state, [], state.time.step, currentUkLem);
+  return buildOsiiAssessment(state, config, state.time.step, observations, currentUkLem);
+};
+
+export const initializeOpeningOsiiAssessment = (
+  state: BankState,
+  config: SimulationConfig
+): OsiiAssessmentState => {
+  const assessment = osiiAssessmentForMetrics(state, config);
+  state.risk.osii = assessment;
+  return assessment;
+};
+
+/** Record quarter-end history and change the assessed rate only on a completed month close. */
+export const advanceOsiiAssessmentAtClose = (
+  state: BankState,
+  config: SimulationConfig
+): OsiiAssessmentState => {
+  const existing = state.risk.osii ?? initializeOpeningOsiiAssessment(state, config);
+  const closingStep = state.time.step + 1;
+  const currentUkLem = calculateOsiiUkLeverageExposure(state);
+  const observations = addQuarterEndObservation(
+    state,
+    existing.quarterEndObservations.map((x) => ({ ...x })),
+    closingStep,
+    currentUkLem
+  );
+
+  if (closingStep < existing.nextAssessmentStep) {
+    const updated = { ...existing, quarterEndObservations: observations };
+    state.risk.osii = updated;
+    return updated;
+  }
+
+  const assessment = buildOsiiAssessment(
+    state,
+    config,
+    closingStep,
+    observations,
+    currentUkLem
+  );
   state.risk.osii = assessment;
   return assessment;
 };
@@ -199,7 +249,7 @@ export const calculateCapitalBufferFramework = (args: { state: BankState; config
   const { state, config } = args;
   const conservationRate = Math.max(0, config.riskLimits.capitalBufferStack.conservationBuffer);
   const ccyb = calculateInstitutionSpecificCcyb(state, config);
-  const osii = ensureOsiiAssessment(state, config);
+  const osii = osiiAssessmentForMetrics(state, config);
   const scope = calculateOsiiScope(state, config);
   const currentUkLem = calculateOsiiUkLeverageExposure(state);
   const trailingAverage = osii.quarterEndObservations.length

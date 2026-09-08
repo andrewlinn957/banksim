@@ -358,16 +358,37 @@ export const assessPillar2A = (args: {
   };
 };
 
-export const ensurePillar2AAssessment = (args: {
+export const pillar2AAssessmentForMetrics = (args: {
+  state: BankState;
+  config: SimulationConfig;
+  rwa: number;
+  eveSensitivity100bp: number;
+}): Pillar2AAssessmentState =>
+  args.state.risk.pillar2A ??
+  assessPillar2A({ ...args, assessmentStep: args.state.time.step });
+
+export const initializeOpeningPillar2AAssessment = (args: {
+  state: BankState;
+  config: SimulationConfig;
+  rwa: number;
+  eveSensitivity100bp: number;
+}): Pillar2AAssessmentState => {
+  const assessment = assessPillar2A({ ...args, assessmentStep: args.state.time.step });
+  args.state.risk.pillar2A = assessment;
+  return assessment;
+};
+
+/** Advance the frozen SREP assessment only as part of a completed month close. */
+export const advancePillar2AAssessmentAtClose = (args: {
   state: BankState;
   config: SimulationConfig;
   rwa: number;
   eveSensitivity100bp: number;
 }): Pillar2AAssessmentState => {
   const existing = args.state.risk.pillar2A;
-  const dueStep = existing ? args.state.time.step + 1 : args.state.time.step;
-  if (!existing || dueStep >= existing.nextAssessmentStep) {
-    const assessment = assessPillar2A({ ...args, assessmentStep: dueStep });
+  const closingStep = args.state.time.step + 1;
+  if (!existing || closingStep >= existing.nextAssessmentStep) {
+    const assessment = assessPillar2A({ ...args, assessmentStep: closingStep });
     args.state.risk.pillar2A = assessment;
     return assessment;
   }

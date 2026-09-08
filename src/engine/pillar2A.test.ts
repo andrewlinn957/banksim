@@ -5,6 +5,7 @@ import { AssetProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { calculateRiskMetrics } from './metrics';
 import {
+  advancePillar2AAssessmentAtClose,
   applyPs1520Offset,
   calculatePillar2AConcentration,
   concentrationAddOnRate,
@@ -52,27 +53,30 @@ describe('24-month Pillar 2A SREP assessment', () => {
     expect(result.geographicRate).toBeCloseTo(0.01325);
   });
 
-  it('freezes the assessed rate until the 24-month review and then resets it', () => {
+  it('does not advance a due SREP during an ordinary metric refresh; month close advances it explicitly', () => {
     const s = cloneBankState(initialState);
-    s.risk.pillar2A = undefined;
-    s.time.step = 0;
-    const first = calculateRiskMetrics({ state: s, config: baseConfig });
-    const firstAssessment = s.risk.pillar2A!;
-    expect(firstAssessment.assessmentStep).toBe(0);
-    expect(firstAssessment.nextAssessmentStep).toBe(24);
-    expect(first.pillar2ARate).toBeGreaterThan(0);
+    const opening = structuredClone(s.risk.pillar2A!);
+    const openingRate = s.risk.riskMetrics.pillar2ARate!;
+    expect(opening.assessmentStep).toBe(0);
+    expect(opening.nextAssessmentStep).toBe(24);
 
     s.behaviour.riskAppetite = { cet1: 0.2, leverage: 0.05, lcr: 1.2, nsfr: 1.1, irrbbEveLimit: 2e9 };
-    s.time.step = 11;
-    const midCycle = calculateRiskMetrics({ state: s, config: baseConfig });
-    expect(s.risk.pillar2A!.assessmentStep).toBe(0);
-    expect(midCycle.pillar2ARate).toBeCloseTo(first.pillar2ARate!, 12);
-
     s.time.step = 23;
-    const reviewed = calculateRiskMetrics({ state: s, config: baseConfig });
+    const refreshed = calculateRiskMetrics({ state: s, config: baseConfig });
+
+    expect(s.risk.pillar2A).toEqual(opening);
+    expect(refreshed.pillar2ARate).toBeCloseTo(openingRate, 12);
+
+    advancePillar2AAssessmentAtClose({
+      state: s,
+      config: baseConfig,
+      rwa: refreshed.rwa,
+      eveSensitivity100bp: refreshed.eveSensitivity100bp,
+    });
+    const afterClose = calculateRiskMetrics({ state: s, config: baseConfig });
     expect(s.risk.pillar2A!.assessmentStep).toBe(24);
     expect(s.risk.pillar2A!.nextAssessmentStep).toBe(48);
-    expect(reviewed.pillar2ARate).toBeGreaterThan(midCycle.pillar2ARate!);
+    expect(afterClose.pillar2ARate).toBeGreaterThan(openingRate);
   });
 
   it('holds the assessed rate but lets the nominal requirement scale with live RWA', () => {
