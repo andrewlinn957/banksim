@@ -1,5 +1,5 @@
 .risk-command {
-  gap: 10px;
+  gap: 8px;
 }
 
 .risk-command-header {
@@ -58,8 +58,7 @@
 
 .risk-signal-label,
 .risk-signal-meta,
-.risk-panel-heading,
-.risk-data-list > div {
+.risk-panel-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -110,54 +109,83 @@
   height: 100%;
 }
 
-.risk-command-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .risk-command-panel {
   border: 1px solid var(--border);
   background: var(--panel-strong);
-  padding: 10px 12px;
-}
-
-.risk-command-panel-wide {
-  grid-column: 1 / -1;
+  padding: 8px 10px 10px;
+  min-width: 0;
 }
 
 .risk-panel-heading {
-  margin-bottom: 7px;
-  padding-bottom: 6px;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
   border-bottom: 1px solid var(--border);
 }
 
 .risk-panel-heading h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: .055em;
 }
 
-.risk-data-list {
-  margin: 0;
+.risk-metric-strip {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
 }
 
-.risk-data-list > div {
-  min-height: 29px;
-  border-bottom: 1px solid var(--border);
+.risk-strip-balance { grid-template-columns: repeat(8, minmax(145px, 1fr)); }
+.risk-strip-franchise { grid-template-columns: repeat(6, minmax(150px, 1fr)); }
+.risk-strip-macro { grid-template-columns: repeat(10, minmax(135px, 1fr)); }
+.risk-strip-factors { grid-template-columns: repeat(4, minmax(160px, 1fr)); }
+.risk-strip-curve { grid-template-columns: repeat(7, minmax(110px, 1fr)); }
+.risk-strip-curve-diagnostics { grid-template-columns: repeat(6, minmax(130px, 1fr)); }
+
+.risk-metric {
+  min-width: 0;
+  min-height: 58px;
+  padding: 7px 9px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.risk-data-list > div:last-child { border-bottom: 0; }
+.risk-metric:last-child { border-right: 0; }
 
-.risk-data-list dt {
-  color: var(--muted);
+.risk-metric > span {
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .045em;
 }
 
-.risk-data-list dd {
-  margin: 0;
-  font-weight: 650;
-  text-align: right;
+.risk-metric > strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.risk-metric > small {
+  margin-top: 2px;
+  color: var(--dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.risk-substrip-label {
+  margin: 7px 0 4px;
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .055em;
 }
 
 .risk-delta-grid {
@@ -178,7 +206,7 @@
 .risk-delta span {
   display: block;
   color: var(--dim);
-  font-size: 11px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: .04em;
 }
@@ -195,15 +223,19 @@
   .risk-signal-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .risk-signal:nth-child(2) { border-right: 0; }
   .risk-signal:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
-  .risk-command-grid { grid-template-columns: 1fr; }
-  .risk-command-panel-wide { grid-column: auto; }
   .risk-delta-grid { grid-template-columns: 1fr 1fr; }
   .risk-delta { border-bottom: 1px solid var(--border); }
 }
 
 @media (max-width: 560px) {
   .risk-command-header { flex-direction: column; }
-  .risk-command-status { align-items: flex-start; border-left: 0; border-top: 3px solid var(--border-strong); padding: 7px 0 0; width: 100%; }
+  .risk-command-status {
+    align-items: flex-start;
+    border-left: 0;
+    border-top: 3px solid var(--border-strong);
+    padding: 7px 0 0;
+    width: 100%;
+  }
   .risk-signal-grid { grid-template-columns: 1fr; }
   .risk-signal { border-right: 0; border-bottom: 1px solid var(--border); }
   .risk-signal:last-child { border-bottom: 0; }
