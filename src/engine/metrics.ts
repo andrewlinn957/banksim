@@ -7,9 +7,15 @@ import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
 import { SimulationConfig } from '../domain/config';
 import { ComplianceStatus, FundingConfidenceState, RiskLimits, RiskMetrics } from '../domain/risks';
-import { LiquidityTag } from '../domain/liquidity';
 import { LoanGeography, LoanSector } from '../domain/loanCohorts';
 import { PRODUCTS } from '../products/catalogue';
+import {
+  eligibleTier2OwnFunds,
+  liquidityTagForProduct,
+  productTypesWithFundingMaturityTreatment,
+  productTypesWithLeverageTreatment,
+  regulatoryRiskWeight,
+} from '../products/regulatory';
 
 export const HQLA_FACTORS: Record<HQLALevel, number> = {
   [HQLALevel.Level1]: 1.0,
@@ -18,7 +24,10 @@ export const HQLA_FACTORS: Record<HQLALevel, number> = {
   [HQLALevel.None]: 0,
 };
 
-const FUNDING_PRODUCTS: ProductType[] = [LiabilityProductType.RetailTermDeposits, LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt];
+const FUNDING_PRODUCTS: ProductType[] = productTypesWithFundingMaturityTreatment();
+const DERIVATIVE_LEVERAGE_PRODUCTS = new Set<ProductType>(
+  productTypesWithLeverageTreatment('derivativeAssetReplacement')
+);
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
@@ -34,10 +43,11 @@ export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
   let level1 = 0, level2a = 0, level2b = 0;
   for (const i of items) {
     if (i.side !== BalanceSheetSide.Asset) continue;
+    const tag = liquidityTagForProduct(i.productType);
     const v = Math.max(0, i.balance - Math.max(0, i.encumbrance?.encumberedAmount ?? 0));
-    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level1) level1 += v;
-    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level2A) level2a += v * .85;
-    if (i.liquidityTag?.hqlaLevel === HQLALevel.Level2B) level2b += v * .5;
+    if (tag.hqlaLevel === HQLALevel.Level1) level1 += v;
+    if (tag.hqlaLevel === HQLALevel.Level2A) level2a += v * .85;
+    if (tag.hqlaLevel === HQLALevel.Level2B) level2b += v * .5;
   }
   const a = Math.min(level2a, level1 * 2 / 3);
   const b = Math.min(level2b, (level1 + a) * .15 / .85, Math.max(0, level1 * 2 / 3 - a));
@@ -435,22 +445,29 @@ export const calculateRiskMetrics = ({
 }: MetricsInput): RiskMetrics => {
   const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   const totalAssets = assets.reduce((sum, a) => sum + a.balance, 0);
-  const baseRwa = assets.reduce((sum, a) => {
-    const params = config.productParameters[a.productType];
-    return sum + assetCreditRwa(state, config, a);
-  }, 0);
+  const baseRwa = assets.reduce((sum, a) => sum + assetCreditRwa(state, config, a), 0);
   const rwaAddOns = config.riskLimits.rwaAddOns;
   const additionalRwa =
     Math.max(0, rwaAddOns?.operationalRisk ?? 0) +
     Math.max(0, rwaAddOns?.counterpartyRisk ?? 0) +
     Math.max(0, rwaAddOns?.otherAdjustments ?? 0);
-  const commitmentRwa = Object.keys(state.loanPipelines ?? {}).reduce((sum, p) => sum + committedExposure(state, p as ProductType) * .2 * (config.productParameters[p as ProductType]?.riskWeight ?? 1), 0);
+  const commitmentRwa = Object.keys(state.loanPipelines ?? {}).reduce(
+    (sum, p) =>
+      sum +
+      committedExposure(state, p as ProductType) *
+        .2 *
+        regulatoryRiskWeight(p as ProductType),
+    0
+  );
   const rwa = baseRwa + additionalRwa + commitmentRwa;
-  const derivativeBook = assets.find(i=>i.productType===AssetProductType.DerivativeAssets)?.balance ?? 0;
+  const derivativeBook = assets.reduce(
+    (sum, item) => sum + (DERIVATIVE_LEVERAGE_PRODUCTS.has(item.productType) ? Math.max(0, item.balance) : 0),
+    0
+  );
   const leverageExposure = totalAssets - derivativeBook + hedgeExposures(state).leverage - centralBankExclusion(state) + committedExposure(state) * .2;
   const fvociInclusionRate = clamp(config.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1, 0, 1);
   const adjustedCet1 = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI * fvociInclusionRate;
-  const tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
+  const tier2 = eligibleTier2OwnFunds(state);
   const cet1Ratio = rwa > 0 ? adjustedCet1 / rwa : Infinity;
   const minima = ownFundsRequirements(config.riskLimits, rwa);
   const ownFundsCet1Floor = rwa > 0 ? Math.max(minima.cet1, minima.tier1 - state.financial.capital.at1 / rwa, minima.total - (state.financial.capital.at1 + tier2) / rwa) : minima.cet1;
