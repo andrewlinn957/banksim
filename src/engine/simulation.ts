@@ -809,9 +809,21 @@ const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: '
 };
 
 const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events: SimulationEvent[]): void => {
-  const policy=state.behaviour.treasuryPolicy; if(!policy)return; const cash=findItem(state.financial.balanceSheet,AssetProductType.CashReserves); const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts); if(!cash||!gilts)return;
-  const total=Math.max(0,cash.balance)+Math.max(0,gilts.balance); const target=total*clamp(policy.giltShareOfHqla,0,1); const delta=target-gilts.balance; if(Math.abs(delta)>1e4) applyBuySellAsset(state,config,AssetProductType.Gilts,delta,events);
-  if(gilts.security) gilts.security.effectiveDurationYears=clamp(policy.giltDurationYears,.25,15);
+  const policy = state.behaviour.treasuryPolicy;
+  if (!policy) return;
+  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
+  const gilts = findItem(state.financial.balanceSheet, AssetProductType.Gilts);
+  if (!cash || !gilts) return;
+  const total = Math.max(0, cash.balance) + Math.max(0, gilts.balance);
+  const targetShare = clamp(policy.giltShareOfHqla, 0, 1);
+  const currentShare = total > 0 ? Math.max(0, gilts.balance) / total : 0;
+  const tolerance = 0.05;
+  let desiredShare = currentShare;
+  if (currentShare < targetShare - tolerance) desiredShare = targetShare - tolerance;
+  if (currentShare > targetShare + tolerance) desiredShare = targetShare + tolerance;
+  const delta = total * desiredShare - gilts.balance;
+  if (Math.abs(delta) > 1e4) applyBuySellAsset(state, config, AssetProductType.Gilts, delta, events);
+  if (gilts.security) gilts.security.effectiveDurationYears = clamp(policy.giltDurationYears, .25, 15);
 };
 
 const stepContractualRetailFunding = (state: BankState, config: SimulationConfig, dtMonths: number, events: SimulationEvent[]): void => {
@@ -1912,7 +1924,13 @@ export const applyDepositBehaviour = (
   depositItems.forEach((item) => {
       const meta = PRODUCT_META[item.productType];
       const byProduct = config.behaviour.depositByProduct?.[item.productType];
-      const competitor = meta.behaviour.isTermDeposit ? state.market.competitorTermDepositRate : meta.behaviour.depositSegment === 'corporate' ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate : state.market.competitorRetailDepositRate;
+      const competitor = item.productType === LiabilityProductType.RetailTransactionalDeposits
+        ? item.interestRate
+        : meta.behaviour.isTermDeposit
+          ? state.market.competitorTermDepositRate
+          : meta.behaviour.depositSegment === 'corporate'
+            ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate
+            : state.market.competitorRetailDepositRate;
       const passThroughLag = clamp(byProduct?.passThroughLag ?? 1, 0, 1);
       const laggedRateBefore = state.behaviour.depositRateLagMemory?.[item.productType] ?? item.interestRate;
       const laggedRate = laggedRateBefore + passThroughLag * (item.interestRate - laggedRateBefore);
@@ -2122,7 +2140,11 @@ export const applyLoanBehaviour = (
         );
         const addressableMarket = referenceMarketSize * macroMarketMultiplier;
         const neutralBankOpportunity = addressableMarket * referenceBankShare;
-        const pricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);
+        const rawPricingCapture = clamp(1 + pipelineParams.pricingSensitivity * pricingGap, 0.2, 2.5);
+        // In a contracting credit market, a cheap offer can win share but cannot create aggregate demand.
+        const pricingCapture = rawPricingCapture <= 1
+          ? rawPricingCapture
+          : 1 + (rawPricingCapture - 1) * Math.min(1, macroMarketMultiplier);
         const ltvDemandMultiplier = productType === AssetProductType.Mortgages ? clamp(1 + ((state.behaviour.mortgagePolicy?.maxLtv ?? .85) - .85) * 1.5, .75, 1.2) : 1;
         const demand = neutralBankOpportunity * pipelineParams.baseDemandRateMonthly * dtMonths * pricingCapture * ltvDemandMultiplier;
 

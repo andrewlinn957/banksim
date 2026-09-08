@@ -13,6 +13,9 @@ describe('Funding confidence loop', () => {
     const engine = createSimulationEngine();
     const baselineState = cloneBankState(initialState);
     const stressedState = cloneBankState(initialState);
+    for (const state of [baselineState, stressedState]) {
+      (state.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);
+    }
 
     stressedState.behaviour.depositFranchiseStrength = 0.35;
     stressedState.risk.riskMetrics.cet1Ratio = 0.085;
@@ -37,8 +40,8 @@ describe('Funding confidence loop', () => {
     }).nextState;
 
     expect(
-      fundingRate(stressed, LiabilityProductType.WholesaleFundingST)
-    ).toBeGreaterThan(fundingRate(baseline, LiabilityProductType.WholesaleFundingST));
+      fundingRate(stressed, LiabilityProductType.WholesaleFundingLT)
+    ).toBeGreaterThan(fundingRate(baseline, LiabilityProductType.WholesaleFundingLT));
     expect(stressed.market.wholesaleFundingSpread).toBeGreaterThan(baseline.market.wholesaleFundingSpread);
   });
 });

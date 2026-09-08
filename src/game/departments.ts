@@ -47,15 +47,13 @@ export function departmentSummary(department: Department, state: BankState, hist
     const deposits = customerDeposits(state);
     const change = quarter.opening ? deposits - customerDeposits(quarter.opening) : NaN;
     const term = balance(L.RetailTermDeposits);
-    const interest = state.financial.balanceSheet.items.filter(i => PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit)
-      .reduce((n, i) => n + i.balance * i.interestRate, 0);
     return {
       title: department,
       status: change < 0 ? 'Deposit base contracting' : change > 0 ? 'Deposit base growing' : 'Customer funding',
       metrics: [
         metric('Customer deposits', deposits),
+        metric('Deposit change this quarter', change),
         metric('Fixed-term savings share', deposits > 0 ? term / deposits : 0, 'ratio'),
-        metric('Average annual deposit rate', deposits > 0 ? interest / deposits : NaN, 'ratio'),
         metric('Largest depositor/group', m.largeDepositorShare ?? state.behaviour.largeDepositorShare ?? 0, 'ratio'),
       ],
       explanation: 'Instant-access pricing protects the franchise; fixed-term savings buy contractual stability but create future maturities. Business deposits are less stable, so funding mix matters as much as the headline deposit total.',
@@ -77,7 +75,7 @@ export function departmentSummary(department: Department, state: BankState, hist
       metrics: [
         metric('Gross loan principal', gross),
         metric('Approvals this quarter', approvals),
-        metric('Personal credit', balance(A.ConsumerLoans)),
+        metric('Undrawn commitments', committed),
         metric('Stage 2 and 3 share', gross > 0 ? stressed / gross : 0, 'ratio'),
       ],
       explanation: 'Choose where to deploy scarce balance sheet: mortgages are lower-loss and long-duration, personal credit is higher-yield and higher-loss, and SME lending is cyclical and capital-intensive. Pricing, selectivity and mortgage structure change new vintages rather than rewriting old loans.',

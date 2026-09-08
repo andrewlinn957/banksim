@@ -25,7 +25,7 @@ describe('Confidence state machine', () => {
     stressed.behaviour.reputation = 0.35;
     stressed.financial.capital.cet1 = 30e9;
     const cash = line(stressed, AssetProductType.CashReserves);
-    const stFunding = line(stressed, LiabilityProductType.WholesaleFundingST);
+    const stFunding = line(stressed, LiabilityProductType.WholesaleFundingLT);
     if (!cash || !stFunding) throw new Error('Missing lines for confidence-state test');
     cash.balance = 4e9;
     stFunding.balance = 120e9;
@@ -72,7 +72,7 @@ describe('Confidence state machine', () => {
     recovering.behaviour.reputation = 0.96;
     recovering.financial.capital.cet1 = 65e9;
     const cash = line(recovering, AssetProductType.CashReserves);
-    const stFunding = line(recovering, LiabilityProductType.WholesaleFundingST);
+    const stFunding = line(recovering, LiabilityProductType.WholesaleFundingLT);
     if (!cash || !stFunding) throw new Error('Missing lines for confidence-state recovery test');
     cash.balance = 120e9;
     stFunding.balance = 12e9;

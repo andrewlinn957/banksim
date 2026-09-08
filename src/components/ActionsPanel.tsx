@@ -60,13 +60,23 @@ const Field = ({label,hint,field,state,update,disabled,error,placeholder}:FieldP
   </label>
 );
 
+const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
+  retailDepositRate:'Instant-access savings offer', termDepositRate:'Fixed-term savings offer', corporateDepositRate:'SME/business deposit offer',
+  mortgageRate:'Mortgage new rate', consumerLoanRate:'Personal-credit new rate', corporateLoanRate:'SME/business new rate',
+  mortgageUnderwritingTightness:'Mortgage selectivity', consumerUnderwritingTightness:'Personal-credit selectivity', corporateUnderwritingTightness:'SME/business selectivity',
+  issueLTDebtAmount:'Long-term debt amount', issueEquityAmount:'CET1 equity amount', issueTier2Amount:'Tier 2 amount',
+  boeFundingAmount:'BoE drawing amount', hedgeNotional:'Swap notional', hedgeFixedRate:'Swap fixed rate', dividendPayoutRatio:'Profit payout',
+  giltShareOfHqla:'Gilt share of liquid assets',
+};
+
 export default function ActionsPanel({department,state,onChange,disabled,errors,hasValidationErrors,onNavigateHelp}:Props) {
   const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
+  const firstError = Object.entries(errors ?? {}).find(([,message]) => !!message) as [keyof ActionFormState,string] | undefined;
   const helpId=department==='Customers'?'deposit-behaviour':department==='Lending'?'loan-pipeline':department==='Capital'?'capital-policy-and-distributions':'funding-ladder-and-rollover';
 
   return <div className="stack department-policy-panel">
     <div className="policy-section-title"><h3>{department==='Treasury'?'Balance-sheet policy':'Standing policy'}</h3><small>Standing choices persist. One-off transactions clear after execution.</small></div>
-    {hasValidationErrors && <div role="alert" className="alert danger">Fix invalid inputs before advancing time.</div>}
+    {hasValidationErrors && <div role="alert" className="alert danger">Fix invalid inputs before advancing time.{firstError && <> <strong>{FIELD_LABELS[firstError[0]] ?? firstError[0]}:</strong> {firstError[1]}</>}</div>}
 
     {department==='Customers'&&<>
       <div className="policy-fields policy-fields-primary">

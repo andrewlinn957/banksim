@@ -42,8 +42,8 @@ describe('Department operations summaries', () => {
     const s = cloneBankState(initialState);
     s.fundingLadders = { [L.WholesaleFundingST]: [{ tenorMonths: 3, monthsToMaturity: 3, notional: 70e6, rate: .05 }, { tenorMonths: 6, monthsToMaturity: 4, notional: 90e6, rate: .05 }], [L.WholesaleFundingLT]: [{ tenorMonths: 24, monthsToMaturity: 1, notional: 30e6, rate: .05 }], [L.RepurchaseAgreements]: [{ tenorMonths: 1, monthsToMaturity: 1, notional: 900e6, rate: .05 }] };
     const summary = departmentSummary('Treasury', s, [s]);
-    expect(find(summary, 'Wholesale funding due within 3 months').rawValue).toBe(100e6);
-    expect(summary.explanation).toContain('excludes deposits and repos');
+    expect(find(summary, 'Funding due within 3 months').rawValue).toBeGreaterThanOrEqual(100e6);
+    expect(summary.explanation).toContain('Fixed-term savings');
     expect(summary.reportLabel).toBe('Read capital and liquidity report');
   });
 

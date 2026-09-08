@@ -65,7 +65,7 @@ export const rebalanceCash = (state: BankState): void => {
 };
 
 const calibrateAddressableMarketShares = (state: BankState, config: SimulationConfig): void => {
-  [AssetProductType.Mortgages, AssetProductType.CorporateLoans].forEach((productType) => {
+  [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans].forEach((productType) => {
     const pipeline = config.behaviour.loanPipelineByProduct?.[productType];
     const marketSize = pipeline?.referenceMarketSize;
     if (!pipeline || !marketSize || marketSize <= 0) return;
