@@ -6,18 +6,27 @@ import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
 
 describe('risk reporting UI', () => {
-  it('renders a dense risk dashboard with risk, macro and curve intelligence', () => {
+  it('renders a navigable risk dashboard with structural, macro and curve intelligence', () => {
     const html = renderToStaticMarkup(
       <RiskDashboard state={initialState} config={baseConfig} attribution={null} />
     );
 
     expect(html).toContain('Bank risk position');
+    expect(html).toContain('Capital &amp; liquidity');
     expect(html).toContain('Balance-sheet risk');
-    expect(html).toContain('Franchise &amp; earnings');
+    expect(html).toContain('Structural indicators');
+    expect(html).toContain('Earnings &amp; franchise');
     expect(html).toContain('Macro model');
     expect(html).toContain('Gilt curve');
     expect(html).toContain('CET1');
     expect(html).toContain('LCR');
+
+    expect(html).toContain('Loan / deposit');
+    expect(html).toContain('Liquid assets / assets');
+    expect(html).toContain('RWA density');
+    expect(html).toContain('Stage 2 + 3 loans');
+    expect(html).toContain('Provision / Stage 3');
+    expect(html).toContain('Largest depositor');
 
     expect(html).toContain('Regime');
     expect(html).toContain('Normal');
@@ -30,10 +39,13 @@ describe('risk reporting UI', () => {
     expect(html).toContain('Demand (D)');
     expect(html).toContain('Financial stress (F)');
 
+    expect(html).toContain('aria-label="Current gilt yield curve line chart"');
+    expect(html).toContain('<path class="gilt-curve-line"');
     expect(html).toContain('1Y');
     expect(html).toContain('30Y');
     expect(html).toContain('2s10s');
     expect(html).toContain('NS level β0');
+    expect(html).not.toContain('aria-label="Gilt curve yields"');
     expect(html).not.toContain('stable funding confidence');
 
     expect(html).not.toContain('Prudential dashboard');
