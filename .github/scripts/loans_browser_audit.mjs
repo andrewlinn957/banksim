@@ -30,9 +30,11 @@ await auditPortfolio('Personal loans & revolving credit', 'Consumer', ['Resident
 await auditPortfolio('SME & business lending', 'SME', ['Consumer', 'Residential mortgage']);
 
 const body = await text(page.locator('body'));
-for (const label of ['Net loans', 'Net carrying amount', 'Offer rate', 'Maturity bucket', 'Approved, not yet drawn', 'Performing cohort exposure', 'Largest sector share', 'Largest geography share', 'WA workout lag']) {
+for (const label of ['Net loans', 'Net carrying amount', 'Offer rate', 'Maturity bucket', 'Approved, not yet drawn', 'Performing cohort exposure', 'Largest sector share', 'Largest geography share', 'WA workout lag', 'Current PD', 'Current LGD']) {
   assert(body.includes(label), `Missing audited Loans label: ${label}`);
 }
+assert(!body.includes('Green safer') && !body.includes('Amber middle') && !body.includes('Red riskier'), 'Arbitrary cohort RAG legend remains');
+assert(!body.includes('ThreeToFiveY') && !body.includes('GreaterThan5Y'), 'Raw maturity enum leaked into UI');
 
 // Product-level opening maturity buckets must align with configured representative terms.
 const loanTable = page.locator('table').first();
