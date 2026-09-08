@@ -114,3 +114,22 @@ describe('Contractual funding interest accrual', () => {
 if "describe('Contractual funding interest accrual'" in test_text:
     raise SystemExit('tests already present')
 test.write_text(test_text.rstrip() + block + '\n')
+
+loan_test = Path('src/engine/loanCohorts.test.ts')
+loan_text = loan_test.read_text()
+old_expectation = """    const feeIncome = 0.001 * mortgages.balance;
+    expect(capitalClose.operatingCashDeltaApplied).toBeCloseTo(feeIncome, 12);
+
+    const cashAfterClose = cash.balance;
+    expect(cashAfterClose - cashBeforeClose).toBeCloseTo(capitalClose.operatingCashDeltaApplied, 12);
+    expect(cashAfterClose - cashAfterLoanCashflows).toBeCloseTo(feeIncome, 12);"""
+new_expectation = """    const feeIncome = 0.001 * mortgages.balance;
+    const expectedOperatingCashDelta = feeIncome - accruals.interestExpense;
+    expect(capitalClose.operatingCashDeltaApplied).toBeCloseTo(expectedOperatingCashDelta, 12);
+
+    const cashAfterClose = cash.balance;
+    expect(cashAfterClose - cashBeforeClose).toBeCloseTo(capitalClose.operatingCashDeltaApplied, 12);
+    expect(cashAfterClose - cashAfterLoanCashflows).toBeCloseTo(expectedOperatingCashDelta, 12);"""
+if old_expectation not in loan_text:
+    raise SystemExit('loan cash-flow expectation anchor not found')
+loan_test.write_text(loan_text.replace(old_expectation, new_expectation, 1))
