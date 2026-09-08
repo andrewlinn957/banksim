@@ -21,6 +21,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('src/components/LoansPanel.tsx')
           text = path.read_text()
@@ -57,28 +58,6 @@ jobs:
               raise SystemExit('Loan default/type-guard block not found')
           text = text.replace(old_helpers, new_helpers)
 
-          old_availability = """  const mortgagesAvailable = useMemo(
-            () => hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages),
-            [items, loanCohorts]
-          );
-          const consumerAvailable = useMemo(
-            () => hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans),
-            [items, loanCohorts]
-          );
-          const corporateAvailable = useMemo(
-            () => hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans),
-            [items, loanCohorts]
-          );
-
-          useEffect(() => {
-            const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages
-              ? mortgagesAvailable
-              : selectedPortfolio === AssetProductType.ConsumerLoans
-                ? consumerAvailable
-                : corporateAvailable;
-            if (isSelectedAvailable) return;
-            setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
-          }, [consumerAvailable, corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);"""
           new_availability = """  const selectedPortfolioAvailable = useMemo(
             () => hasPortfolioData(items, loanCohorts, selectedPortfolio),
             [items, loanCohorts, selectedPortfolio]
@@ -88,40 +67,13 @@ jobs:
             if (selectedPortfolioAvailable) return;
             setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
           }, [items, loanCohorts, selectedPortfolioAvailable]);"""
-          if old_availability not in text:
-              raise SystemExit('Loan availability block not found')
-          text = text.replace(old_availability, new_availability)
+          availability_pattern = re.compile(
+              r"  const mortgagesAvailable = useMemo\([\s\S]*?\n  \}, \[consumerAvailable, corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio\]\);"
+          )
+          text, availability_count = availability_pattern.subn(new_availability, text, count=1)
+          if availability_count != 1:
+              raise SystemExit(f'Expected one loan availability block, migrated {availability_count}')
 
-          old_buttons = """          <button
-            type=\"button\"
-            className={`tab-button ${selectedPortfolio === AssetProductType.Mortgages ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.Mortgages)}
-            role=\"tab\"
-            aria-selected={selectedPortfolio === AssetProductType.Mortgages}
-            disabled={!mortgagesAvailable}
-          >
-            {getProduct(AssetProductType.Mortgages).label}
-          </button>
-          <button
-            type=\"button\"
-            className={`tab-button ${selectedPortfolio === AssetProductType.ConsumerLoans ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.ConsumerLoans)}
-            role=\"tab\"
-            aria-selected={selectedPortfolio === AssetProductType.ConsumerLoans}
-            disabled={!consumerAvailable}
-          >
-            {getProduct(AssetProductType.ConsumerLoans).label}
-          </button>
-          <button
-            type=\"button\"
-            className={`tab-button ${selectedPortfolio === AssetProductType.CorporateLoans ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.CorporateLoans)}
-            role=\"tab\"
-            aria-selected={selectedPortfolio === AssetProductType.CorporateLoans}
-            disabled={!corporateAvailable}
-          >
-            {getProduct(AssetProductType.CorporateLoans).label}
-          </button>"""
           new_buttons = """          {LOAN_PORTFOLIOS.map((productType) => (
             <button
               key={productType}
@@ -135,9 +87,15 @@ jobs:
               {getProduct(productType).label}
             </button>
           ))}"""
-          if old_buttons not in text:
-              raise SystemExit('Hard-coded loan selector buttons not found')
-          text = text.replace(old_buttons, new_buttons)
+          tabs_pattern = re.compile(
+              r'(<div className="tabs" role="tablist" aria-label="Loan portfolio selector">\n)[\s\S]*?(\n        </div>)'
+          )
+          text, tabs_count = tabs_pattern.subn(lambda m: m.group(1) + new_buttons + m.group(2), text, count=1)
+          if tabs_count != 1:
+              raise SystemExit(f'Expected one loan selector tablist, migrated {tabs_count}')
+
+          if any(name in text for name in ['mortgagesAvailable', 'consumerAvailable', 'corporateAvailable']):
+              raise SystemExit('Hard-coded loan availability variables remain')
           path.write_text(text)
           PY
       - name: Remove temporary migration workflow and commit
