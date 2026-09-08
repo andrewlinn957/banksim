@@ -23,12 +23,18 @@ describe('Confidence state machine', () => {
     stressed.behaviour.fundingConfidenceState = 'strong';
     stressed.behaviour.depositFranchiseStrength = 0.3;
     stressed.behaviour.reputation = 0.35;
-    stressed.financial.capital.cet1 = 30e9;
+
+    // Create a plausible retail-bank stress: reduced CET1 plus an encumbered liquidity portfolio.
+    // Preserve the accounting identity by taking the capital reduction out of cash rather than
+    // inventing a giant wholesale liability as the old universal-bank test did.
     const cash = line(stressed, AssetProductType.CashReserves);
-    const stFunding = line(stressed, LiabilityProductType.WholesaleFundingLT);
-    if (!cash || !stFunding) throw new Error('Missing lines for confidence-state test');
-    cash.balance = 4e9;
-    stFunding.balance = 120e9;
+    const gilts = line(stressed, AssetProductType.Gilts);
+    if (!cash || !gilts) throw new Error('Missing liquidity lines for confidence-state test');
+    const targetCet1 = 0.35e9;
+    cash.balance += targetCet1 - stressed.financial.capital.cet1;
+    stressed.financial.capital.cet1 = targetCet1;
+    gilts.encumbrance.encumberedAmount = gilts.balance;
+    gilts.encumbrance.remainingMonths = 12;
 
     const afterOne = engine.step({ state: stressed, config: baseConfig, actions: [], shocks: [] }).nextState;
     const afterTwo = engine.step({ state: afterOne, config: baseConfig, actions: [], shocks: [] }).nextState;
@@ -72,10 +78,10 @@ describe('Confidence state machine', () => {
     recovering.behaviour.reputation = 0.96;
     recovering.financial.capital.cet1 = 65e9;
     const cash = line(recovering, AssetProductType.CashReserves);
-    const stFunding = line(recovering, LiabilityProductType.WholesaleFundingLT);
-    if (!cash || !stFunding) throw new Error('Missing lines for confidence-state recovery test');
+    const ltFunding = line(recovering, LiabilityProductType.WholesaleFundingLT);
+    if (!cash || !ltFunding) throw new Error('Missing lines for confidence-state recovery test');
     cash.balance = 120e9;
-    stFunding.balance = 12e9;
+    ltFunding.balance = 12e9;
 
     const afterOne = engine.step({ state: recovering, config: baseConfig, actions: [], shocks: [] }).nextState;
     const afterTwo = engine.step({ state: afterOne, config: baseConfig, actions: [], shocks: [] }).nextState;
@@ -87,4 +93,3 @@ describe('Confidence state machine', () => {
     expect(afterThree.behaviour.confidenceUpgradeProgressMonths ?? 0).toBe(0);
   });
 });
-
