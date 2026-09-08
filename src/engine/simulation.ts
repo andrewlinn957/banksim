@@ -2192,7 +2192,25 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
   const interestIncome = assets
     .filter((a) => !PRODUCTS[a.productType]?.behaviour?.isLoan)
     .reduce((sum, a) => sum + (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears, 0);
-  const interestExpense = liabilities.reduce((sum, l) => sum + l.balance * l.interestRate * dtYears, 0);
+  const interestExpense = liabilities.reduce((sum, liability) => {
+    const buckets = state.fundingLadders?.[liability.productType] ?? [];
+    if (buckets.length === 0) {
+      return sum + liability.balance * liability.interestRate * dtYears;
+    }
+
+    const contractualNotional = buckets.reduce(
+      (bucketSum, bucket) => bucketSum + Math.max(0, bucket.notional),
+      0
+    );
+    const contractualExpense = buckets.reduce(
+      (bucketSum, bucket) =>
+        bucketSum + Math.max(0, bucket.notional) * Math.max(0, bucket.rate) * dtYears,
+      0
+    );
+    const unbucketedBalance = Math.max(0, liability.balance - contractualNotional);
+
+    return sum + contractualExpense + unbucketedBalance * liability.interestRate * dtYears;
+  }, 0);
 
   return { assets, liabilities, interestIncome, interestExpense };
 };
