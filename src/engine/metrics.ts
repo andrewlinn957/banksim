@@ -9,7 +9,7 @@ import { SimulationConfig } from '../domain/config';
 import { ComplianceStatus, FundingConfidenceState, RiskLimits, RiskMetrics } from '../domain/risks';
 import { LiquidityTag } from '../domain/liquidity';
 import { LoanGeography, LoanSector } from '../domain/loanCohorts';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 
 export const HQLA_FACTORS: Record<HQLALevel, number> = {
   [HQLALevel.Level1]: 1.0,
@@ -23,7 +23,7 @@ const FUNDING_PRODUCTS: ProductType[] = [LiabilityProductType.RetailTermDeposits
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
 const isCustomerDeposit = (productType: ProductType): boolean =>
-  Boolean(PRODUCT_META[productType]?.behaviour?.isCustomerDeposit);
+  Boolean(PRODUCTS[productType]?.behaviour?.isCustomerDeposit);
 
 const isRecessionRegime = (state: BankState): boolean =>
   state.market.macroModel.gdpRegime === 'recession' ||
@@ -64,7 +64,7 @@ const computeDepositQualityIndex = (state: BankState): number => {
     const quality = clamp(qualityMap[item.productType] ?? 1, 0.4, 1.1);
     return sum + balance * quality;
   }, 0);
-  const retail = deposits.filter(i => PRODUCT_META[i.productType]?.behaviour?.depositSegment === 'retail').reduce((s,i)=>s+Math.max(0,i.balance),0);
+  const retail = deposits.filter(i => PRODUCTS[i.productType]?.behaviour?.depositSegment === 'retail').reduce((s,i)=>s+Math.max(0,i.balance),0);
   const insured = clamp(state.behaviour.insuredRetailDepositShare ?? .9, 0, 1);
   const large = clamp(state.behaviour.largeDepositorShare ?? .04, 0, .5);
   const uninsuredPenalty = retail > 0 ? (1-insured) * .18 : 0;
@@ -193,7 +193,7 @@ const computeConcentrationMetrics = (state: BankState): ConcentrationMetricSet =
     [ProductType, Array<{ outstandingPrincipal: number; sector?: LoanSector; geography?: LoanGeography; cohortId: number }>]
   >;
   entries.forEach(([productType, cohorts]) => {
-    if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
+    if (!PRODUCTS[productType]?.behaviour?.isLoan) return;
     (cohorts ?? []).forEach((cohort) => {
       const exposure = Math.max(0, cohort.outstandingPrincipal ?? 0);
       if (exposure <= 0) return;
@@ -495,7 +495,7 @@ export const calculateRiskMetrics = ({
     depositQualityIndex,
     insuredRetailDepositShare: clamp(state.behaviour.insuredRetailDepositShare ?? .9,0,1),
     largeDepositorShare: clamp(state.behaviour.largeDepositorShare ?? .04,0,.5),
-    termDepositShare: (()=>{const deps=state.financial.balanceSheet.items.filter(i=>PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit).reduce((s,i)=>s+Math.max(0,i.balance),0); const term=state.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.balance??0; return deps>0?term/deps:0;})(),
+    termDepositShare: (()=>{const deps=state.financial.balanceSheet.items.filter(i=>PRODUCTS[i.productType]?.behaviour?.isCustomerDeposit).reduce((s,i)=>s+Math.max(0,i.balance),0); const term=state.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.balance??0; return deps>0?term/deps:0;})(),
     asf,
     fundingMaturing12m,
   });

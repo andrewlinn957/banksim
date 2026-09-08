@@ -5,7 +5,7 @@ import { SimulationConfig } from '../../domain/config';
 import { AssetProductType, BalanceSheetSide, ProductType } from '../../domain/enums';
 import { calculateRiskMetrics, evaluateCompliance } from '../../engine/metrics';
 import { cloneBankState } from '../../engine/clone';
-import { PRODUCT_META } from '../../domain/productMeta';
+import { PRODUCTS } from '../../products/catalogue';
 import { calculateProvisionTargetFromCohorts, sumLoanOutstanding } from '../../engine/loanCohorts';
 
 const cloneConfig = (): SimulationConfig => JSON.parse(JSON.stringify(baseConfig)) as SimulationConfig;
@@ -39,7 +39,7 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
     }
   }
 
-  if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
+  if (!PRODUCTS[productType]?.behaviour?.isLoan) return;
 
   const cohorts = state.loanCohorts[productType] ?? [];
   const workoutBuckets = state.workoutPipelines[productType] ?? [];
