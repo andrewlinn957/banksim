@@ -1,0 +1,16 @@
+name: Catalogue audit
+
+on:
+  push:
+    branches: [product-catalogue]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inventory remaining legacy paths
+        run: |
+          grep -RInE 'ReverseRepo|RepurchaseAgreements|RetailDeposits|CorporateDeposits|enterRepo|EnterRepoAction|applyRepo|applyEnterRepo' src || true
+          echo '--- PRODUCT_META / productMeta ---'
+          grep -RInE 'PRODUCT_META|productMeta' src || true
