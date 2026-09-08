@@ -101,3 +101,85 @@ describe('Funding ladder lifecycle', () => {
     expect(stressedRate).toBeGreaterThan(strongRate);
   });
 });
+
+describe('Contractual funding interest accrual', () => {
+  const configWithoutDepositFlows = {
+    ...baseConfig,
+    featureFlags: {
+      ...baseConfig.featureFlags,
+      depositSegmentation: false,
+    },
+  };
+
+  it('does not reprice existing fixed-term deposits when the offer changes without new deposits', () => {
+    const engine = createSimulationEngine();
+    const baselineState = cloneBankState(initialState);
+    const repricedState = cloneBankState(initialState);
+
+    const baseline = engine.step({
+      state: baselineState,
+      config: configWithoutDepositFlows,
+      actions: [],
+      shocks: [],
+    }).nextState;
+
+    const repriced = engine.step({
+      state: repricedState,
+      config: configWithoutDepositFlows,
+      actions: [
+        {
+          type: 'adjustRate',
+          productType: LiabilityProductType.RetailTermDeposits,
+          newRate: 0.028,
+        },
+      ],
+      shocks: [],
+    }).nextState;
+
+    const repricedBuckets = repriced.fundingLadders[LiabilityProductType.RetailTermDeposits] ?? [];
+    expect(repricedBuckets.length).toBeGreaterThan(0);
+    expect(repricedBuckets.every((bucket) => Math.abs(bucket.rate - 0.038) < 1e-12)).toBe(true);
+    expect(repriced.financial.incomeStatement.interestExpense).toBeCloseTo(
+      baseline.financial.incomeStatement.interestExpense,
+      6
+    );
+  });
+
+  it('uses the surviving bucket coupon after one fixed-term deposit bucket matures', () => {
+    const engine = createSimulationEngine();
+    const state = cloneBankState(initialState);
+    const termLine = state.financial.balanceSheet.items.find(
+      (item) => item.productType === LiabilityProductType.RetailTermDeposits
+    );
+    if (!termLine) throw new Error('Missing fixed-term deposit line');
+
+    state.financial.balanceSheet.items
+      .filter((item) => item.side === 'Liability' && item.productType !== LiabilityProductType.RetailTermDeposits)
+      .forEach((item) => { item.interestRate = 0; });
+    Object.values(state.fundingLadders).forEach((buckets) =>
+      buckets?.forEach((bucket) => { bucket.rate = 0; })
+    );
+
+    termLine.balance = 1.5e9;
+    termLine.interestRate = 0.01;
+    state.fundingLadders[LiabilityProductType.RetailTermDeposits] = [
+      { tenorMonths: 12, monthsToMaturity: 1, notional: 0.5e9, rate: 0.05 },
+      { tenorMonths: 12, monthsToMaturity: 12, notional: 1.0e9, rate: 0.02 },
+    ];
+
+    const next = engine.step({
+      state,
+      config: configWithoutDepositFlows,
+      actions: [],
+      shocks: [],
+    }).nextState;
+
+    const remaining = next.fundingLadders[LiabilityProductType.RetailTermDeposits] ?? [];
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].notional).toBeCloseTo(1.0e9, 2);
+    expect(remaining[0].rate).toBeCloseTo(0.02, 12);
+    expect(lineBalance(next, LiabilityProductType.RetailTermDeposits)).toBeCloseTo(1.0e9, 2);
+    expect(next.financial.incomeStatement.interestExpense).toBeCloseTo(1.0e9 * 0.02 / 12, 2);
+  });
+});
+
