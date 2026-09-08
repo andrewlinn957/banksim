@@ -3,10 +3,11 @@ import { assetCreditRwa } from '../engine/creditRwa';
 import { useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { AssetProductType, BalanceSheetSide, HQLALevel } from '../domain/enums';
+import { BalanceSheetSide, HQLALevel } from '../domain/enums';
 import { AttributionLineSelection, StepAttribution } from '../domain/attribution';
 import { computeHqla, HQLA_FACTORS } from '../engine/metrics';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, eligibleCet1, prudentialLiquidityLines } from '../engine/prudential';
+import { liquidityTagForProduct, productTypesWithLeverageTreatment } from '../products/regulatory';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
 import CapitalDashboard from './CapitalDashboard';
@@ -19,6 +20,8 @@ import RiskAppetiteEditor, { RiskAppetite } from './RiskAppetiteEditor';
 type Metric = 'capital' | 'rwa' | 'leverage' | 'lcr' | 'nsfr';
 interface Props { state: BankState; history: BankState[]; config: SimulationConfig; pendingRiskAppetite?:RiskAppetite|null; onRiskAppetite?:(t:RiskAppetite|null)=>void; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; }
 interface Row { label: string; value: number; factor?: number; ratio?: boolean; total?: boolean; }
+
+const DERIVATIVE_LEVERAGE_PRODUCTS = new Set(productTypesWithLeverageTreatment('derivativeAssetReplacement'));
 
 export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric): Row[] => {
   const m = s.risk.riskMetrics, assets = s.financial.balanceSheet.items.filter(i => i.side === BalanceSheetSide.Asset);
@@ -38,15 +41,21 @@ export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric
     rows.push({ label: 'Undrawn commitments and configured risk add-ons', value: m.rwa - rows.reduce((sum, r) => sum + r.value, 0) });
     return [...rows, { label: 'Total risk-weighted assets', value: m.rwa, total: true }];
   }
-  if (metric === 'leverage') return [
-    ...assets.map(i => ({ label: i.label, value: i.balance })),
-    { label: 'Replace derivative book value with prudential exposure', value: hedgeExposures(s).leverage - (assets.find(i=>i.productType===AssetProductType.DerivativeAssets)?.balance ?? 0) },
-    { label: 'Eligible central bank reserves exclusion', value: -centralBankExclusion(s) },
-    { label: 'Undrawn commitments × 20% CCF', value: committedExposure(s) * .2, factor: .2 },
-    { label: 'Total exposure measure', value: m.leverageExposure, total: true },
-    { label: 'Eligible Tier 1 capital', value: eligibleCet1(s, c) + s.financial.capital.at1 },
-    { label: 'Leverage ratio', value: m.leverageRatio, ratio: true, total: true },
-  ];
+  if (metric === 'leverage') {
+    const derivativeBook = assets.reduce(
+      (sum, item) => sum + (DERIVATIVE_LEVERAGE_PRODUCTS.has(item.productType) ? Math.max(0, item.balance) : 0),
+      0
+    );
+    return [
+      ...assets.map(i => ({ label: i.label, value: i.balance })),
+      { label: 'Replace derivative book value with prudential exposure', value: hedgeExposures(s).leverage - derivativeBook },
+      { label: 'Eligible central bank reserves exclusion', value: -centralBankExclusion(s) },
+      { label: 'Undrawn commitments × 20% CCF', value: committedExposure(s) * .2, factor: .2 },
+      { label: 'Total exposure measure', value: m.leverageExposure, total: true },
+      { label: 'Eligible Tier 1 capital', value: eligibleCet1(s, c) + s.financial.capital.at1 },
+      { label: 'Leverage ratio', value: m.leverageRatio, ratio: true, total: true },
+    ];
+  }
   if (metric === 'nsfr') return [
     { label: 'ASF · eligible capital', value: eligibleCet1(s, c) + s.financial.capital.at1, factor: 1 },
     ...lines.filter(l => !l.asset).map(l => ({ label: `ASF · ${l.label}`, value: l.asf, factor: l.balance > 0 ? l.asf / l.balance : 0 })),
@@ -56,7 +65,14 @@ export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric
     { label: 'Total required stable funding', value: m.rsf, total: true },
     { label: 'NSFR', value: m.nsfr, ratio: true, total: true },
   ];
-  const hqlaRows = assets.filter(i => i.liquidityTag?.hqlaLevel !== HQLALevel.None).map(i => ({ label: `HQLA · ${i.label}`, value: Math.max(0, i.balance - Math.max(0, i.encumbrance?.encumberedAmount ?? 0)) * (HQLA_FACTORS[i.liquidityTag?.hqlaLevel] ?? 0), factor: HQLA_FACTORS[i.liquidityTag?.hqlaLevel] ?? 0 }));
+  const hqlaRows = assets
+    .map(i => ({ item: i, tag: liquidityTagForProduct(i.productType) }))
+    .filter(({ tag }) => tag.hqlaLevel !== HQLALevel.None)
+    .map(({ item, tag }) => ({
+      label: `HQLA · ${item.label}`,
+      value: Math.max(0, item.balance - Math.max(0, item.encumbrance?.encumberedAmount ?? 0)) * (HQLA_FACTORS[tag.hqlaLevel] ?? 0),
+      factor: HQLA_FACTORS[tag.hqlaLevel] ?? 0,
+    }));
   const out = lines.reduce((sum, l) => sum + l.outflow, undrawn.outflow), incoming = lines.reduce((sum, l) => sum + l.inflow, 0);
   return [
     ...hqlaRows, { label: 'HQLA composition cap adjustment', value: computeHqla(assets) - hqlaRows.reduce((sum, r) => sum + r.value, 0) },

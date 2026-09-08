@@ -5,6 +5,43 @@ export type DepositBenchmark = 'retailCurrentAccount' | 'termDeposit' | 'corpora
 export type LoanBenchmark = 'mortgage' | 'consumer' | 'corporate';
 export type WholesaleFundingTenorClass = 'short' | 'long';
 
+export type LiquidityRegulatoryClass =
+  | 'derivativeAsset'
+  | 'derivativeLiability'
+  | 'creditProvision'
+  | 'centralBankReserve'
+  | 'level1Sovereign'
+  | 'residentialMortgage'
+  | 'consumerLoan'
+  | 'corporateLoan'
+  | 'retailSightDeposit'
+  | 'retailTermDeposit'
+  | 'corporateOperatingDeposit'
+  | 'corporateNonOperatingDeposit'
+  | 'wholesaleFundingShort'
+  | 'wholesaleFundingLong'
+  | 'centralBankSecuredFunding'
+  | 'tier2Funding';
+
+export type CreditRiskRegulatoryClass =
+  | 'derivativeCounterparty'
+  | 'centralBank'
+  | 'sovereign'
+  | 'residentialMortgage'
+  | 'retailUnsecured'
+  | 'corporate'
+  | 'none';
+
+export type CapitalRegulatoryClass = 'none' | 'tier2OwnFunds';
+export type LeverageRegulatoryClass = 'standard' | 'derivativeAssetReplacement' | 'centralBankReserve';
+
+export interface ProductRegulatoryClassification {
+  liquidity: LiquidityRegulatoryClass;
+  creditRisk: CreditRiskRegulatoryClass;
+  capital: CapitalRegulatoryClass;
+  leverage: LeverageRegulatoryClass;
+}
+
 export interface CustomerDepositCapability {
   segment: DepositSegment;
   benchmark: DepositBenchmark;
@@ -49,6 +86,7 @@ export interface ProductDefinitionInput<T extends string = string> {
   label: string;
   side: ProductSide;
   capabilities: ProductCapabilities;
+  regulatory: ProductRegulatoryClassification;
 }
 
 export interface ProductDefinition<T extends string = string> extends ProductDefinitionInput<T> {
@@ -81,18 +119,36 @@ export const ASSET_PRODUCTS = defineProducts({
     label: 'Derivative assets',
     side: 'Asset',
     capabilities: {},
+    regulatory: {
+      liquidity: 'derivativeAsset',
+      creditRisk: 'derivativeCounterparty',
+      capital: 'none',
+      leverage: 'derivativeAssetReplacement',
+    },
   },
   CashReserves: {
     productType: 'CashReserves',
     label: 'Cash & Reserves',
     side: 'Asset',
     capabilities: {},
+    regulatory: {
+      liquidity: 'centralBankReserve',
+      creditRisk: 'centralBank',
+      capital: 'none',
+      leverage: 'centralBankReserve',
+    },
   },
   Gilts: {
     productType: 'Gilts',
     label: 'Gilts / Liquidity Portfolio',
     side: 'Asset',
     capabilities: {},
+    regulatory: {
+      liquidity: 'level1Sovereign',
+      creditRisk: 'sovereign',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   Mortgages: {
     productType: 'Mortgages',
@@ -104,6 +160,12 @@ export const ASSET_PRODUCTS = defineProducts({
         behaviouralFlow: true,
         underwritingEditable: true,
       },
+    },
+    regulatory: {
+      liquidity: 'residentialMortgage',
+      creditRisk: 'residentialMortgage',
+      capital: 'none',
+      leverage: 'standard',
     },
   },
   ConsumerLoans: {
@@ -117,6 +179,12 @@ export const ASSET_PRODUCTS = defineProducts({
         underwritingEditable: true,
       },
     },
+    regulatory: {
+      liquidity: 'consumerLoan',
+      creditRisk: 'retailUnsecured',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   CorporateLoans: {
     productType: 'CorporateLoans',
@@ -129,6 +197,12 @@ export const ASSET_PRODUCTS = defineProducts({
         underwritingEditable: true,
       },
     },
+    regulatory: {
+      liquidity: 'corporateLoan',
+      creditRisk: 'corporate',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
 });
 
@@ -138,12 +212,24 @@ export const LIABILITY_PRODUCTS = defineProducts({
     label: 'Derivative liabilities',
     side: 'Liability',
     capabilities: {},
+    regulatory: {
+      liquidity: 'derivativeLiability',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   CreditProvisions: {
     productType: 'CreditProvisions',
     label: 'Undrawn credit provisions',
     side: 'Liability',
     capabilities: {},
+    regulatory: {
+      liquidity: 'creditProvision',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   RetailCurrentAccounts: {
     productType: 'RetailCurrentAccounts',
@@ -155,6 +241,12 @@ export const LIABILITY_PRODUCTS = defineProducts({
         benchmark: 'retailCurrentAccount',
         behaviouralFlow: true,
       },
+    },
+    regulatory: {
+      liquidity: 'retailSightDeposit',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
     },
   },
   RetailTermDeposits: {
@@ -169,6 +261,12 @@ export const LIABILITY_PRODUCTS = defineProducts({
         termFunding: true,
       },
     },
+    regulatory: {
+      liquidity: 'retailTermDeposit',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   CorporateOperatingDeposits: {
     productType: 'CorporateOperatingDeposits',
@@ -180,6 +278,12 @@ export const LIABILITY_PRODUCTS = defineProducts({
         benchmark: 'corporateDeposit',
         behaviouralFlow: true,
       },
+    },
+    regulatory: {
+      liquidity: 'corporateOperatingDeposit',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
     },
   },
   CorporateNonOperatingDeposits: {
@@ -193,6 +297,12 @@ export const LIABILITY_PRODUCTS = defineProducts({
         behaviouralFlow: true,
       },
     },
+    regulatory: {
+      liquidity: 'corporateNonOperatingDeposit',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   WholesaleFundingST: {
     productType: 'WholesaleFundingST',
@@ -203,6 +313,12 @@ export const LIABILITY_PRODUCTS = defineProducts({
         tenorClass: 'short',
         issuable: true,
       },
+    },
+    regulatory: {
+      liquidity: 'wholesaleFundingShort',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
     },
   },
   WholesaleFundingLT: {
@@ -215,18 +331,36 @@ export const LIABILITY_PRODUCTS = defineProducts({
         issuable: true,
       },
     },
+    regulatory: {
+      liquidity: 'wholesaleFundingLong',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   BankOfEnglandFunding: {
     productType: 'BankOfEnglandFunding',
     label: 'Bank of England secured funding',
     side: 'Liability',
     capabilities: {},
+    regulatory: {
+      liquidity: 'centralBankSecuredFunding',
+      creditRisk: 'none',
+      capital: 'none',
+      leverage: 'standard',
+    },
   },
   Tier2Debt: {
     productType: 'Tier2Debt',
     label: 'Tier 2 subordinated debt',
     side: 'Liability',
     capabilities: {},
+    regulatory: {
+      liquidity: 'tier2Funding',
+      creditRisk: 'none',
+      capital: 'tier2OwnFunds',
+      leverage: 'standard',
+    },
   },
 });
 

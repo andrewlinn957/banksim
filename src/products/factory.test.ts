@@ -4,6 +4,7 @@ import { BalanceSheet } from '../domain/balanceSheet';
 import { BalanceSheetSide, Currency, MaturityBucket } from '../domain/enums';
 import { AssetProductType, LiabilityProductType } from './catalogue';
 import { createPosition } from './factory';
+import { liquidityTagForProduct } from './regulatory';
 import {
   assetPositions,
   findProductPosition,
@@ -12,7 +13,7 @@ import {
 } from './selectors';
 
 describe('position factory', () => {
-  it('derives product identity and config-backed metadata', () => {
+  it('derives product identity and regulatory metadata', () => {
     const mortgage = createPosition(baseConfig, {
       productType: AssetProductType.Mortgages,
       balance: 7e9,
@@ -30,7 +31,7 @@ describe('position factory', () => {
       maturityBucket: MaturityBucket.GreaterThan5Y,
       encumbrance: { encumberedAmount: 0 },
     });
-    expect(mortgage.liquidityTag).toBe(baseConfig.liquidityTags[AssetProductType.Mortgages]);
+    expect(mortgage.liquidityTag).toEqual(liquidityTagForProduct(AssetProductType.Mortgages));
     expect(mortgage.security).toBeUndefined();
   });
 

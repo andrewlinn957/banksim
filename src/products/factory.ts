@@ -2,6 +2,7 @@ import { BalanceSheetItem } from '../domain/balanceSheet';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide, Currency, MaturityBucket, ProductType } from '../domain/enums';
 import { getProduct } from './catalogue';
+import { liquidityTagForProduct } from './regulatory';
 
 export interface PositionInput<T extends ProductType = ProductType> {
   productType: T;
@@ -12,15 +13,15 @@ export interface PositionInput<T extends ProductType = ProductType> {
   encumberedAmount?: number;
 }
 
-type PositionConfig = Pick<SimulationConfig, 'liquidityTags' | 'behaviour'>;
+type PositionConfig = Pick<SimulationConfig, 'behaviour'>;
 
 /**
  * Builds a balance-sheet position from the authoritative product catalogue and
  * the active simulation configuration.
  *
- * Product identity fields come from the catalogue. Position-specific values
- * such as balance, rate and maturity remain explicit inputs, while regulatory
- * and securities metadata are derived from the active config.
+ * Product identity and prudential classification come from the catalogue.
+ * Position-specific values such as balance, rate and maturity remain explicit
+ * inputs, while securities accounting metadata remains configurable.
  */
 export const createPosition = <T extends ProductType>(
   config: PositionConfig,
@@ -38,7 +39,7 @@ export const createPosition = <T extends ProductType>(
     balance: input.balance,
     interestRate: input.interestRate,
     maturityBucket: input.maturityBucket,
-    liquidityTag: config.liquidityTags[input.productType],
+    liquidityTag: liquidityTagForProduct(input.productType),
     encumbrance: { encumberedAmount: input.encumberedAmount ?? 0 },
     security: classification
       ? {
