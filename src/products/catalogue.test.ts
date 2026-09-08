@@ -99,6 +99,25 @@ describe('product catalogue', () => {
     });
   });
 
+  it('assigns each product a complete prudential classification', () => {
+    [...assetProducts(), ...liabilityProducts()].forEach(product => {
+      expect(product.regulatory).toEqual({
+        liquidity: expect.any(String),
+        creditRisk: expect.any(String),
+        capital: expect.any(String),
+        leverage: expect.any(String),
+      });
+    });
+    expect(getProduct(AssetProductType.Mortgages).regulatory).toMatchObject({
+      liquidity: 'residentialMortgage',
+      creditRisk: 'residentialMortgage',
+    });
+    expect(getProduct(LiabilityProductType.Tier2Debt).regulatory).toMatchObject({
+      liquidity: 'tier2Funding',
+      capital: 'tier2OwnFunds',
+    });
+  });
+
   it('does not retain deleted legacy products', () => {
     expect(Object.keys(PRODUCTS).filter(id => legacyProductIds.includes(id))).toEqual([]);
   });
