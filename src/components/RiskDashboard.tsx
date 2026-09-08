@@ -152,15 +152,6 @@ const RiskDashboard = ({ state, config, attribution }: Props) => {
         </div>
       </header>
 
-      <nav className="risk-jump-nav" aria-label="Risk dashboard sections">
-        <a href="#risk-capital-liquidity">Capital & liquidity</a>
-        <a href="#risk-balance-sheet">Balance sheet</a>
-        <a href="#risk-structural">Structural indicators</a>
-        <a href="#risk-earnings">Earnings</a>
-        <a href="#risk-macro">Macro</a>
-        <a href="#risk-gilt-curve">Gilt curve</a>
-      </nav>
-
       <section id="risk-capital-liquidity" className="risk-signal-section">
         <div className="risk-section-heading">
           <div><span className="risk-section-mark risk-mark-regulatory" />Capital & liquidity</div>
