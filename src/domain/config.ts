@@ -1,6 +1,5 @@
 import { ProductType } from './enums';
 import { SecuritiesClassification } from './balanceSheet';
-import { LiquidityTag } from './liquidity';
 import { LoanGeography, LoanSector } from './loanCohorts';
 import { FundingConfidenceState, RiskLimits } from './risks';
 
@@ -35,7 +34,6 @@ export interface LoanCohortParameters {
 
 export interface ProductRiskParameters {
   productType: ProductType;
-  riskWeight: number;
   baseDefaultRate: number;
   lossGivenDefault: number;
   volumeElasticityToRate: number;
@@ -347,7 +345,6 @@ export interface ToleranceParameters {
 export interface SimulationConfig {
   version: string;
   productParameters: Record<ProductType, ProductRiskParameters>;
-  liquidityTags: Record<ProductType, LiquidityTag>;
   global: GlobalSimulationParameters;
   riskLimits: RiskLimits;
   behaviour: BehaviourParameters;

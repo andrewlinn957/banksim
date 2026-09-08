@@ -5,6 +5,8 @@ import { LoanPipelineState } from '../domain/bankState';
 import { AssetProductType, MaturityBucket, ProductType } from '../domain/enums';
 import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
+import { getProduct } from '../products/catalogue';
+import { LoanProductType, productTypesWithCapability } from '../products/capabilities';
 
 interface Props {
   items: BalanceSheetItem[];
@@ -13,14 +15,8 @@ interface Props {
   workoutPipelines?: Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 }
 
-const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;
-type LoanPortfolioType = (typeof LOAN_PORTFOLIOS)[number];
-
-const PORTFOLIO_LABEL: Record<LoanPortfolioType, string> = {
-  [AssetProductType.Mortgages]: 'Residential mortgages',
-  [AssetProductType.ConsumerLoans]: 'Personal loans & revolving credit',
-  [AssetProductType.CorporateLoans]: 'SME & business lending',
-};
+const LOAN_PORTFOLIOS = productTypesWithCapability('loan');
+type LoanPortfolioType = LoanProductType;
 
 const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
 const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
@@ -328,16 +324,16 @@ const getDefaultPortfolio = (
   items: readonly BalanceSheetItem[],
   loanCohorts: Partial<Record<ProductType, LoanCohort[]>> | undefined
 ): LoanPortfolioType => {
-  if (hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages)) return AssetProductType.Mortgages;
-  if (hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans)) return AssetProductType.ConsumerLoans;
-  if (hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans)) return AssetProductType.CorporateLoans;
-  return AssetProductType.Mortgages;
+  const available = LOAN_PORTFOLIOS.find((portfolio) => hasPortfolioData(items, loanCohorts, portfolio));
+  const fallback = LOAN_PORTFOLIOS[0];
+  if (!fallback) throw new Error('Product catalogue has no loan-capable products');
+  return available ?? fallback;
 };
 
 const isLoanPortfolioItem = (
   item: BalanceSheetItem
 ): item is BalanceSheetItem & { productType: LoanPortfolioType } =>
-  item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.ConsumerLoans || item.productType === AssetProductType.CorporateLoans;
+  LOAN_PORTFOLIOS.includes(item.productType as LoanPortfolioType);
 
 const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Props) => {
   const loans = useMemo(() => items.filter(isLoanPortfolioItem), [items]);
@@ -345,28 +341,15 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
 
   const [selectedPortfolio, setSelectedPortfolio] = useState<LoanPortfolioType>(() => getDefaultPortfolio(items, loanCohorts));
 
-  const mortgagesAvailable = useMemo(
-    () => hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages),
-    [items, loanCohorts]
-  );
-  const consumerAvailable = useMemo(
-    () => hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans),
-    [items, loanCohorts]
-  );
-  const corporateAvailable = useMemo(
-    () => hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans),
-    [items, loanCohorts]
-  );
+  const selectedPortfolioAvailable = useMemo(
+  () => hasPortfolioData(items, loanCohorts, selectedPortfolio),
+  [items, loanCohorts, selectedPortfolio]
+);
 
-  useEffect(() => {
-    const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages
-      ? mortgagesAvailable
-      : selectedPortfolio === AssetProductType.ConsumerLoans
-        ? consumerAvailable
-        : corporateAvailable;
-    if (isSelectedAvailable) return;
-    setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
-  }, [consumerAvailable, corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);
+useEffect(() => {
+  if (selectedPortfolioAvailable) return;
+  setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
+}, [items, loanCohorts, selectedPortfolioAvailable]);
 
   const [loanSummarySort, setLoanSummarySort] = useState<{ key: LoanSummaryColumnKey; direction: SortDirection } | null>(null);
   const [loanSummaryFilters, setLoanSummaryFilters] = useState<Record<LoanSummaryColumnKey, string>>(() => ({
@@ -558,36 +541,19 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <h3>Loan Portfolio</h3>
         <div className="tabs" role="tablist" aria-label="Loan portfolio selector">
-          <button
-            type="button"
-            className={`tab-button ${selectedPortfolio === AssetProductType.Mortgages ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.Mortgages)}
-            role="tab"
-            aria-selected={selectedPortfolio === AssetProductType.Mortgages}
-            disabled={!mortgagesAvailable}
-          >
-            {PORTFOLIO_LABEL[AssetProductType.Mortgages]}
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${selectedPortfolio === AssetProductType.ConsumerLoans ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.ConsumerLoans)}
-            role="tab"
-            aria-selected={selectedPortfolio === AssetProductType.ConsumerLoans}
-            disabled={!consumerAvailable}
-          >
-            {PORTFOLIO_LABEL[AssetProductType.ConsumerLoans]}
-          </button>
-          <button
-            type="button"
-            className={`tab-button ${selectedPortfolio === AssetProductType.CorporateLoans ? 'active' : ''}`}
-            onClick={() => setSelectedPortfolio(AssetProductType.CorporateLoans)}
-            role="tab"
-            aria-selected={selectedPortfolio === AssetProductType.CorporateLoans}
-            disabled={!corporateAvailable}
-          >
-            {PORTFOLIO_LABEL[AssetProductType.CorporateLoans]}
-          </button>
+          {LOAN_PORTFOLIOS.map((productType) => (
+  <button
+    key={productType}
+    type="button"
+    className={`tab-button ${selectedPortfolio === productType ? 'active' : ''}`}
+    onClick={() => setSelectedPortfolio(productType)}
+    role="tab"
+    aria-selected={selectedPortfolio === productType}
+    disabled={!hasPortfolioData(items, loanCohorts, productType)}
+  >
+    {getProduct(productType).label}
+  </button>
+))}
         </div>
       </div>
       <div className="muted">
@@ -756,7 +722,7 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
 
       <div className="stack" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0 }}>Cohort breakdown — {PORTFOLIO_LABEL[selectedPortfolio]}</h3>
+          <h3 style={{ margin: 0 }}>Cohort breakdown — {getProduct(selectedPortfolio).label}</h3>
         </div>
 
         {portfolioCohorts.length === 0 ? (

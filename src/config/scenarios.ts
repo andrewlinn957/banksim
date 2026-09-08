@@ -3,7 +3,7 @@ import { BankState } from '../domain/bankState';
 import { Shock } from '../domain/shocks';
 import { initialState as baseInitialState } from './initialState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
-import { LiabilityProductType, AssetProductType, ProductType, BalanceSheetSide, Currency, MaturityBucket } from '../domain/enums';
+import { LiabilityProductType, AssetProductType, ProductType, MaturityBucket } from '../domain/enums';
 import { SimulationConfig } from '../domain/config';
 import { baseConfig } from './baseConfig';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
@@ -11,6 +11,18 @@ import { cloneBankState } from '../engine/clone';
 import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
 import { ScenarioGoals } from '../domain/scoring';
 import { PlayerAction } from '../domain/actions';
+import { createPosition } from '../products/factory';
+import { getCapability, productTypesWithCapability } from '../products/capabilities';
+
+type DeepPartial<T> = T extends Array<infer U>
+  ? Array<DeepPartial<U>>
+  : T extends object
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
+type ScenarioPositionOverride = { productType: ProductType } & Partial<
+  Pick<BalanceSheetItem, 'balance' | 'interestRate' | 'maturityBucket' | 'currency' | 'encumbrance'>
+>;
 
 export interface ScheduledShock {
   stepNumber: number;
@@ -63,13 +75,13 @@ export interface Scenario {
   initialStateOverride?: Omit<Partial<BankState>, 'financial'> & {
     financial?: Omit<Partial<BankState['financial']>, 'balanceSheet'> & {
       balanceSheet?: {
-        items?: Array<Partial<BalanceSheetItem> & { productType: ProductType }>;
+        items?: ScenarioPositionOverride[];
       };
     };
   };
   scheduledShocks: ScheduledShock[];
   arcStages?: ScenarioArcStage[];
-  configOverrides?: Partial<SimulationConfig>;
+  configOverrides?: DeepPartial<SimulationConfig>;
 }
 
 const applyInitialOverride = (
@@ -84,17 +96,23 @@ const applyInitialOverride = (
       if (!ov) return item;
       return { ...item, ...ov, encumbrance: ov.encumbrance ? { ...ov.encumbrance } : item.encumbrance };
     });
-    // Short-term wholesale funding is no longer an opening-bank line, but stress scenarios may introduce it.
-    const stOverride = overrides.find((o) => o.productType === LiabilityProductType.WholesaleFundingST);
-    if (stOverride && !state.financial.balanceSheet.items.some((i) => i.productType === LiabilityProductType.WholesaleFundingST)) {
-      state.financial.balanceSheet.items.push({
-        side: BalanceSheetSide.Liability, productType: LiabilityProductType.WholesaleFundingST,
-        label: 'Short-Term Wholesale Funding', currency: Currency.GBP, balance: Math.max(0, stOverride.balance ?? 0),
-        interestRate: stOverride.interestRate ?? state.market.riskFreeShort + state.market.wholesaleFundingSpread,
-        maturityBucket: MaturityBucket.LessThan1Y, liquidityTag: config.liquidityTags[LiabilityProductType.WholesaleFundingST],
-        encumbrance: { encumberedAmount: 0 },
+
+    // Scenario-only wholesale products can be introduced without bespoke product construction.
+    overrides.forEach((ov) => {
+      if (state.financial.balanceSheet.items.some((item) => item.productType === ov.productType)) return;
+      const funding = getCapability(ov.productType, 'wholesaleFunding');
+      if (!funding) return;
+      const isShort = funding.tenorClass === 'short';
+      const created = createPosition(config, {
+        productType: ov.productType,
+        balance: Math.max(0, ov.balance ?? 0),
+        interestRate: ov.interestRate ?? state.market.riskFreeShort + state.market.wholesaleFundingSpread,
+        maturityBucket: ov.maturityBucket ?? (isShort ? MaturityBucket.LessThan1Y : MaturityBucket.GreaterThan5Y),
+        currency: ov.currency,
+        encumberedAmount: ov.encumbrance?.encumberedAmount,
       });
-    }
+      state.financial.balanceSheet.items.push(created);
+    });
   }
   if (override?.financial?.capital) {
     state.financial.capital = { ...state.financial.capital, ...override.financial.capital };
@@ -112,20 +130,20 @@ const applyInitialOverride = (
     };
   }
   if (override?.market) {
-    state.market = { ...state.market, ...override.market };
+    state.market = { ...state.market, ...override.market } as BankState['market'];
   }
   if (override?.behaviour) {
-    state.behaviour = { ...state.behaviour, ...override.behaviour };
+    state.behaviour = { ...state.behaviour, ...override.behaviour } as BankState['behaviour'];
   }
   if (override?.status) {
-    state.status = { ...state.status, ...override.status };
+    state.status = { ...state.status, ...override.status } as BankState['status'];
   }
   if (override?.board) {
-    state.board = { ...state.board, ...override.board };
+    state.board = { ...state.board, ...override.board } as BankState['board'];
   }
 
   const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
-  const loanProducts = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;
+  const loanProducts = productTypesWithCapability('loan');
   loanProducts.forEach((productType, idx) => {
     const item = state.financial.balanceSheet.items.find((i) => i.productType === productType);
     if (!item) return;
@@ -164,7 +182,8 @@ const applyInitialOverride = (
   // Overrides specify net balances; initialise a matching gross book and opening allowance.
   state.financial.provisionStock = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
   for (const productType of loanProducts) {
-    const item = state.financial.balanceSheet.items.find(i => i.productType === productType)!;
+    const item = state.financial.balanceSheet.items.find(i => i.productType === productType);
+    if (!item) continue;
     const target = calculateProvisionTargetFromCohorts({ state, config, productType });
     const gross = sumLoanOutstanding(state.loanCohorts[productType] ?? []);
     const scale = gross > 0 ? item.balance / Math.max(1, gross - target.total) : 0;
@@ -174,18 +193,26 @@ const applyInitialOverride = (
     item.balance = sumLoanOutstanding(state.loanCohorts[productType] ?? []) - allowance.total;
     for (const stage of ['stage1','stage2','stage3','total'] as const) state.financial.provisionStock[stage] += allowance[stage];
   }
-  // Keep contractual maturity ladders consistent when a scenario changes funding stock.
-  for (const p of [LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT]) {
-    const buckets = state.fundingLadders[p] ?? [];
-    const total = buckets.reduce((sum, b) => sum + b.notional, 0);
-    const balance = state.financial.balanceSheet.items.find(i => i.productType === p)?.balance ?? 0;
-    if (total > 0) buckets.forEach(b => b.notional *= balance / total);
-    else if (balance > 0) {
-      const line = state.financial.balanceSheet.items.find(i => i.productType === p);
-      const tenor = p === LiabilityProductType.WholesaleFundingST
+
+  // Keep contractual maturity ladders consistent when a scenario changes wholesale funding stock.
+  for (const productType of productTypesWithCapability('wholesaleFunding')) {
+    const buckets = state.fundingLadders[productType] ?? [];
+    const total = buckets.reduce((sum, bucket) => sum + bucket.notional, 0);
+    const line = state.financial.balanceSheet.items.find(item => item.productType === productType);
+    const balance = line?.balance ?? 0;
+    if (total > 0) {
+      buckets.forEach(bucket => { bucket.notional *= balance / total; });
+    } else if (balance > 0) {
+      const funding = getCapability(productType, 'wholesaleFunding');
+      const tenor = funding?.tenorClass === 'short'
         ? (config.behaviour.fundingLadder?.stRefinanceTenorMonths ?? 6)
         : (config.behaviour.fundingLadder?.ltRefinanceTenorMonths ?? 36);
-      state.fundingLadders[p] = [{ tenorMonths: tenor, monthsToMaturity: tenor, notional: balance, rate: line?.interestRate ?? 0 }];
+      state.fundingLadders[productType] = [{
+        tenorMonths: tenor,
+        monthsToMaturity: tenor,
+        notional: balance,
+        rate: line?.interestRate ?? 0,
+      }];
     }
   }
   const cash = state.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves)!;
@@ -206,7 +233,7 @@ export const scenarios: Scenario[] = [
   {
     id: 'supervisory-review', name: 'The supervisory review',
     description: 'A fictional bank-specific capital decision raises the stakes: absorb a 1.5% Pillar 2A requirement and 1% PRA buffer while keeping the business profitable.',
-    configOverrides: { riskLimits: { ...baseConfig.riskLimits, pillar2A: { totalRatio: .015 }, praBufferRatio: .01 } },
+    configOverrides: { riskLimits: { pillar2A: { totalRatio: .015 }, praBufferRatio: .01 } },
     goals: { horizonMonths: 12, objectives: [
       { label: 'Finish with CET1 above 14%', metric: 'cet1Ratio', direction: 'min', target: .14, weight: 40 },
       { label: 'Keep liquidity available', metric: 'lcr', direction: 'min', target: 1.1, weight: 30 },
@@ -356,32 +383,28 @@ export const applyScenarioConfig = (
 ): SimulationConfig => {
   const scenario = scenarios.find((s) => s.id === scenarioId);
   if (!scenario?.configOverrides) return base;
-  const overrides = scenario.configOverrides;
 
-  const mergeRecord = <T extends Record<string, any>>(baseRecord: T, overrideRecord?: Partial<T>): T => {
-    if (!overrideRecord) return { ...baseRecord };
-    const merged = { ...baseRecord } as T;
-    (Object.keys(overrideRecord) as Array<keyof T>).forEach((key) => {
-      const overrideValue = overrideRecord[key];
-      if (overrideValue === undefined) return;
-      const baseValue = baseRecord[key];
-      if (
-        baseValue !== null &&
-        typeof baseValue === 'object' &&
-        !Array.isArray(baseValue) &&
-        overrideValue !== null &&
-        typeof overrideValue === 'object' &&
-        !Array.isArray(overrideValue)
-      ) {
-        merged[key] = mergeRecord(baseValue, overrideValue);
-        return;
-      }
-      merged[key] = overrideValue as T[keyof T];
-    });
-    return merged;
+  const mergeRecord = <T>(baseValue: T, overrideValue?: DeepPartial<T>): T => {
+    if (overrideValue === undefined) return baseValue;
+    if (
+      baseValue !== null &&
+      typeof baseValue === 'object' &&
+      !Array.isArray(baseValue) &&
+      overrideValue !== null &&
+      typeof overrideValue === 'object' &&
+      !Array.isArray(overrideValue)
+    ) {
+      const merged: Record<string, unknown> = { ...(baseValue as Record<string, unknown>) };
+      Object.entries(overrideValue as Record<string, unknown>).forEach(([key, nestedOverride]) => {
+        if (nestedOverride === undefined) return;
+        merged[key] = mergeRecord((baseValue as Record<string, unknown>)[key], nestedOverride as never);
+      });
+      return merged as T;
+    }
+    return overrideValue as T;
   };
 
-  return mergeRecord(base, overrides);
+  return mergeRecord(base, scenario.configOverrides);
 };
 
 export const getScenarioInitialState = (

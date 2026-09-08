@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { MaturityBucket } from '../domain/enums';
-import { assetCreditRwa } from '../engine/creditRwa';
 import { calculateRiskMetrics } from '../engine/metrics';
 import { cloneBankState } from '../engine/clone';
 import { createPosition } from './factory';
@@ -24,9 +23,6 @@ import {
   regulatoryRiskWeight,
 } from './regulatory';
 
-const compact = (value: Record<string, unknown>) =>
-  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
-
 describe('prudential product classification', () => {
   it('gives every product complete regulatory classifications backed by rule tables', () => {
     (Object.keys(PRODUCTS) as ProductType[]).forEach(productType => {
@@ -35,39 +31,22 @@ describe('prudential product classification', () => {
       expect(CREDIT_RISK_RULES[classification.creditRisk]).toBeDefined();
       expect(getCapitalRule(productType)).toBeDefined();
       expect(classification.leverage).toBeTruthy();
+      expect(liquidityTagForProduct(productType).productType).toBe(productType);
     });
   });
 
-  it('preserves the current liquidity calibration while making the regulatory table authoritative', () => {
-    (Object.keys(PRODUCTS) as ProductType[]).forEach(productType => {
-      expect(compact(liquidityTagForProduct(productType) as unknown as Record<string, unknown>)).toEqual(
-        compact(baseConfig.liquidityTags[productType] as unknown as Record<string, unknown>)
-      );
-    });
+  it('has no duplicate prudential factors left in simulation config', () => {
+    expect('liquidityTags' in baseConfig).toBe(false);
+    expect(Object.values(baseConfig.productParameters).some(params => 'riskWeight' in params)).toBe(false);
   });
 
-  it('preserves current standardised performing risk weights by credit-risk class', () => {
+  it('owns standardised performing risk weights by credit-risk class', () => {
     expect(regulatoryRiskWeight(AssetProductType.CashReserves)).toBe(0);
     expect(regulatoryRiskWeight(AssetProductType.Gilts)).toBe(0);
     expect(regulatoryRiskWeight(AssetProductType.Mortgages)).toBe(0.35);
     expect(regulatoryRiskWeight(AssetProductType.ConsumerLoans)).toBe(0.75);
     expect(regulatoryRiskWeight(AssetProductType.CorporateLoans)).toBe(1);
     expect(regulatoryRiskWeight(AssetProductType.DerivativeAssets)).toBe(1);
-
-    (Object.keys(PRODUCTS) as ProductType[]).forEach(productType => {
-      expect(regulatoryRiskWeight(productType)).toBe(baseConfig.productParameters[productType].riskWeight);
-    });
-  });
-
-  it('keeps RWA independent of the legacy config riskWeight field', () => {
-    const state = cloneBankState(initialState);
-    const config = structuredClone(baseConfig);
-    const mortgage = state.financial.balanceSheet.items.find(
-      item => item.productType === AssetProductType.Mortgages
-    )!;
-    const baseline = assetCreditRwa(state, config, mortgage);
-    config.productParameters[AssetProductType.Mortgages].riskWeight = 9;
-    expect(assetCreditRwa(state, config, mortgage)).toBeCloseTo(baseline, 8);
   });
 
   it('owns commitment LCR, NSFR and RWA factors through the product class', () => {

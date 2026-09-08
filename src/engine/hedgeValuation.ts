@@ -1,6 +1,7 @@
 import { BankState, InterestRateHedge } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { AssetProductType as A, LiabilityProductType as L, BalanceSheetSide as S, Currency, MaturityBucket } from '../domain/enums';
+import { AssetProductType as A, LiabilityProductType as L, MaturityBucket } from '../domain/enums';
+import { createPosition } from '../products/factory';
 
 // Undesignated swaps at FVTPL. Flat current floating-rate projection and discounting
 // are model valuation assumptions, not market quotes or full IFRS 13 calibration.
@@ -12,10 +13,13 @@ export const hedgeFairValue = (hedge: InterestRateHedge, floatingRate: number): 
   return sign * hedge.notional * (rate - hedge.fixedRate) / 12 * annuity;
 };
 export const syncHedgeBalances = (state: BankState, config: SimulationConfig) => {
-  for (const [productType, side, label, sign] of [[A.DerivativeAssets,S.Asset,'Derivative assets',1],[L.DerivativeLiabilities,S.Liability,'Derivative liabilities',-1]] as const) {
+  for (const [productType, sign] of [[A.DerivativeAssets,1],[L.DerivativeLiabilities,-1]] as const) {
     const balance = state.financial.hedges.reduce((sum,h)=>sum+Math.max(0,(h.fairValue ?? 0)*sign),0);
     let item=state.financial.balanceSheet.items.find(i=>i.productType===productType);
-    if (!item && (balance > 0 || state.financial.hedges.length > 0)) { item={productType,side,label,balance:0,interestRate:0,currency:Currency.GBP,maturityBucket:MaturityBucket.LessThan1Y,liquidityTag:config.liquidityTags[productType],encumbrance:{encumberedAmount:0}};state.financial.balanceSheet.items.push(item); }
+    if (!item && (balance > 0 || state.financial.hedges.length > 0)) {
+      item=createPosition(config,{productType,balance:0,interestRate:0,maturityBucket:MaturityBucket.LessThan1Y});
+      state.financial.balanceSheet.items.push(item);
+    }
     if(item)item.balance=balance;
   }
 };
