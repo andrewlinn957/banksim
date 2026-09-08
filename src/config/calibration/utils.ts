@@ -25,6 +25,20 @@ export const setProductBalance = (state: BankState, productType: ProductType, ba
   }
   item.balance = nextBalance;
 
+  // Contractual funding balances and their maturity buckets are one economic position.
+  // Calibration packs often resize fixed-term savings or long-term debt, so keep the
+  // ladder aligned instead of leaving a hidden maturity amount from the base state.
+  const fundingBuckets = state.fundingLadders?.[productType];
+  if (fundingBuckets?.length) {
+    const total = fundingBuckets.reduce((sum, bucket) => sum + Math.max(0, bucket.notional), 0);
+    if (total > 0) {
+      const fundingScale = nextBalance / total;
+      fundingBuckets.forEach((bucket) => {
+        bucket.notional = Math.max(0, bucket.notional * fundingScale);
+      });
+    }
+  }
+
   if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
 
   const cohorts = state.loanCohorts[productType] ?? [];
