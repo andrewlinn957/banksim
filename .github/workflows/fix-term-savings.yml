@@ -1,0 +1,29 @@
+name: Fix term savings
+
+on:
+  push:
+    branches:
+      - audit-small-uk-retail-bank
+    paths:
+      - .github/scripts/fix_term_savings.py
+      - .github/workflows/fix-term-savings.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-small-uk-retail-bank
+      - name: Apply fixed-term savings patch
+        run: python .github/scripts/fix_term_savings.py
+      - name: Commit source changes
+        run: |
+          git config user.name "andrewlinn957"
+          git config user.email "139116101+andrewlinn957@users.noreply.github.com"
+          git add src
+          git commit -m "Keep fixed-term savings as a viable funding market"
+          git push origin HEAD:audit-small-uk-retail-bank
