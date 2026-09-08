@@ -16,7 +16,7 @@ export interface Pillar2AComponentAmounts {
 }
 
 export interface Pillar2AAssessmentState {
-  /** Variable Pillar 2A rate fixed at the latest annual SREP assessment. */
+  /** Variable Pillar 2A rate fixed at the latest 24-month SREP assessment. */
   assessedRate: number;
   grossRate: number;
   assessmentRwa: number;
@@ -152,7 +152,7 @@ export interface Pillar2ALimits {
   /** Optional scenario/manual floor retained for backwards-compatible scenario design. */
   totalRatio?: number;
   fixedAmount?: number;
-  /** Capital-quality shares are game assumptions, separate from the annual risk assessment. */
+  /** Capital-quality shares are game assumptions, separate from the periodic risk assessment. */
   cet1Share?: number;
   tier1Share?: number;
   assessmentIntervalMonths?: number;

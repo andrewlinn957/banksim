@@ -11,7 +11,7 @@ import {
   pillar2ACreditBenchmarkRiskWeight,
 } from './pillar2A';
 
-describe('annual Pillar 2A SREP assessment', () => {
+describe('24-month Pillar 2A SREP assessment', () => {
   it('implements the published PRA concentration HHI bucket midpoints', () => {
     expect(concentrationAddOnRate('singleName', 0.002)).toBeCloseTo(0.0025);
     expect(concentrationAddOnRate('singleName', 0.01)).toBeCloseTo(0.015);
@@ -52,27 +52,27 @@ describe('annual Pillar 2A SREP assessment', () => {
     expect(result.geographicRate).toBeCloseTo(0.01325);
   });
 
-  it('freezes the assessed rate until the annual review and then resets it', () => {
+  it('freezes the assessed rate until the 24-month review and then resets it', () => {
     const s = cloneBankState(initialState);
     s.risk.pillar2A = undefined;
     s.time.step = 0;
     const first = calculateRiskMetrics({ state: s, config: baseConfig });
     const firstAssessment = s.risk.pillar2A!;
     expect(firstAssessment.assessmentStep).toBe(0);
-    expect(firstAssessment.nextAssessmentStep).toBe(12);
+    expect(firstAssessment.nextAssessmentStep).toBe(24);
     expect(first.pillar2ARate).toBeGreaterThan(0);
 
     s.behaviour.riskAppetite = { cet1: 0.2, leverage: 0.05, lcr: 1.2, nsfr: 1.1, irrbbEveLimit: 2e9 };
-    s.time.step = 5;
-    const midYear = calculateRiskMetrics({ state: s, config: baseConfig });
-    expect(s.risk.pillar2A!.assessmentStep).toBe(0);
-    expect(midYear.pillar2ARate).toBeCloseTo(first.pillar2ARate!, 12);
-
     s.time.step = 11;
+    const midCycle = calculateRiskMetrics({ state: s, config: baseConfig });
+    expect(s.risk.pillar2A!.assessmentStep).toBe(0);
+    expect(midCycle.pillar2ARate).toBeCloseTo(first.pillar2ARate!, 12);
+
+    s.time.step = 23;
     const reviewed = calculateRiskMetrics({ state: s, config: baseConfig });
-    expect(s.risk.pillar2A!.assessmentStep).toBe(12);
-    expect(s.risk.pillar2A!.nextAssessmentStep).toBe(24);
-    expect(reviewed.pillar2ARate).toBeGreaterThan(midYear.pillar2ARate!);
+    expect(s.risk.pillar2A!.assessmentStep).toBe(24);
+    expect(s.risk.pillar2A!.nextAssessmentStep).toBe(48);
+    expect(reviewed.pillar2ARate).toBeGreaterThan(midCycle.pillar2ARate!);
   });
 
   it('holds the assessed rate but lets the nominal requirement scale with live RWA', () => {

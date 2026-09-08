@@ -29,9 +29,10 @@ it('shows issued Tier 2 in total capital without changing Tier 1',()=>{
   expect(d.cards[2].actual).toBeCloseTo(state.risk.riskMetrics.totalCapitalRatio ?? 0,12);
 });
 
-it('shows the annual Pillar 2A assessment, its risk components and PS15/20 offset',()=>{
+it('shows the 24-month Pillar 2A assessment, its risk components and PS15/20 offset',()=>{
   const html=renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig}/>);
-  expect(html).toContain('Pillar 2A annual SREP assessment');
+  expect(html).toContain('Pillar 2A SREP assessment');
+  expect(html).toContain('reset every 24 months');
   expect(html).toContain('SA credit-risk underestimation');
   expect(html).toContain('Single-name concentration');
   expect(html).toContain('Geographic concentration');
