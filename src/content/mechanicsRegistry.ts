@@ -77,7 +77,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     category: 'Customers',
     title: 'Instant savings and business deposits',
     plainDescription:
-      'You set the rate for instant-access savings and SME or business deposits. The game compares your rate with the market rate.',
+      'You set the rate for instant retail and SME or business deposits. The game compares your rate with the market rate.',
     whyItMatters:
       'A higher rate can grow deposits and improve funding. A higher rate also increases interest expense. A low rate can cause customers to leave.',
     driverSummary: [
@@ -88,7 +88,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     ],
     formula: 'Deposit price gap = your deposit rate - competitor deposit rate',
     relatedMetrics: [metric('Deposit quality'), metric('Funding confidence'), metric('LCR'), metric('NSFR')],
-    relatedActions: [action('Instant-access savings offer'), action('SME/business deposit offer')],
+    relatedActions: [action('Instant retail offer'), action('SME/business deposit offer')],
   },
   {
     id: 'term-savings',

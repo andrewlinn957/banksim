@@ -15,6 +15,9 @@ describe('small UK retail-bank model', () => {
   it('opens as a retail-heavy bank without generic repo positions', () => {
     expect(initialState.financial.balanceSheet.items.some(i => i.productType === A.ReverseRepo)).toBe(false);
     expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);
+    expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RetailTransactionalDeposits)).toBe(false);
+    expect(balance(initialState, L.RetailSavingsDeposits)).toBe(7.0e9);
+    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.label).toBe('Instant retail');
     expect(balance(initialState, A.Mortgages)).toBeGreaterThan(balance(initialState, A.CorporateLoans));
     expect(balance(initialState, A.ConsumerLoans)).toBeGreaterThan(0);
     expect(balance(initialState, L.RetailTermDeposits)).toBeGreaterThan(0);
@@ -24,6 +27,7 @@ describe('small UK retail-bank model', () => {
   it('does not add an unused short-term wholesale line during an ordinary close', () => {
     const out = engine.step({ state: cloneBankState(initialState), config: baseConfig, shocks: [], actions: [] }).nextState;
     expect(out.financial.balanceSheet.items.some(i => i.productType === L.WholesaleFundingST)).toBe(false);
+    expect(out.financial.balanceSheet.items.some(i => i.productType === L.RetailTransactionalDeposits)).toBe(false);
   });
 
   it('replenishes competitively priced fixed-term savings as contractual buckets mature', () => {
