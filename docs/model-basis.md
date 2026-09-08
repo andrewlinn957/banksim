@@ -6,7 +6,7 @@ The game uses a simplified conventional GBP domestic bank under the standardised
 
 | Measure | Implementation and assumed eligibility |
 | --- | --- |
-| Own funds | CET1 4.5%, Tier 1 6%, total capital 8%. Pillar 2A is reassessed annually from the modelled bank's credit-risk benchmark shortfall, credit concentration and IRRBB, then held as a percentage of RWA until the next SREP. A scenario may impose a higher manual P2A floor. BankSim retains a simplified capital-quality assumption of at least 56.25% CET1 and 75% Tier 1 for P2A; the public Pillar 2 methodology and PS15/20 used for the annual assessment do not themselves provide that complete composition rule. OCI is included in eligible CET1. Standardised mortgage risk weight 35% assumes qualifying exposures; corporate loans use 100%. |
+| Own funds | CET1 4.5%, Tier 1 6%, total capital 8%. Pillar 2A is reassessed every 24 months from the modelled bank's credit-risk benchmark shortfall, credit concentration and IRRBB, then held as a percentage of RWA until the next SREP. A scenario may impose a higher manual P2A floor. BankSim retains a simplified capital-quality assumption of at least 56.25% CET1 and 75% Tier 1 for P2A; the public Pillar 2 methodology and PS15/20 used for the periodic assessment do not themselves provide that complete composition rule. OCI is included in eligible CET1. Standardised mortgage risk weight 35% assumes qualifying exposures; corporate loans use 100%. |
 | Buffers | 2.5% conservation buffer plus 2% UK CCyB. CET1 must also cover any Tier 1/total capital shortfall before meeting buffers. A configured PRA buffer sits above the combined buffer and informs the internal target. PRA-buffer use prompts recovery warnings but does not itself trigger MDA or failure. Internal management headroom is shown separately. |
 | Distributions | Bank policy suspends distributions inside the combined buffer. This conservative policy is not the statutory MDA calculation, which uses eligible profits and buffer quartiles. |
 | Leverage | 3.25% small-bank supervisory expectation. Central-bank claims are excluded only up to matching GBP customer deposits. Undrawn commitments use an assumed short-original-maturity 20% CCF. |
@@ -28,9 +28,9 @@ Prescribed LCR and NSFR factors do not change with game confidence. Separate man
 - [Capital buffers rules](https://www.prarulebook.co.uk/pra-rules/capital-buffers) and [UK CCyB](https://www.bankofengland.co.uk/financial-stability/the-countercyclical-capital-buffer).
 - [Basel 3.1 final rules](https://www.bankofengland.co.uk/prudential-regulation/publication/2026/january/implementation-of-the-basel-3-1-final-rules-policy-statement): effective January 2027, not applied early here.
 
-## Pillar 2A annual SREP assessment
+## Pillar 2A 24-month SREP assessment
 
-BankSim runs a Pillar 2A assessment at the opening date and then every twelve monthly closes. The assessed variable P2A percentage is frozen until the next review. Its nominal amount is not frozen: current P2A capital equals the assessed rate multiplied by current RWA. This deliberately reproduces the supervisory-review lag as a game mechanic rather than recalculating the requirement from the balance sheet every month.
+BankSim runs a Pillar 2A assessment at the opening date and then every twenty-four monthly closes. The assessed variable P2A percentage is frozen until the next review. Its nominal amount is not frozen: current P2A capital equals the assessed rate multiplied by current RWA. This deliberately reproduces the supervisory-review lag as a game mechanic rather than recalculating the requirement from the balance sheet every month.
 
 ### Credit risk
 
@@ -44,7 +44,7 @@ BankSim does not yet track named corporate obligors. Single-name HHI therefore a
 
 ### IRRBB
 
-For a smaller/less-complex bank the PRA standard methodology reviews internal policy limits, most commonly based on the economic effect of a 200bp interest-rate shift. BankSim therefore calculates the absolute ±200bp EVE loss from its duration model and compares it with the board's IRRBB EVE policy limit. The greater amount is the supervisory risk measure. The public policy does not publish a simple mechanical conversion from that policy limit to a Pillar 2A capital amount, so BankSim applies an explicit 20% capitalisation scalar. The scalar is a game calibration and is shown in the dashboard rather than presented as a PRA rule. Swaps, mortgage fixing periods, gilt duration and funding duration can therefore change the next annual IRRBB assessment.
+For a smaller/less-complex bank the PRA standard methodology reviews internal policy limits, most commonly based on the economic effect of a 200bp interest-rate shift. BankSim therefore calculates the absolute ±200bp EVE loss from its duration model and compares it with the board's IRRBB EVE policy limit. The greater amount is the supervisory risk measure. The public policy does not publish a simple mechanical conversion from that policy limit to a Pillar 2A capital amount, so BankSim applies an explicit 20% capitalisation scalar. The scalar is a game calibration and is shown in the dashboard rather than presented as a PRA rule. Swaps, mortgage fixing periods, gilt duration and funding duration can therefore change the next 24-month IRRBB assessment.
 
 ### PS15/20 offset
 
@@ -66,7 +66,7 @@ Undrawn offer ECL uses the loan term, probability-weighted PD paths and effectiv
 
 Under [UK CRR Article 127](https://www.legislation.gov.uk/eur/2013/575/article/127/data.html), qualifying defaulted mortgages receive 100% risk weight on net exposure. Unsecured corporate defaults receive 150% below 20% provision coverage and 100% at or above it. Individual model ECL weights allocate the booked product allowance to cohorts and workouts. Stage 3/workout status is the model's default proxy; it does not reproduce every Article 178 test.
 
-Pillar 2A is now generated by the annual methodology above. The `supervisory-review` scenario retains a fictional 1.5% manual P2A floor and a 1% PRA-buffer input as scenario design choices; they are not published requirements for a real bank.
+Pillar 2A is now generated by the periodic methodology above. The `supervisory-review` scenario retains a fictional 1.5% manual P2A floor and a 1% PRA-buffer input as scenario design choices; they are not published requirements for a real bank.
 
 ## Deliberate limits and remaining gaps
 
@@ -85,7 +85,7 @@ The old liquidity envelopes incorporated behavioural stress into regulatory rati
 
 Quarterly badges recognise actual customer, earnings, capital and shareholder outcomes, frozen at each three-month deadline. They create no accounting gains or regulatory relief. When internal capital headroom is negative, a real equity-raising proposal replaces aggressive growth; dilution and issuance costs still apply. The supervisory-review scenario combines a disclosed capital decision with competition and credit shocks.
 
-Targeted checks cover opening balances, commitment booking/release, non-cash reconciliation, annual P2A assessment and PS15/20 offsets, PRA-buffer/MDA separation, default risk weights, scenario consistency and quarterly deadlines. The existing deterministic and long-run regression suites remain in place.
+Targeted checks cover opening balances, commitment booking/release, non-cash reconciliation, 24-month P2A assessment and PS15/20 offsets, PRA-buffer/MDA separation, default risk weights, scenario consistency and quarterly deadlines. The existing deterministic and long-run regression suites remain in place.
 
 ## Securities and treasury
 
