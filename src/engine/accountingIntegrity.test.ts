@@ -72,13 +72,4 @@ describe('Loan accounting identities', () => {
     item(s).balance = NaN;
     expect(checkInvariants(s).some(e => e.includes('Non-finite'))).toBe(true);
   });
-  it('uses market-value haircut and prevents the sale of pledged collateral', () => {
-    const s = cloneBankState(initialState), gilts = item(s, AssetProductType.Gilts);
-    const available = gilts.balance - gilts.encumbrance.encumberedAmount;
-    applyActions(s, baseConfig, [{ type: 'enterRepo', direction: 'borrow', collateralProduct: AssetProductType.Gilts, amount: available, haircut: .2, rate: .04 }], []);
-    expect(gilts.encumbrance.encumberedAmount).toBeCloseTo(gilts.balance, 3);
-    const before = gilts.balance;
-    applyActions(s, baseConfig, [{ type: 'buySellAsset', productType: AssetProductType.Gilts, amountDelta: -before }], []);
-    expect(gilts.balance).toBeCloseTo(before, 3);
-  });
 });

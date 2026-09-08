@@ -1,6 +1,6 @@
 import { BankState } from '../domain/bankState';
 import { AssetProductType as A, LiabilityProductType as L } from '../domain/enums';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 import { formatPct } from '../utils/formatters';
 import { customerDeposits } from './management';
 

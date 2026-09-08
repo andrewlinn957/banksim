@@ -1,7 +1,7 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { AssetProductType, BalanceSheetSide, ProductType, LiabilityProductType } from '../domain/enums';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 
 // 2026 UK standardised portfolio assumptions: docs/model-basis.md.
 
@@ -23,7 +23,7 @@ export const commitmentLiquidity = (s: BankState) => ({ outflow: committedExposu
 export const eligibleCet1 = (s: BankState, c: SimulationConfig) => s.financial.capital.cet1 + s.financial.capital.accumulatedOCI * Math.max(0, Math.min(1, c.behaviour.securitiesAccounting?.fvociCet1InclusionRate ?? 1));
 export const centralBankExclusion = (s: BankState) => {
   const cash = s.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves);
-  const deposits = s.financial.balanceSheet.items.reduce((sum, i) => sum + (i.currency === cash?.currency && PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit ? Math.max(0, i.balance) : 0), 0);
+  const deposits = s.financial.balanceSheet.items.reduce((sum, i) => sum + (i.currency === cash?.currency && PRODUCTS[i.productType]?.behaviour?.isCustomerDeposit ? Math.max(0, i.balance) : 0), 0);
   return Math.min(Math.max(0, cash?.balance ?? 0), deposits);
 };
 export const contractualLoanPayment = (principal: number, annualRate: number, months: number) => {
@@ -55,7 +55,7 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
     inflow=asset?receipts:0;outflow=asset?0:payments;asf=0;
     rsf=asset?Math.max(0,assets-liabilities):liabilities*.05;
   }
-  if ([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt].includes(p as LiabilityProductType)) {
+  if (([LiabilityProductType.WholesaleFundingST, LiabilityProductType.WholesaleFundingLT, LiabilityProductType.RetailTermDeposits, LiabilityProductType.BankOfEnglandFunding, LiabilityProductType.Tier2Debt] as LiabilityProductType[]).includes(p as LiabilityProductType)) {
     const buckets = s.fundingLadders?.[p];
     if (buckets?.length) {
       outflow = buckets.reduce((sum, f) => {
@@ -69,7 +69,7 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => s
       }, 0);
     }
   }
-  if (PRODUCT_META[p]?.behaviour?.isLoan) {
+  if (PRODUCTS[p]?.behaviour?.isLoan) {
     const cohorts = s.loanCohorts?.[p] ?? [], workouts = s.workoutPipelines?.[p] ?? [];
     inflow = cohorts.reduce((sum, loan) => sum + (loan.stage === 'stage3' ? 0 : .5 * contractualLoanPayment(loan.outstandingPrincipal, loan.annualInterestRate, loan.termMonths - loan.ageMonths)), 0);
     const gross = cohorts.reduce((sum, l) => sum + l.outstandingPrincipal, 0) + workouts.reduce((sum, w) => sum + w.defaultedPrincipal, 0);

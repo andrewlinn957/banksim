@@ -412,61 +412,6 @@ export const simulationTestCases: SimulationTestCase[] = [
     },
   },
   {
-    id: 'repo-borrow-encumbrance',
-    group: 'Targeted invariants and behaviours',
-    name: 'repo borrow creates repo line, increases cash, and encumbers collateral',
-    run: (ctx) => {
-      const state = ctx.createState();
-      const repoAmount = 1e9;
-      const gilts = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
-      if (!gilts) {
-        throw new Error('Missing gilts line for repo test');
-      }
-
-      const { nextState } = ctx.engine.step({
-        state,
-        config: ctx.config,
-        actions: [
-          {
-            type: 'enterRepo',
-            direction: 'borrow',
-            collateralProduct: AssetProductType.Gilts,
-            amount: repoAmount,
-            rate: 0.03,
-          },
-        ],
-        shocks: [],
-      });
-      assertAccountingOk(nextState, 'after repo');
-
-      const cashBefore = getBalance(state, AssetProductType.CashReserves);
-      const cashAfter = getBalance(nextState, AssetProductType.CashReserves);
-      const repoLine = nextState.financial.balanceSheet.items.find(
-        (i) => i.productType === LiabilityProductType.RepurchaseAgreements
-      );
-      const giltsAfter = nextState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
-      if (!repoLine) {
-        throw new Error('Repo liability line missing after trade');
-      }
-      if (!giltsAfter) {
-        throw new Error('Gilts line missing after repo');
-      }
-      if (cashAfter <= cashBefore) {
-        throw new Error(`Cash did not increase (${formatBn(cashAfter)} <= ${formatBn(cashBefore)})`);
-      }
-      if (repoLine.balance < repoAmount) {
-        throw new Error(`Repo line smaller than expected (${formatBn(repoLine.balance)} < ${formatBn(repoAmount)})`);
-      }
-      if (giltsAfter.encumbrance.encumberedAmount <= gilts.encumbrance.encumberedAmount) {
-        throw new Error('Collateral encumbrance did not rise after repo');
-      }
-
-      return `Cash ${formatBn(cashBefore)} -> ${formatBn(cashAfter)}, encumbrance ${formatBn(
-        gilts.encumbrance.encumberedAmount
-      )} -> ${formatBn(giltsAfter.encumbrance.encumberedAmount)}`;
-    },
-  },
-  {
     id: 'counterparty-default-loss',
     group: 'Targeted invariants and behaviours',
     name: 'counterparty default reduces corporate loans roughly by the loss once (no double count)',

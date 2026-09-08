@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { AssetProductType, BalanceSheetSide, LiabilityProductType } from '../domain/enums';
+import { PRODUCTS } from '../products/catalogue';
 import { StepAttribution } from '../domain/attribution';
 import { formatCurrency, formatPct, formatSignedPct } from '../utils/formatters';
 import GiltCurveChart from './GiltCurveChart';
@@ -30,20 +31,13 @@ const UK_MACRO_DIAGNOSTICS = {
   demandResponse: 0.003,
 };
 
-const LOAN_PRODUCTS = new Set<string>([
-  AssetProductType.Mortgages,
-  AssetProductType.ConsumerLoans,
-  AssetProductType.CorporateLoans,
-]);
+const LOAN_PRODUCTS = new Set<string>(
+  Object.values(PRODUCTS).filter(product => product.behaviour.isLoan).map(product => product.productType)
+);
 
-const CUSTOMER_DEPOSIT_PRODUCTS = new Set<string>([
-  LiabilityProductType.RetailDeposits,
-  LiabilityProductType.CorporateDeposits,
-  LiabilityProductType.RetailCurrentAccounts,
-  LiabilityProductType.RetailTermDeposits,
-  LiabilityProductType.CorporateOperatingDeposits,
-  LiabilityProductType.CorporateNonOperatingDeposits,
-]);
+const CUSTOMER_DEPOSIT_PRODUCTS = new Set<string>(
+  Object.values(PRODUCTS).filter(product => product.behaviour.isCustomerDeposit).map(product => product.productType)
+);
 
 const LIQUID_ASSET_PRODUCTS = new Set<string>([
   AssetProductType.CashReserves,

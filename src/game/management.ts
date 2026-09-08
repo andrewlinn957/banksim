@@ -1,6 +1,6 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 
 export function attentionReason(s: BankState, config: SimulationConfig): string | null {
   const m = s.risk.riskMetrics;
@@ -10,7 +10,7 @@ export function attentionReason(s: BankState, config: SimulationConfig): string 
   if (m.lcr <= Math.max(config.riskLimits.minLcr,s.behaviour.riskAppetite?.lcr ?? config.riskLimits.minLcr * 1.1) || m.nsfr <= Math.max(config.riskLimits.minNsfr,s.behaviour.riskAppetite?.nsfr ?? config.riskLimits.minNsfr * 1.05)) return 'Liquidity or stable funding is below the bank’s target. Review deposits and term funding.';
   return null;
 }
-export const customerDeposits = (s: BankState) => s.financial.balanceSheet.items.filter(i => PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit).reduce((n,i) => n+i.balance,0);
+export const customerDeposits = (s: BankState) => s.financial.balanceSheet.items.filter(i => PRODUCTS[i.productType]?.behaviour?.isCustomerDeposit).reduce((n,i) => n+i.balance,0);
 // Flows are summed over a period; stocks are always the actual closing balance.
 export function periodHistory(history: BankState[], months: number) {
   const first = history[0];

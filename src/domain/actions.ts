@@ -5,8 +5,8 @@ import {
 } from './enums';
 
 export type WholesaleFundingProduct =
-  | LiabilityProductType.WholesaleFundingST
-  | LiabilityProductType.WholesaleFundingLT;
+  | typeof LiabilityProductType.WholesaleFundingST
+  | typeof LiabilityProductType.WholesaleFundingLT;
 
 export interface AdjustRateAction {
   type: 'adjustRate';
@@ -40,17 +40,6 @@ export interface IssueTier2Action {
   maturityMonths?: number;
 }
 
-/** Legacy generic repo action retained for old saved states/tests; not exposed by the retail-bank UI. */
-export interface EnterRepoAction {
-  type: 'enterRepo';
-  direction: 'borrow' | 'lend';
-  collateralProduct: AssetProductType;
-  amount: number;
-  rate: number;
-  haircut?: number;
-  maturityMonths?: number;
-}
-
 export interface DrawBoeFundingAction {
   type: 'drawBoeFunding';
   facility: 'STR' | 'ILTR';
@@ -59,7 +48,7 @@ export interface DrawBoeFundingAction {
 
 export interface SetUnderwritingAction {
   type: 'setUnderwriting';
-  productType: AssetProductType.Mortgages | AssetProductType.ConsumerLoans | AssetProductType.CorporateLoans;
+  productType: typeof AssetProductType.Mortgages | typeof AssetProductType.ConsumerLoans | typeof AssetProductType.CorporateLoans;
   tightness: number; // 0 = loose baseline, 1 = very tight
 }
 
@@ -101,7 +90,6 @@ export type PlayerAction =
   | IssueDebtAction
   | IssueEquityAction
   | IssueTier2Action
-  | EnterRepoAction
   | DrawBoeFundingAction
   | SetUnderwritingAction
   | SetMortgagePolicyAction

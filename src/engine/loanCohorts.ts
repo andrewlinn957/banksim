@@ -26,7 +26,7 @@ import {
   LoanStage,
   LoanWorkoutBucket,
 } from '../domain/loanCohorts';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 
 // Used to convert annual rates/PDs into monthly equivalents.
 const MONTHS_IN_YEAR = 12;
@@ -75,7 +75,7 @@ const getCashItem = (state: BankState): BalanceSheetItem | undefined =>
  * Check whether a `ProductType` is treated as a loan in our product metadata.
  *
  */
-const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCT_META[productType]?.behaviour?.isLoan);
+const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCTS[productType]?.behaviour?.isLoan);
 
 /**
  * Result returned by `stepLoanCohorts(...)` for one simulation step.
@@ -482,7 +482,7 @@ const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number
 };
 
 const getLoanBenchmarkRate = (state: BankState, productType: ProductType): number => {
-  const benchmark = PRODUCT_META[productType]?.behaviour?.loanBenchmark;
+  const benchmark = PRODUCTS[productType]?.behaviour?.loanBenchmark;
   if (benchmark === 'mortgage') return state.market.competitorMortgageRate;
   if (benchmark === 'consumer') return state.market.competitorConsumerLoanRate;
   return state.market.riskFreeLong + state.market.corporateLoanSpread;
@@ -657,7 +657,7 @@ const stepWorkoutPipelines = (args: {
   let resolvedWorkoutPrincipal = 0;
 
   products.forEach((productType) => {
-    if (!PRODUCT_META[productType]?.behaviour?.isLoan) return;
+    if (!PRODUCTS[productType]?.behaviour?.isLoan) return;
     const buckets = getWorkoutBucketsArray(state, productType);
     if (buckets.length === 0) return;
 

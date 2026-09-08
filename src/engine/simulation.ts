@@ -32,7 +32,6 @@ import {
   SetMortgagePolicyAction,
   SetTreasuryPolicyAction,
   SetTermDepositPolicyAction,
-  EnterRepoAction,
   SetUnderwritingAction,
   EnterHedgeAction,
   SetCapitalPolicyAction,
@@ -48,7 +47,7 @@ import {
 } from '../domain/shocks';
 import { CashFlowStatement } from '../domain/cashflow';
 import { Currency, MaturityBucket } from '../domain/enums';
-import { PRODUCT_META } from '../domain/productMeta';
+import { PRODUCTS } from '../products/catalogue';
 import { calculateRiskMetrics, classifyFundingConfidenceState, evaluateCompliance } from './metrics';
 import { checkInvariants } from './invariants';
 import { cloneBankState } from './clone';
@@ -112,7 +111,7 @@ const actionHandlers: ActionHandlerMap = {
     ctx.events.push(createEvent('info',t?'Board risk appetite updated. Prudential floors still apply.':'Board restored automatic risk appetite targets.'));
   },
   adjustRate: (action: AdjustRateAction, ctx) => {
-    const product = PRODUCT_META[action.productType];
+    const product = PRODUCTS[action.productType];
     if (!product?.behaviour?.isLoan && !product?.behaviour?.isCustomerDeposit) { ctx.events.push(createEvent('warning', 'Only customer loan and deposit offer rates can be set directly.')); return; }
     adjustInterestRate(findItem(ctx.state.financial.balanceSheet, action.productType), action.newRate);
     ctx.events.push(createEvent('info', `Adjusted rate for ${action.productType} to ${action.newRate.toFixed(4)}`));
@@ -139,18 +138,6 @@ const actionHandlers: ActionHandlerMap = {
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
   setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => { ctx.state.behaviour.treasuryPolicy={giltShareOfHqla:clamp(action.giltShareOfHqla,0,1),giltDurationYears:clamp(action.giltDurationYears,.25,15)}; applyTreasuryPolicy(ctx.state,ctx.config,ctx.events); },
   setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
-  enterRepo: (action: EnterRepoAction, ctx) => {
-    applyEnterRepo(
-      ctx.state,
-      ctx.config,
-      action.direction,
-      action.collateralProduct,
-      action.amount,
-      action.haircut,
-      action.rate ?? ctx.state.market.baseRate,
-      ctx.events
-    );
-  },
   setUnderwriting: (action: SetUnderwritingAction, ctx) => {
     if (!ctx.state.behaviour.underwritingTightness) {
       ctx.state.behaviour.underwritingTightness = {};
@@ -227,7 +214,7 @@ const shockHandlers: ShockHandlerMap = {
     // A run increases LCR outflows and triggers an immediate one-off deposit withdrawal.
     ctx.lcrOutflowMultiplier.value *= shock.outflowRateMultiplier;
     const depositItems = ctx.state.financial.balanceSheet.items.filter(
-      (item) => PRODUCT_META[item.productType]?.behaviour?.isCustomerDeposit
+      (item) => PRODUCTS[item.productType]?.behaviour?.isCustomerDeposit
     );
     const runParams = ctx.config.shockParameters.idiosyncraticRun;
     const baseRunOff = runParams.baseRunOffRate;
@@ -245,7 +232,7 @@ const shockHandlers: ShockHandlerMap = {
       const paid = (totalPaid * requested) / allocationBase;
       const boundedPaid = Math.min(item.balance, Math.max(0, paid));
       item.balance -= boundedPaid;
-      const label = PRODUCT_META[item.productType]?.label ?? item.productType;
+      const label = PRODUCTS[item.productType]?.label ?? item.productType;
       ctx.events.push(
         createEvent(
           'warning',
@@ -591,8 +578,8 @@ const blendRate = (existingBalance: number, existingRate: number, newAmount: num
 };
 
 type FundingProduct =
-  | LiabilityProductType.WholesaleFundingST
-  | LiabilityProductType.WholesaleFundingLT;
+  | typeof LiabilityProductType.WholesaleFundingST
+  | typeof LiabilityProductType.WholesaleFundingLT;
 
 const FUNDING_PRODUCTS: FundingProduct[] = [
   LiabilityProductType.WholesaleFundingST,
@@ -838,7 +825,7 @@ const stepContractualRetailFunding = (state: BankState, config: SimulationConfig
     for(const b of buckets){const m=b.monthsToMaturity-dtMonths;if(m<=0)matured+=Math.max(0,b.notional);else keep.push({...b,monthsToMaturity:m});} state.fundingLadders[productType]=keep; if(matured<=0)continue; const paid=applyCashOutflowOrFail(state,matured,events); const line=findItem(state.financial.balanceSheet,productType); if(line)line.balance=Math.max(0,(line.balance??before)-paid);
     if(productType===LiabilityProductType.Tier2Debt) state.financial.capital.tier2=Math.max(0,(state.financial.capital.tier2??0)-paid);
     if(productType===LiabilityProductType.BankOfEnglandFunding){const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts);if(gilts?.encumbrance&&before>0){releasedCollateral=(gilts.encumbrance.encumberedAmount??0)*Math.min(1,paid/before);gilts.encumbrance.encumberedAmount=Math.max(0,(gilts.encumbrance.encumberedAmount??0)-releasedCollateral);}}
-    events.push(createEvent('info',`${PRODUCT_META[productType]?.label??productType} matured ${paid.toFixed(2)}`,['funding']));
+    events.push(createEvent('info',`${PRODUCTS[productType]?.label??productType} matured ${paid.toFixed(2)}`,['funding']));
   }
 };
 
@@ -953,7 +940,7 @@ const applyBuySellAsset = (
   const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
   if (!asset || !cash) return;
 
-  if (PRODUCT_META[productType]?.behaviour?.isLoan) {
+  if (PRODUCTS[productType]?.behaviour?.isLoan) {
     const params = config.productParameters[productType];
     if (amountDelta >= 0) {
       const requested = amountDelta;
@@ -1051,108 +1038,6 @@ const ensureLineItem = (
   };
   state.financial.balanceSheet.items.push(newItem);
   return newItem;
-};
-
-const applyRepoBorrow = (
-  state: BankState,
-  config: SimulationConfig,
-  collateralProduct: AssetProductType,
-  amount: number,
-  haircut: number | undefined,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-
-  const collateral = findItem(state.financial.balanceSheet, collateralProduct);
-  const effectiveHaircut = clamp(haircut ?? 0, 0, 1);
-  const collateralRequirement = effectiveHaircut < 1 ? 1 / (1 - effectiveHaircut) : Infinity;
-  const availableCollateral = collateral
-    ? Math.max(0, collateral.balance - (collateral.encumbrance?.encumberedAmount ?? 0))
-    : 0;
-  const maxBorrow = collateralRequirement > 0 ? availableCollateral / collateralRequirement : 0;
-  const borrowAmount = Math.min(amount, maxBorrow);
-
-  if (borrowAmount <= 0) {
-    events.push(
-      createEvent('warning', `Repo borrow failed: insufficient unencumbered ${collateralProduct}`)
-    );
-    return;
-  }
-
-  const funding = ensureLineItem(
-    state,
-    BalanceSheetSide.Liability,
-    LiabilityProductType.RepurchaseAgreements,
-    'Repo Borrowing',
-    rate,
-    config
-  );
-  funding.interestRate = blendRate(funding.balance, funding.interestRate, borrowAmount, rate);
-  funding.balance += borrowAmount;
-  cash.balance += borrowAmount;
-  if (collateral) {
-    const encumbered = Math.min(collateral.balance, borrowAmount * collateralRequirement);
-    if (!collateral.encumbrance) {
-      collateral.encumbrance = { encumberedAmount: 0 };
-    }
-    collateral.encumbrance.remainingMonths = 1;
-    collateral.encumbrance.encumberedAmount = clamp(
-      (collateral.encumbrance.encumberedAmount ?? 0) + encumbered,
-      0,
-      collateral.balance
-    );
-  }
-  const partial = borrowAmount + 1e-9 < amount;
-  const amountText = partial
-    ? `+${borrowAmount.toFixed(2)} funding (requested ${amount.toFixed(2)})`
-    : `+${borrowAmount.toFixed(2)} funding`;
-  events.push(createEvent('info', `Repo borrow: ${amountText}, collateral ${collateralProduct} encumbered`));
-};
-
-const applyRepoLend = (
-  state: BankState,
-  config: SimulationConfig,
-  amount: number,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-
-  const reverseRepo = ensureLineItem(
-    state,
-    BalanceSheetSide.Asset,
-    AssetProductType.ReverseRepo,
-    'Reverse Repo',
-    rate,
-    config
-  );
-  const lendAmount = Math.min(Math.max(0, cash.balance), amount);
-  reverseRepo.interestRate = blendRate(reverseRepo.balance, reverseRepo.interestRate, lendAmount, rate);
-  reverseRepo.balance += lendAmount;
-  cash.balance -= lendAmount;
-  events.push(createEvent('info', `Repo lend: -${lendAmount.toFixed(2)} cash, +reverse repo asset`));
-};
-
-const applyEnterRepo = (
-  state: BankState,
-  config: SimulationConfig,
-  direction: 'borrow' | 'lend',
-  collateralProduct: AssetProductType,
-  amount: number,
-  haircut: number | undefined,
-  rate: number,
-  events: SimulationEvent[]
-): void => {
-  // Repo "borrow" = raise cash secured on collateral (creates a repo liability and encumbers assets).
-  // Repo "lend"   = deploy cash into reverse repo (creates an asset).
-  if (direction === 'borrow') {
-    applyRepoBorrow(state, config, collateralProduct, amount, haircut, rate, events);
-    return;
-  }
-  applyRepoLend(state, config, amount, rate, events);
 };
 
 const applyCounterpartyDefault = (
@@ -1323,10 +1208,6 @@ export const applyActions = (
   actions.forEach(action => {
     if (Object.values(action).some(v => typeof v === 'number' && !Number.isFinite(v)) || ('amount' in action && action.amount < 0) || ('notional' in action && action.notional < 0)) {
       events.push(createEvent('warning', 'Invalid transaction amount or rate. Action rejected.'));
-      return;
-    }
-    if (action.type === 'enterRepo' && (action.collateralProduct !== AssetProductType.Gilts || (action.maturityMonths !== undefined && action.maturityMonths !== 1))) {
-      events.push(createEvent('warning', 'This portfolio supports rolling one-month gilt repos only. Unsupported collateral or tenor rejected.'));
       return;
     }
     dispatchAction(action, actionContext);
@@ -1913,14 +1794,14 @@ export const applyDepositBehaviour = (
   const depositItems = state.financial.balanceSheet.items
     .filter(
       (i) =>
-        PRODUCT_META[i.productType]?.behaviour?.affectsBehaviouralDepositFlow &&
-        PRODUCT_META[i.productType]?.behaviour?.isCustomerDeposit
+        PRODUCTS[i.productType]?.behaviour?.affectsBehaviouralDepositFlow &&
+        PRODUCTS[i.productType]?.behaviour?.isCustomerDeposit
     );
   // Franchise is one bank-wide index. Weight by opening balances so adding a
   // product line cannot multiply the speed of reputation damage or recovery.
   const totalOpeningDeposits = depositItems.reduce((sum, item) => sum + Math.max(0, item.balance), 0);
   depositItems.forEach((item) => {
-      const meta = PRODUCT_META[item.productType];
+      const meta = PRODUCTS[item.productType];
       const byProduct = config.behaviour.depositByProduct?.[item.productType];
       const competitor = meta.behaviour.isTermDeposit
         ? state.market.competitorTermDepositRate
@@ -2097,12 +1978,12 @@ export const applyLoanBehaviour = (
   state.financial.balanceSheet.items
     .filter(
       (i) =>
-        PRODUCT_META[i.productType]?.behaviour?.affectsBehaviouralLoanFlow &&
-        PRODUCT_META[i.productType]?.behaviour?.isLoan
+        PRODUCTS[i.productType]?.behaviour?.affectsBehaviouralLoanFlow &&
+        PRODUCTS[i.productType]?.behaviour?.isLoan
     )
     .forEach((item) => {
       const productType = item.productType as AssetProductType;
-      const meta = PRODUCT_META[item.productType];
+      const meta = PRODUCTS[item.productType];
       const benchmark =
         meta.behaviour.loanBenchmark === 'mortgage' ? state.market.competitorMortgageRate : meta.behaviour.loanBenchmark === 'consumer' ? state.market.competitorConsumerLoanRate : state.market.riskFreeLong + state.market.corporateLoanSpread;
       const rel = item.interestRate - benchmark;
@@ -2311,7 +2192,7 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
   const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
   const interestIncome = assets
-    .filter((a) => !PRODUCT_META[a.productType]?.behaviour?.isLoan)
+    .filter((a) => !PRODUCTS[a.productType]?.behaviour?.isLoan)
     .reduce((sum, a) => sum + (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears, 0);
   const interestExpense = liabilities.reduce((sum, l) => sum + l.balance * l.interestRate * dtYears, 0);
 
@@ -2346,14 +2227,14 @@ export const recogniseLosses = (
   shockEffects: ShockApplicationResult,
   recognizedLoanLossesInput: Partial<Record<ProductType, number>>
 ): LossRecognitionResult => {
-  const loanItems = state.financial.balanceSheet.items.filter((i) => PRODUCT_META[i.productType]?.behaviour?.isLoan);
+  const loanItems = state.financial.balanceSheet.items.filter((i) => PRODUCTS[i.productType]?.behaviour?.isLoan);
 
   const recognizedNonLoanLosses: Partial<Record<ProductType, number>> = {};
   const recognizedLoanLosses: Partial<Record<ProductType, number>> = { ...recognizedLoanLossesInput };
   const realizedLoanLosses = Object.values(recognizedLoanLosses).reduce((s, v) => s + (v ?? 0), 0);
 
   Object.entries(shockEffects.extraLosses).forEach(([product, loss]) => {
-    const meta = PRODUCT_META[product as ProductType];
+    const meta = PRODUCTS[product as ProductType];
     if (meta?.behaviour?.isLoan) return;
     const item = findItem(state.financial.balanceSheet, product as ProductType);
     const recognized = item ? Math.min(item.balance, loss) : 0;
@@ -2363,7 +2244,7 @@ export const recogniseLosses = (
   });
 
   Object.entries(shockEffects.extraLosses).forEach(([product]) => {
-    const meta = PRODUCT_META[product as ProductType];
+    const meta = PRODUCTS[product as ProductType];
     if (meta?.behaviour?.isLoan) return;
     const item = findItem(state.financial.balanceSheet, product as ProductType);
     if (item) {
@@ -2922,13 +2803,10 @@ const computeBalanceFlows = (
 
   const operatingLiabilityProducts = new Set<ProductType>([
     LiabilityProductType.DerivativeLiabilities,
-    LiabilityProductType.RetailDeposits,
-    LiabilityProductType.CorporateDeposits,
       LiabilityProductType.RetailCurrentAccounts,
     LiabilityProductType.CorporateOperatingDeposits,
     LiabilityProductType.CorporateNonOperatingDeposits,
     LiabilityProductType.WholesaleFundingST,
-    LiabilityProductType.RepurchaseAgreements,
   ]);
 
   const investingAssetProducts = new Set<ProductType>([AssetProductType.Gilts]);

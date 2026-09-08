@@ -89,27 +89,6 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
       initialMinBucketOutstanding: 40e6,
     },
   },
-  [AssetProductType.ReverseRepo]: {
-    productType: AssetProductType.ReverseRepo,
-    riskWeight: 0,
-    baseDefaultRate: 0.0,
-    lossGivenDefault: 0,
-    volumeElasticityToRate: 0,
-  },
-  [LiabilityProductType.RetailDeposits]: {
-    productType: LiabilityProductType.RetailDeposits,
-    riskWeight: 0,
-    baseDefaultRate: 0.0,
-    lossGivenDefault: 0,
-    volumeElasticityToRate: 0.5,
-  },
-  [LiabilityProductType.CorporateDeposits]: {
-    productType: LiabilityProductType.CorporateDeposits,
-    riskWeight: 0,
-    baseDefaultRate: 0.0,
-    lossGivenDefault: 0,
-    volumeElasticityToRate: 0.8,
-  },
   [LiabilityProductType.RetailCurrentAccounts]: {
     productType: LiabilityProductType.RetailCurrentAccounts,
     riskWeight: 0,
@@ -150,13 +129,6 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
   },
   [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
   [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
-  [LiabilityProductType.RepurchaseAgreements]: {
-    productType: LiabilityProductType.RepurchaseAgreements,
-    riskWeight: 0,
-    baseDefaultRate: 0.0,
-    lossGivenDefault: 0,
-    volumeElasticityToRate: 0,
-  },
 };
 
 const liquidityTags: Record<ProductType, LiquidityTag> = {
@@ -189,24 +161,6 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     hqlaLevel: HQLALevel.None,
     lcrInflowRate: 0.05,
     nsfrRsfFactor: .85,
-  },
-  [AssetProductType.ReverseRepo]: {
-    productType: AssetProductType.ReverseRepo,
-    hqlaLevel: HQLALevel.None,
-    lcrInflowRate: 0,
-    nsfrRsfFactor: 0,
-  },
-  [LiabilityProductType.RetailDeposits]: {
-    productType: LiabilityProductType.RetailDeposits,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.05,
-    nsfrAsfFactor: 0.95,
-  },
-  [LiabilityProductType.CorporateDeposits]: {
-    productType: LiabilityProductType.CorporateDeposits,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.4,
-    nsfrAsfFactor: 0.5,
   },
   [LiabilityProductType.RetailCurrentAccounts]: {
     productType: LiabilityProductType.RetailCurrentAccounts,
@@ -243,12 +197,6 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
   },
   [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .5 },
   [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 1 },
-  [LiabilityProductType.RepurchaseAgreements]: {
-    productType: LiabilityProductType.RepurchaseAgreements,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0,
-    nsfrAsfFactor: 0.0,
-  },
 };
 
 const global: GlobalSimulationParameters = {
