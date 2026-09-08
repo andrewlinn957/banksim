@@ -1,0 +1,29 @@
+name: Fix retail refocus CI
+
+on:
+  push:
+    branches:
+      - audit-small-uk-retail-bank
+    paths:
+      - .github/scripts/fix_retail_ci.py
+      - .github/workflows/fix-retail-ci.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-small-uk-retail-bank
+      - name: Apply integration patch
+        run: python .github/scripts/fix_retail_ci.py
+      - name: Commit integration fixes
+        run: |
+          git config user.name "andrewlinn957"
+          git config user.email "139116101+andrewlinn957@users.noreply.github.com"
+          git add src
+          git commit -m "Complete retail-bank CI integration"
+          git push origin HEAD:audit-small-uk-retail-bank
