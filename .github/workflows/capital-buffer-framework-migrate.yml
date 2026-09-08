@@ -16,7 +16,9 @@ jobs:
         with:
           ref: feature/capital-buffer-framework
       - name: Apply migration
-        run: python .github/scripts/capital_buffer_migrate.py
+        run: |
+          sed -i "s/## Pillar 2A SREP assessment/## Pillar 2A 24-month SREP assessment/" .github/scripts/capital_buffer_migrate.py
+          python .github/scripts/capital_buffer_migrate.py
       - name: Commit migration
         run: |
           git config user.name "github-actions[bot]"
