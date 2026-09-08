@@ -20,8 +20,7 @@ Its main assets are:
 
 Its main funding sources are:
 
-- retail current accounts
-- instant-access savings
+- instant retail
 - fixed-term retail savings
 - SME and business deposits
 - long-term debt
@@ -34,7 +33,7 @@ The bank starts with CET1 and AT1 capital. You can issue new CET1 equity or Tier
 
 Set the rates offered on:
 
-- instant-access savings
+- instant retail
 - fixed-term savings
 - SME and business deposits
 

@@ -60,7 +60,7 @@ const Field = ({label,hint,field,state,update,disabled,error,placeholder}:FieldP
 );
 
 const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
-  retailDepositRate:'Instant-access savings offer', termDepositRate:'Fixed-term savings offer', corporateDepositRate:'SME/business deposit offer',
+  retailDepositRate:'Instant retail offer', termDepositRate:'Fixed-term savings offer', corporateDepositRate:'SME/business deposit offer',
   mortgageRate:'Mortgage new rate', consumerLoanRate:'Personal-credit new rate', corporateLoanRate:'SME/business new rate',
   mortgageUnderwritingTightness:'Mortgage selectivity', consumerUnderwritingTightness:'Personal-credit selectivity', corporateUnderwritingTightness:'SME/business selectivity',
   issueLTDebtAmount:'Long-term debt amount', issueEquityAmount:'CET1 equity amount', issueTier2Amount:'Tier 2 amount',
@@ -78,7 +78,7 @@ export default function ActionsPanel({department,state,onChange,disabled,errors,
 
     {department==='Customers'&&<>
       <div className="policy-fields policy-fields-primary">
-        <Field field="retailDepositRate" label="Instant-access savings offer" hint="Main retail funding price. Current accounts remain separately modelled and less rate-sensitive." state={state} update={update} disabled={disabled} error={errors?.retailDepositRate} placeholder="e.g. 3.5%"/>
+        <Field field="retailDepositRate" label="Instant retail offer" hint="Main instant retail funding price." state={state} update={update} disabled={disabled} error={errors?.retailDepositRate} placeholder="e.g. 3.5%"/>
         <Field field="corporateDepositRate" label="SME/business deposit offer" hint="Business balances are less stable and react faster to competing offers." state={state} update={update} disabled={disabled} error={errors?.corporateDepositRate} placeholder="e.g. 3.0%"/>
       </div>
       <details className="department-advanced policy-disclosure">

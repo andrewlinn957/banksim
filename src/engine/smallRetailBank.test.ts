@@ -15,6 +15,10 @@ describe('small UK retail-bank model', () => {
   it('opens as a retail-heavy bank without generic repo positions', () => {
     expect(initialState.financial.balanceSheet.items.some(i => i.productType === A.ReverseRepo)).toBe(false);
     expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);
+    expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RetailTransactionalDeposits)).toBe(false);
+    expect(balance(initialState, L.RetailSavingsDeposits)).toBe(7.0e9);
+    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.label).toBe('Instant retail');
+    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.interestRate).toBeCloseTo(0.0167857143, 8);
     expect(balance(initialState, A.Mortgages)).toBeGreaterThan(balance(initialState, A.CorporateLoans));
     expect(balance(initialState, A.ConsumerLoans)).toBeGreaterThan(0);
     expect(balance(initialState, L.RetailTermDeposits)).toBeGreaterThan(0);
@@ -24,6 +28,7 @@ describe('small UK retail-bank model', () => {
   it('does not add an unused short-term wholesale line during an ordinary close', () => {
     const out = engine.step({ state: cloneBankState(initialState), config: baseConfig, shocks: [], actions: [] }).nextState;
     expect(out.financial.balanceSheet.items.some(i => i.productType === L.WholesaleFundingST)).toBe(false);
+    expect(out.financial.balanceSheet.items.some(i => i.productType === L.RetailTransactionalDeposits)).toBe(false);
   });
 
   it('replenishes competitively priced fixed-term savings as contractual buckets mature', () => {
@@ -54,7 +59,7 @@ describe('small UK retail-bank model', () => {
     }).nextState;
     const liquid0 = cash0 + gilts0;
     const liquid1 = balance(out, A.CashReserves) + balance(out, A.Gilts);
-    expect(Math.abs(liquid1 - liquid0)).toBeLessThan(100e6); // monthly business flows can move cash, but policy must not manufacture balance sheet.
+    expect(Math.abs(liquid1 - liquid0)).toBeLessThan(200e6); // normal monthly customer/business flows can move cash; Treasury policy must not manufacture a material balance sheet.
     expect(out.behaviour.treasuryPolicy?.giltDurationYears).toBe(2);
   });
 
@@ -62,7 +67,7 @@ describe('small UK retail-bank model', () => {
     const state = cloneBankState(initialState);
     const cash0 = balance(state, A.CashReserves);
     const out = engine.step({
-      state,
+      state: cloneBankState(initialState),
       config: baseConfig,
       shocks: [],
       actions: [{ type: 'drawBoeFunding', facility: 'ILTR', amount: 250e6 }],

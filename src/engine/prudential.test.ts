@@ -25,8 +25,8 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     expect(computeHqla([h(HQLALevel.Level1, 85), h(HQLALevel.Level2B, 1000)])).toBeCloseTo(100);
     expect(computeHqla([h(HQLALevel.Level2A, 1000)])).toBe(0);
   });
-  it('uses retail/corporate liquidity factors independently of reputation', () => {
-    const expected = [[L.RetailTransactionalDeposits,.05,.95],[L.RetailSavingsDeposits,.1,.9],[L.CorporateOperatingDeposits,.25,.5],[L.CorporateNonOperatingDeposits,.4,.5]] as const;
+  it('uses instant-retail and corporate liquidity factors independently of reputation', () => {
+    const expected = [[L.RetailSavingsDeposits,0.08571428571428572,0.9142857142857143],[L.CorporateOperatingDeposits,.25,.5],[L.CorporateNonOperatingDeposits,.4,.5]] as const;
     const lines = prudentialLiquidityLines(initialState, baseConfig);
     for (const [p, runoff, asf] of expected) {
       const l = lines.find(x => x.productType === p)!;
@@ -51,7 +51,7 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
   it('limits reserve exclusion to deposit-matched reserves and includes commitments', () => {
     const s=cloneBankState(initialState);
     s.financial.balanceSheet.items.filter(i=>i.side===BalanceSheetSide.Liability).forEach(i=>i.balance=0);
-    line(s,L.RetailTransactionalDeposits).balance=100;
+    line(s,L.RetailSavingsDeposits).balance=100;
     expect(centralBankExclusion(s)).toBe(100);
     s.loanPipelines={ [A.Mortgages]:{demandNotional:0,approvedNotional:0,committedNotional:100},[A.CorporateLoans]:{demandNotional:0,approvedNotional:0,committedNotional:100} };
     expect(commitmentLiquidity(s)).toEqual({outflow:15,rsf:10});

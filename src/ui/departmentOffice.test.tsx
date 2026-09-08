@@ -19,7 +19,7 @@ describe('Department decision destinations',()=>{
  });
  it('keeps invalid inputs in another department visible so time cannot appear silently blocked',()=>{
   const html=renderToStaticMarkup(<DepartmentOffice department="Customers" state={initialState} history={[initialState]} form={form} errors={{hedgeNotional:'Enter a valid amount'}} hasErrors selected={[]} onChange={noop} onDecision={noop} onReport={noop} onHelp={noop} estimate={null}/>);
-  expect(html).toContain('Enter a valid amount');expect(html).toContain('role="alert"');expect(html).toContain('Instant-access savings offer');
+  expect(html).toContain('Enter a valid amount');expect(html).toContain('role="alert"');expect(html).toContain('Instant retail offer');
   expect(html).toContain('Competitor rates');expect(html).toContain('Instant savings');expect(html).toContain('Business deposits');
  });
 });
