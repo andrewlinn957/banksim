@@ -7,7 +7,6 @@ export const createRetailHeavyCalibration = (): CalibrationPack => {
 
   setProductBalance(state, AssetProductType.Mortgages, 6.2e9);
   setProductBalance(state, AssetProductType.CorporateLoans, 2.3e9);
-  // Former calibration had £6bn savings plus the untouched £2bn current-account line.
   setProductBalance(state, LiabilityProductType.RetailCurrentAccounts, 8e9);
   setProductBalance(state, LiabilityProductType.CorporateNonOperatingDeposits, 0.15e9);
   setProductBalance(state, LiabilityProductType.RetailTermDeposits, 2.2e9);
@@ -45,7 +44,7 @@ export const createRetailHeavyCalibration = (): CalibrationPack => {
     initialState: state,
     envelope: {
       cet1Ratio: [0.085, 0.45],
-      lcr: [0.95, 6.0],
+      lcr: [0.95, 6.5],
       // 2026 prescribed ASF/RSF and contractual maturity treatment; see model-basis.md.
       nsfr: [0.95, 3.6],
       roe: [-0.03, 0.3],
