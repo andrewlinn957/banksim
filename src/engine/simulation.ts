@@ -48,6 +48,7 @@ import {
 import { CashFlowStatement } from '../domain/cashflow';
 import { Currency, MaturityBucket } from '../domain/enums';
 import { PRODUCTS } from '../products/catalogue';
+import { liquidityTagForProduct } from '../products/regulatory';
 import { calculateRiskMetrics, classifyFundingConfidenceState, evaluateCompliance } from './metrics';
 import { checkInvariants } from './invariants';
 import { cloneBankState } from './clone';
@@ -1004,7 +1005,7 @@ const applyBuySellAsset = (
  * Ensures a balance-sheet line exists for a product type.
  *
  * Used for actions that create positions not present in the initial balance sheet (e.g. repo,
- * wholesale funding). Liquidity metadata is sourced from the simulation config.
+ * wholesale funding). Liquidity metadata is derived from the regulatory product classification.
  */
 const ensureLineItem = (
   state: BankState,
@@ -1024,7 +1025,7 @@ const ensureLineItem = (
     balance: 0,
     interestRate: rate,
     maturityBucket: MaturityBucket.LessThan1Y,
-    liquidityTag: config.liquidityTags[productType],
+    liquidityTag: liquidityTagForProduct(productType),
     encumbrance: { encumberedAmount: 0 },
     security: config.behaviour.securitiesAccounting?.defaultClassificationByProduct?.[productType]
       ? {
@@ -2270,7 +2271,7 @@ export const recogniseLosses = (
   let creditProvision = findItem(state.financial.balanceSheet, LiabilityProductType.CreditProvisions);
   const commitmentMovement = commitmentTarget - (creditProvision?.balance ?? 0);
   if (!creditProvision && commitmentTarget > 0) {
-    creditProvision = { ...loanItems[0], productType: LiabilityProductType.CreditProvisions, label: 'Undrawn credit provisions', side: BalanceSheetSide.Liability, balance: 0, interestRate: 0, lossAllowance: undefined, security: undefined, encumbrance: { encumberedAmount: 0 }, liquidityTag: config.liquidityTags[LiabilityProductType.CreditProvisions] };
+    creditProvision = { ...loanItems[0], productType: LiabilityProductType.CreditProvisions, label: 'Undrawn credit provisions', side: BalanceSheetSide.Liability, balance: 0, interestRate: 0, lossAllowance: undefined, security: undefined, encumbrance: { encumberedAmount: 0 }, liquidityTag: liquidityTagForProduct(LiabilityProductType.CreditProvisions) };
     state.financial.balanceSheet.items.push(creditProvision);
   }
   if (creditProvision) creditProvision.balance = commitmentTarget;
