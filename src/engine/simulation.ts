@@ -1963,7 +1963,22 @@ export const applyDepositBehaviour = (
       const before = item.balance;
       const desiredBalance = before * growthFactor;
       const rawDesiredDelta = desiredBalance - before;
-      const desiredDelta = meta.behaviour.isTermDeposit ? Math.max(0, rawDesiredDelta) : rawDesiredDelta;
+      let desiredDelta = rawDesiredDelta;
+      if (meta.behaviour.isTermDeposit) {
+        // Fixed-term savings are a flow market, not a perpetually compounding stock.
+        // A competitive offer should replenish the monthly slice that matures even if
+        // the contractual stock has temporarily run down. Target the share of retail
+        // savings that customers choose to lock, then acquire toward that target at
+        // no more than roughly one maturity-ladder slice per month.
+        const instantSavings = Math.max(0, findItem(state.financial.balanceSheet, LiabilityProductType.RetailSavingsDeposits)?.balance ?? 0);
+        const rateAdvantage = laggedRate - competitor;
+        const targetTermShare = clamp(0.23 + 5 * rateAdvantage, 0.05, 0.45);
+        const targetTermStock = instantSavings * targetTermShare / Math.max(0.05, 1 - targetTermShare);
+        const tenor = Math.max(6, state.behaviour.termDepositTenorMonths ?? 12);
+        const acquisitionCapacity = targetTermStock / tenor * dtMonths * 1.25;
+        const gapToTarget = Math.max(0, targetTermStock - before);
+        desiredDelta = Math.min(gapToTarget, acquisitionCapacity);
+      }
       if (desiredDelta >= 0) {
         item.balance = before + desiredDelta;
         adjustCashOrFail(state, desiredDelta, events);

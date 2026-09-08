@@ -191,6 +191,7 @@ describe('Model regression harness', () => {
     expect(finalCorporateLoans).toBeGreaterThan(openingCorporateLoans * 0.7);
     expect(finalCorporateLoans).toBeLessThan(openingCorporateLoans * 1.3);
     expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.6);
+    expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.5e9);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
     expect(loanDepositRatio).toBeGreaterThan(0.35);
     expect(finalAssets > 0 ? liquidAssets / finalAssets : 1).toBeLessThan(0.55);
@@ -224,6 +225,7 @@ describe('Model regression harness', () => {
     expect(finalLoans).toBeGreaterThan(openingLoans * 0.5);
     expect(finalLoans).toBeLessThan(openingLoans * 1.8);
     expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.55);
+    expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.35e9);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.8);
     expect(assets > 0 ? liquid / assets : 1).toBeLessThan(0.6);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);

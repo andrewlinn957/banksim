@@ -21,6 +21,22 @@ describe('small UK retail-bank model', () => {
     expect(initialState.fundingLadders[L.RetailTermDeposits]?.length).toBeGreaterThan(1);
   });
 
+  it('replenishes competitively priced fixed-term savings as contractual buckets mature', () => {
+    let state = cloneBankState(initialState);
+    for (let month = 0; month < 18; month++) {
+      state = engine.step({
+        state, config: baseConfig, shocks: [],
+        actions: [
+          { type: 'adjustRate', productType: L.RetailTermDeposits, newRate: state.market.competitorTermDepositRate },
+          { type: 'setTermDepositPolicy', tenorMonths: 12 },
+        ],
+      }).nextState;
+    }
+    expect(balance(state, L.RetailTermDeposits)).toBeGreaterThan(0.8e9);
+    expect(balance(state, L.RetailTermDeposits)).toBeLessThan(2.5e9);
+    expect((state.fundingLadders[L.RetailTermDeposits] ?? []).length).toBeGreaterThan(5);
+  });
+
   it('lets Treasury change HQLA composition without creating assets', () => {
     const state = cloneBankState(initialState);
     const cash0 = balance(state, A.CashReserves);
