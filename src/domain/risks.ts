@@ -51,6 +51,26 @@ export interface Pillar2AAssessmentState {
   };
 }
 
+export type OsiiScopeRoute = 'belowCoreDepositThreshold' | 'largeDomesticBank' | 'ringFencedBankProxy';
+
+export interface OsiiQuarterEndObservation {
+  step: number;
+  date: string;
+  ukLeverageExposure: number;
+}
+
+export interface OsiiAssessmentState {
+  /** O-SII rate fixed at the latest annual BankSim rate-setting review. */
+  assessedRate: number;
+  assessmentStep: number;
+  nextAssessmentStep: number;
+  effectiveYear: number;
+  averageQuarterEndUkLeverageExposure: number;
+  inScopeAtAssessment: boolean;
+  scopeRouteAtAssessment: OsiiScopeRoute;
+  quarterEndObservations: OsiiQuarterEndObservation[];
+}
+
 export interface RiskMetrics {
   internalLeverageTargetRatio?: number;
   internalLcrTargetRatio?: number;
@@ -62,6 +82,24 @@ export interface RiskMetrics {
   pillar2AGrossRate?: number;
   pillar2AOffsetRate?: number;
   pillar2ANextAssessmentStep?: number;
+  capitalConservationBufferRate?: number;
+  countercyclicalBufferRate?: number;
+  ukCountercyclicalBufferRate?: number;
+  ukRelevantCreditRwaShare?: number;
+  osiiBufferRate?: number;
+  combinedBufferRate?: number;
+  osiiInScope?: boolean;
+  osiiScopeRoute?: OsiiScopeRoute;
+  osiiCoreDeposits?: number;
+  osiiTradingAssets?: number;
+  osiiTradingAssetsToTier1?: number;
+  osiiCurrentUkLeverageExposure?: number;
+  osiiTrailingAverageUkLeverageExposure?: number;
+  osiiAssessedAverageUkLeverageExposure?: number;
+  osiiNextThreshold?: number;
+  osiiNextThresholdRate?: number;
+  osiiNextAssessmentStep?: number;
+  osiiThresholdScheduleYear?: number;
   rwa: number;
   tier1Ratio?: number;
   totalCapitalRatio?: number;
@@ -113,6 +151,7 @@ export interface RiskMetrics {
 export interface CapitalBufferStack {
   conservationBuffer: number;
   countercyclicalBuffer: number;
+  /** Legacy/manual systemic-buffer floor; calculated O-SII is otherwise supplied by the engine. */
   systemicBuffer: number;
   managementBuffer: number;
 }

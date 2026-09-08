@@ -150,7 +150,9 @@ const riskLimits = {
   },
   capitalBufferStack: {
     conservationBuffer: 0.025,
+    // Current UK CCyB rate; the engine derives the institution-specific rate from geographic credit exposure.
     countercyclicalBuffer: 0.02,
+    // Compatibility/manual floor only. The O-SII buffer is calculated from size and annual UK LEM assessments.
     systemicBuffer: 0,
     // Remove opening management add-on so sandbox starts closer to Metro baseline.
     managementBuffer: 0,

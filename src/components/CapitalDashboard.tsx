@@ -3,21 +3,26 @@ import { SimulationConfig } from '../domain/config';
 import { eligibleCet1, ownFundsRequirements } from '../engine/prudential';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import Pillar2APanel from './Pillar2APanel';
+import CapitalBuffersPanel from './CapitalBuffersPanel';
 
 export function capitalDashboardData(state: BankState, config: SimulationConfig) {
   const rwa = state.risk.riskMetrics.rwa;
   const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
   const minima = ownFundsRequirements(config.riskLimits, rwa, state.risk.riskMetrics.pillar2ARate ?? state.risk.pillar2A?.assessedRate ?? 0);
   const b = config.riskLimits.capitalBufferStack;
-  const buffer = b.conservationBuffer + b.countercyclicalBuffer + b.systemicBuffer;
+  const metrics = state.risk.riskMetrics;
+  const conservationBuffer = metrics.capitalConservationBufferRate ?? b.conservationBuffer;
+  const countercyclicalBuffer = metrics.countercyclicalBufferRate ?? b.countercyclicalBuffer;
+  const osiiBuffer = metrics.osiiBufferRate ?? b.systemicBuffer;
+  const buffer = metrics.combinedBufferRate ?? conservationBuffer + countercyclicalBuffer + osiiBuffer;
   const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - (at1 + tier2) / rwa - minima.cet1) : 0;
   const rows = [
     { label: 'Pillar 1 CET1', ratio: config.riskLimits.minCet1Ratio },
     { label: 'Pillar 2A CET1', ratio: minima.cet1 - config.riskLimits.minCet1Ratio },
     { label: 'CET1 covering other capital minima', ratio: substitution },
-    { label: 'Capital conservation buffer', ratio: b.conservationBuffer },
-    { label: 'Countercyclical buffer', ratio: b.countercyclicalBuffer },
-    { label: 'Systemic buffer', ratio: b.systemicBuffer },
+    { label: 'Capital conservation buffer', ratio: conservationBuffer },
+    { label: 'Institution-specific countercyclical buffer', ratio: countercyclicalBuffer },
+    { label: 'O-SII buffer', ratio: osiiBuffer },
   ];
   return { rwa, cet1, at1, tier2, rows, cards: [
     { name: 'CET1', amount: cet1, minimum: minima.cet1, requirement: minima.cet1 + substitution + buffer },
@@ -89,6 +94,7 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
         <p className="capital-payout"><strong>Bank policy payout cap: {formatPct(state.risk.riskMetrics.maxPayoutRatio)}</strong><br/>Maximum share of positive profit available for distributions under bank policy. This is not the PRA maximum distributable amount calculation.</p>
       </section>
     </div>
+    <CapitalBuffersPanel state={state} config={config}/>
     <Pillar2APanel state={state} config={config}/>
   </div>;
 }

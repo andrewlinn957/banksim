@@ -4,6 +4,7 @@ import { SimulationConfig } from '../domain/config';
 import { buildMechanicsDynamicContext } from '../content/mechanicsContext';
 import { buildMechanicsRegistry, MechanicCategory } from '../content/mechanicsRegistry';
 import { pillar2AHelpEntry } from '../content/pillar2AHelp';
+import { capitalBuffersHelpEntry } from '../content/capitalBuffersHelp';
 import './HelpCenterPanel.css';
 
 interface Props {
@@ -39,7 +40,7 @@ const HelpCenterPanel = ({ state, config, focusSectionId, onFocusHandled }: Prop
     [state, config]
   );
   const entries = useMemo(
-    () => [...buildMechanicsRegistry(mechanicsContext), pillar2AHelpEntry],
+    () => [...buildMechanicsRegistry(mechanicsContext), capitalBuffersHelpEntry, pillar2AHelpEntry],
     [mechanicsContext]
   );
 
