@@ -18,9 +18,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: audit-small-uk-retail-bank
-      - name: Adapt migration to current cohort constructor
+      - name: Adapt migration to current engine layout
         run: |
-          sed -i '95d' .github/scripts/apply_retail_refocus.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/apply_retail_refocus.py')
+          lines=p.read_text().splitlines()
+          lines=[line for line in lines if not (
+            ('rep(p,' in line and 'annualPd: args.annualPd' in line) or
+            ('rep(p,' in line and 'const delta = item.balance * growth' in line)
+          )]
+          p.write_text('\n'.join(lines)+'\n')
+          PY
       - name: Apply coordinated patch
         run: python .github/scripts/apply_retail_refocus.py
       - name: Commit patch
