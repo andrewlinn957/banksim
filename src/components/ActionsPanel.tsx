@@ -36,7 +36,6 @@ interface Props {
   disabled?: boolean;
   errors?: Partial<Record<keyof ActionFormState,string>>;
   hasValidationErrors?: boolean;
-  onNavigateHelp?: (id:string)=>void;
 }
 
 interface FieldProps {
@@ -69,10 +68,9 @@ const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
   giltShareOfHqla:'Gilt share of liquid assets',
 };
 
-export default function ActionsPanel({department,state,onChange,disabled,errors,hasValidationErrors,onNavigateHelp}:Props) {
+export default function ActionsPanel({department,state,onChange,disabled,errors,hasValidationErrors}:Props) {
   const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
   const firstError = Object.entries(errors ?? {}).find(([,message]) => !!message) as [keyof ActionFormState,string] | undefined;
-  const helpId=department==='Customers'?'deposit-behaviour':department==='Lending'?'loan-pipeline':department==='Capital'?'capital-policy-and-distributions':'funding-ladder-and-rollover';
 
   return <div className="stack department-policy-panel">
     <div className="policy-section-title"><h3>{department==='Treasury'?'Balance-sheet policy':'Standing policy'}</h3><small>Standing choices persist. One-off transactions clear after execution.</small></div>
@@ -128,6 +126,5 @@ export default function ActionsPanel({department,state,onChange,disabled,errors,
 
     {(department==='Treasury'||department==='Capital')&&<button className="button ghost" disabled={disabled} onClick={()=>onChange(department==='Capital'?{...state,issueEquityAmount:'',issueTier2Amount:''}:{...state,issueLTDebtAmount:'',boeFacility:'none',boeFundingAmount:'',hedgeDirection:'none',hedgeNotional:''})}>Cancel queued transactions</button>}
     <small>Rates accept % or bps; amounts accept £, m and bn. Editing pauses time.</small>
-    <button className="button ghost" onClick={()=>onNavigateHelp?.(helpId)}>Explain this department</button>
   </div>;
 }
