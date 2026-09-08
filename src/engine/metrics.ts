@@ -39,15 +39,21 @@ const isRecessionRegime = (state: BankState): boolean =>
   state.market.gdpGrowthMoM < 0 ||
   state.market.unemploymentRate > 0.075;
 
+/**
+ * Generic HQLA composition helper. It deliberately honours the liquidity tag
+ * on each supplied position so tests/scenarios can construct hypothetical
+ * Level 2A/2B portfolios. Live positions receive those tags from the product
+ * regulatory classification rather than from configuration.
+ */
 export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
   let level1 = 0, level2a = 0, level2b = 0;
   for (const i of items) {
     if (i.side !== BalanceSheetSide.Asset) continue;
-    const tag = liquidityTagForProduct(i.productType);
+    const tag = i.liquidityTag;
     const v = Math.max(0, i.balance - Math.max(0, i.encumbrance?.encumberedAmount ?? 0));
-    if (tag.hqlaLevel === HQLALevel.Level1) level1 += v;
-    if (tag.hqlaLevel === HQLALevel.Level2A) level2a += v * .85;
-    if (tag.hqlaLevel === HQLALevel.Level2B) level2b += v * .5;
+    if (tag?.hqlaLevel === HQLALevel.Level1) level1 += v;
+    if (tag?.hqlaLevel === HQLALevel.Level2A) level2a += v * .85;
+    if (tag?.hqlaLevel === HQLALevel.Level2B) level2b += v * .5;
   }
   const a = Math.min(level2a, level1 * 2 / 3);
   const b = Math.min(level2b, (level1 + a) * .15 / .85, Math.max(0, level1 * 2 / 3 - a));
@@ -55,6 +61,9 @@ export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
 };
 
 export const computeHqla = (items: BalanceSheetItem[]): number => computeHqlaComposition(items).total;
+
+const regulatoryHqlaItems = (items: BalanceSheetItem[]): BalanceSheetItem[] =>
+  items.map(item => ({ ...item, liquidityTag: liquidityTagForProduct(item.productType) }));
 
 interface LiquidityDynamicsFactors {
   depositOutflowMultiplier: number;
@@ -479,7 +488,7 @@ export const calculateRiskMetrics = ({
       ? (adjustedCet1 + state.financial.capital.at1) / leverageExposure
       : Infinity;
 
-  const hqla = computeHqla(assets);
+  const hqla = computeHqla(regulatoryHqlaItems(assets));
   const depositQualityIndex = computeDepositQualityIndex(state);
   const liquidityFactors = computeLiquidityDynamicsFactors(
     state,
