@@ -1,0 +1,311 @@
+.leverage-dashboard .capital-cards {
+  align-items: stretch;
+}
+
+.leverage-summary-card {
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+}
+
+.leverage-summary-card header {
+  margin-bottom: 14px;
+}
+
+.leverage-summary-card .capital-ratios,
+.leverage-summary-card .capital-amounts {
+  grid-template-columns: 1.15fr 0.95fr 0.95fr;
+  gap: 10px;
+}
+
+.leverage-summary-card .capital-ratios > div + div,
+.leverage-summary-card .capital-amounts > div + div {
+  padding-left: 10px;
+}
+
+.leverage-summary-card .capital-ratios strong {
+  font-size: clamp(24px, 2.15vw, 34px);
+  line-height: 1.08;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
+.leverage-summary-card .capital-ratios b {
+  font-size: clamp(16px, 1.35vw, 19px);
+  white-space: nowrap;
+}
+
+.leverage-summary-card .capital-bullet {
+  margin: 12px 0 6px;
+}
+
+.leverage-summary-card .capital-amounts {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.leverage-marker-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 28px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leverage-marker-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leverage-marker-swatch {
+  width: 18px;
+  height: 0;
+  border-top: 3px solid var(--text);
+}
+
+.leverage-marker-swatch.target {
+  border-top: 2px dashed #b24b92;
+}
+
+.leverage-detail-grid {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  align-items: stretch;
+}
+
+.leverage-composition-card,
+.leverage-requirements-card {
+  padding: 18px;
+}
+
+.leverage-composition-card h3,
+.leverage-requirements-card h3,
+.leverage-reconciliation h3 {
+  margin-bottom: 10px;
+}
+
+.leverage-composition-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(170px, 0.8fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.leverage-composition-chart {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+}
+
+.leverage-composition-chart text {
+  fill: var(--text);
+  font-size: 13px;
+}
+
+.leverage-composition-chart .stack-label {
+  fill: white;
+  font-weight: 650;
+}
+
+.leverage-threshold-list {
+  display: grid;
+  gap: 9px;
+  align-content: center;
+}
+
+.leverage-threshold {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-2) 42%, var(--panel));
+}
+
+.leverage-threshold::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  border-left: 3px solid #7956bd;
+}
+
+.leverage-threshold.target::before {
+  border-left: 3px dashed #b24b92;
+}
+
+.leverage-threshold span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leverage-threshold strong {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.leverage-threshold small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.leverage-composition-card .capital-legend {
+  margin-top: 4px;
+}
+
+.leverage-table-section + .leverage-table-section {
+  margin-top: 14px;
+}
+
+.leverage-table-section h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.leverage-dashboard .leverage-detail-table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.leverage-dashboard .leverage-detail-table th,
+.leverage-dashboard .leverage-detail-table td {
+  width: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.3;
+}
+
+.leverage-dashboard .leverage-detail-table tr:last-child th,
+.leverage-dashboard .leverage-detail-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.leverage-dashboard .leverage-detail-table th:first-child,
+.leverage-dashboard .leverage-detail-table td:first-child {
+  width: 68%;
+  text-align: left;
+}
+
+.leverage-dashboard .leverage-detail-table th:last-child,
+.leverage-dashboard .leverage-detail-table td:last-child {
+  width: 32%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.leverage-dashboard .leverage-detail-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--bg-2) 42%, var(--panel));
+}
+
+.leverage-dashboard .leverage-detail-table .emphasis-row {
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+
+.leverage-dashboard .leverage-detail-table .positive-value {
+  color: #098654;
+  font-weight: 700;
+}
+
+.leverage-reconciliation {
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.leverage-reconciliation .leverage-compact-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.leverage-reconciliation .leverage-compact-table th,
+.leverage-reconciliation .leverage-compact-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.25;
+}
+
+.leverage-reconciliation .leverage-compact-table th {
+  text-align: left;
+  font-weight: 600;
+}
+
+.leverage-reconciliation .leverage-compact-table td,
+.leverage-reconciliation .leverage-compact-table th:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.leverage-reconciliation .leverage-compact-table thead,
+.leverage-reconciliation .leverage-compact-table tfoot {
+  background: var(--bg-2);
+  font-weight: 700;
+}
+
+.leverage-reconciliation .leverage-compact-table tfoot th,
+.leverage-reconciliation .leverage-compact-table tfoot td {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  border-bottom: 0;
+}
+
+@media (max-width: 1150px) {
+  .leverage-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .leverage-composition-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .leverage-composition-chart {
+    max-height: 270px;
+  }
+
+  .leverage-threshold-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .leverage-summary-card .capital-ratios,
+  .leverage-summary-card .capital-amounts {
+    grid-template-columns: 1fr;
+  }
+
+  .leverage-summary-card .capital-ratios > div + div,
+  .leverage-summary-card .capital-amounts > div + div {
+    padding-left: 0;
+    padding-top: 8px;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .leverage-summary-card .capital-amounts {
+    text-align: left;
+  }
+
+  .leverage-threshold-list {
+    grid-template-columns: 1fr;
+  }
+}
