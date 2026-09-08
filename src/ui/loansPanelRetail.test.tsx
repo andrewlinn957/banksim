@@ -4,12 +4,15 @@ import LoansPanel from '../components/LoansPanel';
 import { initialState } from '../config/initialState';
 import { AssetProductType } from '../domain/enums';
 import { getProduct } from '../products/catalogue';
+import { productTypesWithCapability } from '../products/capabilities';
 
-it('shows every catalogue loan product in the retail loan report',()=>{
+it('shows every catalogue loan product in the retail loan report and selector',()=>{
   const html=renderToStaticMarkup(<LoansPanel items={initialState.financial.balanceSheet.items} loanCohorts={initialState.loanCohorts} loanPipelines={initialState.loanPipelines} workoutPipelines={initialState.workoutPipelines}/>);
-  for (const productType of [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans]) {
+  const loanProducts = productTypesWithCapability('loan');
+  for (const productType of loanProducts) {
     expect(html).toContain(getProduct(productType).label.replaceAll('&', '&amp;'));
   }
+  expect((html.match(/role="tab"/g) ?? []).length).toBe(loanProducts.length);
 });
 
 it('shows consumer cohorts as consumer rather than SME/corporate sectors',()=>{
