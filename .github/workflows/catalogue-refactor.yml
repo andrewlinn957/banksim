@@ -1,0 +1,142 @@
+name: Catalogue refactor
+
+on:
+  push:
+    branches: [product-catalogue]
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.event.head_commit.message != 'Apply legacy product cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Remove legacy product paths
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(name):
+              p = Path(name)
+              return p, p.read_text()
+
+          def save(p, text):
+              p.write_text(text)
+
+          # Product parameter and liquidity-tag entries for the four deleted legacy products.
+          p, text = load('src/config/baseConfig.ts')
+          for legacy in [
+              'AssetProductType.ReverseRepo',
+              'LiabilityProductType.RetailDeposits',
+              'LiabilityProductType.CorporateDeposits',
+              'LiabilityProductType.RepurchaseAgreements',
+          ]:
+              pattern = rf"  \[{re.escape(legacy)}\]: \{{\n.*?\n  \}},\n"
+              text, count = re.subn(pattern, '', text, flags=re.S)
+              assert count == 2, (legacy, count)
+          save(p, text)
+
+          # The generic repo action existed only to support the deleted legacy repo/reverse-repo products.
+          p, text = load('src/domain/actions.ts')
+          text, count = re.subn(r"/\*\* Legacy generic repo action.*?\nexport interface EnterRepoAction \{.*?\n\}\n\n", '', text, flags=re.S)
+          assert count == 1, count
+          text = text.replace('  | EnterRepoAction\n', '')
+          save(p, text)
+
+          p, text = load('src/engine/simulation.ts')
+          text = text.replace('  EnterRepoAction,\n', '')
+          text, count = re.subn(
+              r"  enterRepo: \(action: EnterRepoAction, ctx\) => \{\n.*?\n  \},\n  setUnderwriting:",
+              '  setUnderwriting:', text, flags=re.S)
+          assert count == 1, ('handler', count)
+          text, count = re.subn(
+              r"const applyRepoBorrow = \(\n.*?\nconst applyCounterpartyDefault = \(",
+              'const applyCounterpartyDefault = (', text, flags=re.S)
+          assert count == 1, ('repo helpers', count)
+          text, count = re.subn(
+              r"    if \(action\.type === 'enterRepo'.*?\n    \}\n",
+              '', text, flags=re.S)
+          assert count == 1, ('repo validation', count)
+          for line in [
+              '    LiabilityProductType.RetailDeposits,\n',
+              '    LiabilityProductType.CorporateDeposits,\n',
+              '    LiabilityProductType.RepurchaseAgreements,\n',
+          ]:
+              assert line in text, line
+              text = text.replace(line, '')
+          save(p, text)
+
+          # Remove tests for products/actions that no longer exist.
+          p, text = load('src/engine/smallRetailBank.test.ts')
+          text = text.replace("  it('opens as a retail-heavy bank without generic repo positions', () => {\n", "  it('opens as a retail-heavy bank', () => {\n")
+          text = text.replace("    expect(initialState.financial.balanceSheet.items.some(i => i.productType === A.ReverseRepo)).toBe(false);\n", '')
+          text = text.replace("    expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);\n", '')
+          text = text.replace("  it('uses BoE secured funding as collateralised liquidity rather than repo', () => {\n", "  it('uses BoE secured funding as collateralised liquidity', () => {\n")
+          text = text.replace("    expect(out.financial.balanceSheet.items.some(i => i.productType === L.RepurchaseAgreements)).toBe(false);\n", '')
+          save(p, text)
+
+          p, text = load('src/engine/accountingIntegrity.test.ts')
+          text, count = re.subn(
+              r"  it\('uses market-value haircut and prevents the sale of pledged collateral', \(\) => \{.*?\n  \}\);\n",
+              '', text, flags=re.S)
+          assert count == 1, ('accounting repo test', count)
+          save(p, text)
+
+          p, text = load('src/engine/simulationTestSuite.ts')
+          text, count = re.subn(
+              r"  \{\n    id: 'repo-borrow-encumbrance',.*?\n  \},\n  \{\n    id: 'counterparty-default-loss',",
+              "  {\n    id: 'counterparty-default-loss',", text, flags=re.S)
+          assert count == 1, ('simulation repo test', count)
+          save(p, text)
+
+          p, text = load('src/game/departments.test.ts')
+          old = ", [L.RepurchaseAgreements]: [{ tenorMonths: 1, monthsToMaturity: 1, notional: 900e6, rate: .05 }]"
+          assert old in text
+          text = text.replace(old, '')
+          save(p, text)
+
+          # Dashboard grouping now refers only to live catalogue products.
+          p, text = load('src/components/LcrDashboard.tsx')
+          old_out = "  const outKey=([L.RetailDeposits,L.RetailCurrentAccounts] as string[]).includes(p)?'Retail deposits':([L.CorporateDeposits,L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.RepurchaseAgreements?'Secured funding':'Derivatives & other';"
+          new_out = "  const outKey=([L.RetailCurrentAccounts,L.RetailTermDeposits] as string[]).includes(p)?'Retail deposits':([L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.BankOfEnglandFunding?'Secured funding':'Derivatives & other';"
+          assert old_out in text
+          text = text.replace(old_out, new_out)
+          old_in = "  inGroups[p===A.Mortgages||p===A.CorporateLoans?'Loan repayments':p===A.ReverseRepo?'Secured lending':'Derivatives & other']+=l.inflow;"
+          new_in = "  inGroups[p===A.Mortgages||p===A.ConsumerLoans||p===A.CorporateLoans?'Loan repayments':'Derivatives & other']+=l.inflow;"
+          assert old_in in text
+          text = text.replace(old_in, new_in)
+          text = text.replace(" const inGroups:Record<string,number>={'Loan repayments':0,'Secured lending':0,'Derivatives & other':0};", " const inGroups:Record<string,number>={'Loan repayments':0,'Derivatives & other':0};")
+          save(p, text)
+
+          p, text = load('src/components/RiskDashboard.tsx')
+          import_line = "import { AssetProductType, BalanceSheetSide, LiabilityProductType } from '../domain/enums';\n"
+          assert import_line in text
+          text = text.replace(import_line, import_line + "import { PRODUCTS } from '../products/catalogue';\n")
+          text, count = re.subn(
+              r"const LOAN_PRODUCTS = new Set<string>\(\[.*?\]\);\n\nconst CUSTOMER_DEPOSIT_PRODUCTS = new Set<string>\(\[.*?\]\);",
+              "const LOAN_PRODUCTS = new Set<string>(\n  Object.values(PRODUCTS).filter(product => product.behaviour.isLoan).map(product => product.productType)\n);\n\nconst CUSTOMER_DEPOSIT_PRODUCTS = new Set<string>(\n  Object.values(PRODUCTS).filter(product => product.behaviour.isCustomerDeposit).map(product => product.productType)\n);",
+              text, flags=re.S)
+          assert count == 1, ('risk dashboard sets', count)
+          save(p, text)
+          PY
+      - run: npm ci
+      - run: npm run test:fast
+      - run: npm run test:regression
+      - run: npm run typecheck && npm run build
+      - name: Verify catalogue cleanup
+        run: |
+          ! grep -RInE 'ReverseRepo|RepurchaseAgreements|RetailDeposits|CorporateDeposits|enterRepo|EnterRepoAction|PRODUCT_META|productMeta' src
+      - name: Commit validated refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply legacy product cleanup"
+          git push
