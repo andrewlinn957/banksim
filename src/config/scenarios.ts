@@ -13,6 +13,7 @@ import { ScenarioGoals } from '../domain/scoring';
 import { PlayerAction } from '../domain/actions';
 import { createPosition } from '../products/factory';
 import { getCapability, productTypesWithCapability } from '../products/capabilities';
+import { resetOpeningSupervisoryAssessments } from '../engine/supervisoryAssessments';
 
 type DeepPartial<T> = T extends Array<infer U>
   ? Array<DeepPartial<U>>
@@ -218,6 +219,7 @@ const applyInitialOverride = (
   const cash = state.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves)!;
   const netOther = state.financial.balanceSheet.items.filter(i => i !== cash).reduce((sum, i) => sum + (i.side === 'Asset' ? i.balance : -i.balance), 0);
   cash.balance = state.financial.capital.cet1 + state.financial.capital.at1 + state.financial.capital.accumulatedOCI - netOther;
+  resetOpeningSupervisoryAssessments(state);
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
   state.board = {
