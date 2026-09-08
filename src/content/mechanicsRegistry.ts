@@ -81,7 +81,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     whyItMatters:
       'A higher rate can grow deposits and improve funding. A higher rate also increases interest expense. A low rate can cause customers to leave.',
     driverSummary: [
-      'Current accounts are separate. The game treats them as less sensitive to price.',
+      'Instant retail balances respond to the price gap, franchise strength, and reputation.',
       'A negative price gap increases churn if it stays in place for several months.',
       'Weak franchise strength and weak reputation can increase deposit runoff in stress.',
       'A high insured retail share and a low large-depositor share improve deposit quality.',
