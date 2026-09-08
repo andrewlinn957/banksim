@@ -26,7 +26,7 @@ export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Metric
   if (metric === 'capital') return [
     { label: 'CET1 including eligible OCI', value: eligibleCet1(s, c) }, { label: 'AT1', value: s.financial.capital.at1 },
     { label: 'CET1 ratio', value: m.cet1Ratio, ratio: true }, { label: 'Tier 1 ratio', value: m.tier1Ratio ?? 0, ratio: true },
-    { label: 'Total capital ratio (no Tier 2 issued)', value: m.totalCapitalRatio ?? 0, ratio: true },
+    { label: 'Total capital ratio', value: m.totalCapitalRatio ?? 0, ratio: true },
     { label: 'CET1 needed for own-funds minima and combined buffers', value: m.cet1Requirement, ratio: true },
     { label: 'Minimum CET1 including Pillar 2A', value: m.minimumCet1Ratio ?? c.riskLimits.minCet1Ratio, ratio: true },
     { label: 'CET1 including PRA buffer', value: m.praBufferTarget ?? m.cet1Requirement, ratio: true },

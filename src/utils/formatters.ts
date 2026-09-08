@@ -1,5 +1,9 @@
-export const formatCurrency = (v: number, fallback = 'N/A'): string =>
-  Number.isFinite(v) ? `£${(v / 1e9).toFixed(2)}bn` : fallback;
+export const formatCurrency = (v: number, fallback = 'N/A'): string => {
+  if (!Number.isFinite(v)) return fallback;
+  const billions = v / 1e9;
+  const display = Math.abs(billions) < 0.005 ? 0 : billions;
+  return `£${display.toFixed(2)}bn`;
+};
 
 export const formatPct = (v: number, digits = 2, fallback = 'N/A'): string =>
   Number.isFinite(v) ? `${(v * 100).toFixed(digits)}%` : fallback;

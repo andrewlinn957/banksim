@@ -14,6 +14,17 @@ it('reconciles displayed CET1 requirements and nominal headroom to the engine ac
     expect(d.rows.reduce((s,r)=>s+r.ratio,0)).toBeCloseTo(metrics.cet1Requirement,12);
     expect(d.cards[0].requirement).toBeCloseTo(metrics.cet1Requirement,12);
     expect(d.cards[0].amount-d.cards[0].requiredAmount).toBeCloseTo(metrics.cet1Headroom*metrics.rwa,4);
-    expect(d.cards[1].amount).toBe(d.cards[2].amount);
+    expect(d.cards[2].amount).toBeCloseTo(d.cards[1].amount + (state.financial.capital.tier2 ?? 0), 4);
   }
+});
+
+
+it('shows issued Tier 2 in total capital without changing Tier 1',()=>{
+  const state=structuredClone(initialState);
+  state.financial.capital.tier2=75e6;
+  state.risk.riskMetrics=calculateRiskMetrics({state,config:baseConfig});
+  const d=capitalDashboardData(state,baseConfig);
+  expect(d.tier2).toBe(75e6);
+  expect(d.cards[2].amount-d.cards[1].amount).toBeCloseTo(75e6,4);
+  expect(d.cards[2].actual).toBeCloseTo(state.risk.riskMetrics.totalCapitalRatio ?? 0,12);
 });
