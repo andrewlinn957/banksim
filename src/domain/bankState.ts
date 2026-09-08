@@ -48,6 +48,20 @@ export interface CapitalPolicyState {
   at1CouponMode: 'auto' | 'pay' | 'skip';
 }
 
+export interface MortgagePolicyState {
+  /** Maximum LTV offered on new mortgages. */
+  maxLtv: number;
+  /** Representative initial fixed-rate period on new mortgages. */
+  fixedPeriodMonths: number;
+}
+
+export interface TreasuryPolicyState {
+  /** Target fraction of reserves + gilts held in gilts. */
+  giltShareOfHqla: number;
+  /** Target effective duration of the gilt portfolio. */
+  giltDurationYears: number;
+}
+
 export interface BoardPressureState {
   score: number;
   earningsVolatility: number;
@@ -83,6 +97,13 @@ export interface BehaviouralState {
   depositStabilityIndex?: Partial<Record<ProductType, number>>;
   underwritingTightness?: Partial<Record<ProductType, number>>;
   capitalPolicy?: CapitalPolicyState;
+  mortgagePolicy?: MortgagePolicyState;
+  treasuryPolicy?: TreasuryPolicyState;
+  termDepositTenorMonths?: number;
+  /** Approximate share of retail deposits protected by FSCS limits. */
+  insuredRetailDepositShare?: number;
+  /** Approximate share of total deposits represented by the largest depositor/group. */
+  largeDepositorShare?: number;
   previousNetIncome?: number;
   earningsVolatility?: number;
   fundingConfidenceScore?: number;

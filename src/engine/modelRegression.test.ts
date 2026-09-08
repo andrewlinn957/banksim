@@ -50,11 +50,14 @@ const productBalance = (state: BankState, productType: AssetProductType | Liabil
   state.financial.balanceSheet.items.find((line) => line.productType === productType)?.balance ?? 0;
 
 const totalLoans = (state: BankState): number =>
-  productBalance(state, AssetProductType.Mortgages) + productBalance(state, AssetProductType.CorporateLoans);
+  productBalance(state, AssetProductType.Mortgages) +
+  productBalance(state, AssetProductType.ConsumerLoans) +
+  productBalance(state, AssetProductType.CorporateLoans);
 
 const totalCustomerDeposits = (state: BankState): number =>
   productBalance(state, LiabilityProductType.RetailTransactionalDeposits) +
   productBalance(state, LiabilityProductType.RetailSavingsDeposits) +
+  productBalance(state, LiabilityProductType.RetailTermDeposits) +
   productBalance(state, LiabilityProductType.CorporateOperatingDeposits) +
   productBalance(state, LiabilityProductType.CorporateNonOperatingDeposits);
 
@@ -65,9 +68,10 @@ const totalLoanStateBuckets = (state: BankState): number =>
 const managementPolicy = (
   state: BankState,
   monthIndex: number,
-  pricing: { mortgageDiscount?: number; corporateDiscount?: number } = {}
+  pricing: { mortgageDiscount?: number; consumerDiscount?: number; corporateDiscount?: number } = {}
 ): PlayerAction[] => {
   const mortgageDiscount = pricing.mortgageDiscount ?? 0.004;
+  const consumerDiscount = pricing.consumerDiscount ?? 0.0075;
   const corporateDiscount = pricing.corporateDiscount ?? 0.006;
   const actions: PlayerAction[] = [
     {
@@ -77,12 +81,18 @@ const managementPolicy = (
     },
     {
       type: 'adjustRate',
+      productType: AssetProductType.ConsumerLoans,
+      newRate: Math.max(0, state.market.competitorConsumerLoanRate - consumerDiscount),
+    },
+    {
+      type: 'adjustRate',
       productType: AssetProductType.CorporateLoans,
       newRate: Math.max(0, state.market.riskFreeLong + state.market.corporateLoanSpread - corporateDiscount),
     },
     { type: 'setUnderwriting', productType: AssetProductType.Mortgages, tightness: 0.15 },
+    { type: 'setUnderwriting', productType: AssetProductType.ConsumerLoans, tightness: 0.25 },
     { type: 'setUnderwriting', productType: AssetProductType.CorporateLoans, tightness: 0.15 },
-    { type: 'setCapitalPolicy', dividendPayoutRatio: 0, at1CouponMode: 'auto' },
+    { type: 'setCapitalPolicy', dividendPayoutRatio: 0.2, at1CouponMode: 'auto' },
   ];
 
   // Reprice deposits annually. When cash is scarce, pay a small premium; when cash is abundant, accept some runoff.
@@ -94,9 +104,11 @@ const managementPolicy = (
       0,
       (state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate) + offset
     );
+    const termRate = Math.max(0, state.market.competitorTermDepositRate + offset);
     actions.push(
-      { type: 'adjustRate', productType: LiabilityProductType.RetailTransactionalDeposits, newRate: retailRate },
       { type: 'adjustRate', productType: LiabilityProductType.RetailSavingsDeposits, newRate: retailRate },
+      { type: 'adjustRate', productType: LiabilityProductType.RetailTermDeposits, newRate: termRate },
+      { type: 'setTermDepositPolicy', tenorMonths: 12 },
       { type: 'adjustRate', productType: LiabilityProductType.CorporateOperatingDeposits, newRate: corporateRate },
       { type: 'adjustRate', productType: LiabilityProductType.CorporateNonOperatingDeposits, newRate: corporateRate },
     );
@@ -154,12 +166,23 @@ describe('Model regression harness', () => {
       state: initialState,
       config: baseConfig,
       actionsForMonth: (state, monthIndex) =>
-        managementPolicy(state, monthIndex, { corporateDiscount: 0.015 }),
+        managementPolicy(state, monthIndex, { corporateDiscount: 0.0075 }),
     });
     const finalLoans = totalLoans(finalState);
     const finalCorporateLoans = productBalance(finalState, AssetProductType.CorporateLoans);
     const finalDeposits = totalCustomerDeposits(finalState);
     const loanDepositRatio = finalDeposits > 0 ? finalLoans / finalDeposits : 0;
+    const finalAssets = finalState.financial.balanceSheet.items.filter(i => i.side === 'Asset').reduce((s,i)=>s+i.balance,0);
+    const liquidAssets = productBalance(finalState, AssetProductType.CashReserves) + productBalance(finalState, AssetProductType.Gilts);
+    console.log('TEN_YEAR_MANAGED=' + JSON.stringify({
+      step: finalState.time.step, loans: finalLoans, mortgages: productBalance(finalState,AssetProductType.Mortgages),
+      consumer: productBalance(finalState,AssetProductType.ConsumerLoans), corporate: finalCorporateLoans, deposits: finalDeposits,
+      termDeposits: productBalance(finalState,LiabilityProductType.RetailTermDeposits), cash: productBalance(finalState,AssetProductType.CashReserves),
+      gilts: productBalance(finalState,AssetProductType.Gilts), cet1: finalState.financial.capital.cet1, cet1Ratio: finalState.risk.riskMetrics.cet1Ratio,
+      leverage: finalState.risk.riskMetrics.leverageRatio, lcr: finalState.risk.riskMetrics.lcr, nsfr: finalState.risk.riskMetrics.nsfr,
+      fundingConfidence: finalState.risk.riskMetrics.fundingConfidenceScore, loanDepositRatio, liquidAssetShare: finalAssets>0?liquidAssets/finalAssets:0,
+      stateBuckets: totalLoanStateBuckets(finalState), sharePrice: finalState.equityMarket.sharePrice
+    }));
 
     expect(finalState.status.hasFailed).toBe(false);
     expect(finalState.time.step).toBeGreaterThanOrEqual(initialState.time.step + 120);
@@ -168,11 +191,44 @@ describe('Model regression harness', () => {
     expect(finalCorporateLoans).toBeGreaterThan(openingCorporateLoans * 0.7);
     expect(finalCorporateLoans).toBeLessThan(openingCorporateLoans * 1.3);
     expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.6);
+    expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.5e9);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
-    expect(loanDepositRatio).toBeGreaterThan(0.3);
+    expect(loanDepositRatio).toBeGreaterThan(0.35);
+    expect(finalAssets > 0 ? liquidAssets / finalAssets : 1).toBeLessThan(0.55);
+    expect(finalState.risk.riskMetrics.cet1Ratio).toBeLessThan(0.35);
+    expect(finalState.risk.riskMetrics.lcr).toBeLessThan(5);
+    expect(finalState.risk.riskMetrics.nsfr).toBeLessThan(4);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
     expect(baseConfig.riskLimits.concentration.maxSingleSectorShare).toBe(1);
     expect(baseConfig.riskLimits.concentration.maxSingleGeographyShare).toBe(1);
+  });
+
+  it('an unmanaged ten-year run does not collapse into a cash-only bank', () => {
+    const openingLoans = totalLoans(initialState);
+    const openingDeposits = totalCustomerDeposits(initialState);
+    const finalState = runMonths(120, { state: initialState, config: baseConfig });
+    const finalLoans = totalLoans(finalState);
+    const finalDeposits = totalCustomerDeposits(finalState);
+    const assets = finalState.financial.balanceSheet.items.filter(i => i.side === 'Asset').reduce((s,i)=>s+i.balance,0);
+    const liquid = productBalance(finalState,AssetProductType.CashReserves)+productBalance(finalState,AssetProductType.Gilts);
+    console.log('TEN_YEAR_DEFAULT=' + JSON.stringify({
+      step: finalState.time.step, failed: finalState.status.hasFailed, loans: finalLoans, mortgages: productBalance(finalState,AssetProductType.Mortgages),
+      consumer: productBalance(finalState,AssetProductType.ConsumerLoans), corporate: productBalance(finalState,AssetProductType.CorporateLoans),
+      deposits: finalDeposits, termDeposits: productBalance(finalState,LiabilityProductType.RetailTermDeposits),
+      cash: productBalance(finalState,AssetProductType.CashReserves), gilts: productBalance(finalState,AssetProductType.Gilts),
+      cet1Ratio: finalState.risk.riskMetrics.cet1Ratio, leverage: finalState.risk.riskMetrics.leverageRatio, lcr: finalState.risk.riskMetrics.lcr,
+      nsfr: finalState.risk.riskMetrics.nsfr, fundingConfidence: finalState.risk.riskMetrics.fundingConfidenceScore,
+      loanDepositRatio: finalDeposits>0?finalLoans/finalDeposits:0, liquidAssetShare: assets>0?liquid/assets:0,
+      stateBuckets: totalLoanStateBuckets(finalState), sharePrice: finalState.equityMarket.sharePrice
+    }));
+    expect(finalState.status.hasFailed).toBe(false);
+    expect(finalLoans).toBeGreaterThan(openingLoans * 0.5);
+    expect(finalLoans).toBeLessThan(openingLoans * 1.8);
+    expect(finalDeposits).toBeGreaterThan(openingDeposits * 0.55);
+    expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.35e9);
+    expect(finalDeposits).toBeLessThan(openingDeposits * 1.8);
+    expect(assets > 0 ? liquid / assets : 1).toBeLessThan(0.6);
+    expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
   });
 
   it('competitive lending prices materially increase loan volumes', () => {
@@ -180,13 +236,13 @@ describe('Model regression harness', () => {
       state: initialState,
       config: baseConfig,
       actionsForMonth: (state, monthIndex) =>
-        managementPolicy(state, monthIndex, { mortgageDiscount: 0, corporateDiscount: 0 }),
+        managementPolicy(state, monthIndex, { mortgageDiscount: 0, consumerDiscount: 0, corporateDiscount: 0 }),
     });
     const competitiveFinal = runMonthsWithPolicy(60, {
       state: initialState,
       config: baseConfig,
       actionsForMonth: (state, monthIndex) =>
-        managementPolicy(state, monthIndex, { mortgageDiscount: 0.005, corporateDiscount: 0.0075 }),
+        managementPolicy(state, monthIndex, { mortgageDiscount: 0.005, consumerDiscount: 0.01, corporateDiscount: 0.0075 }),
     });
 
     expect(neutralFinal.status.hasFailed).toBe(false);

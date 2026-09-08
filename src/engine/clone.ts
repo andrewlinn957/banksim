@@ -25,11 +25,8 @@ const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
 });
 
 const cloneIncomeStatement = (p: IncomeStatement): IncomeStatement => ({ ...p });
-
 const cloneCashFlowStatement = (c: CashFlowStatement): CashFlowStatement => ({ ...c });
-
 const cloneRiskMetrics = (r: RiskMetrics): RiskMetrics => ({ ...r });
-
 const cloneCompliance = (c: ComplianceStatus): ComplianceStatus => ({ ...c });
 
 const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
@@ -40,6 +37,8 @@ const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   depositStabilityIndex: { ...(b.depositStabilityIndex ?? {}) },
   underwritingTightness: { ...(b.underwritingTightness ?? {}) },
   capitalPolicy: b.capitalPolicy ? { ...b.capitalPolicy } : undefined,
+  mortgagePolicy: b.mortgagePolicy ? { ...b.mortgagePolicy } : undefined,
+  treasuryPolicy: b.treasuryPolicy ? { ...b.treasuryPolicy } : undefined,
 });
 
 const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
@@ -77,9 +76,7 @@ const cloneLoanPipelines = (raw: LoanPipelineMap): LoanPipelineMap => {
 
 const cloneWorkoutPipelines = (raw: LoanWorkoutPipelineMap): LoanWorkoutPipelineMap => {
   const out: LoanWorkoutPipelineMap = {};
-  const entries = Object.entries(raw ?? {}) as Array<
-    [ProductType, LoanWorkoutBucket[]]
-  >;
+  const entries = Object.entries(raw ?? {}) as Array<[ProductType, LoanWorkoutBucket[]]>;
   entries.forEach(([productType, buckets]) => {
     out[productType] = (buckets ?? []).map((bucket) => ({ ...bucket }));
   });
@@ -95,18 +92,12 @@ const cloneFundingLadders = (raw: FundingLadderMap): FundingLadderMap => {
   return out;
 };
 
-const cloneDate = (raw: unknown): Date => {
-  if (raw instanceof Date) return new Date(raw.getTime());
-  return new Date(raw as any);
-};
+const cloneDate = (raw: unknown): Date => raw instanceof Date ? new Date(raw.getTime()) : new Date(raw as any);
 
 export const cloneBankState = (state: BankState): BankState => ({
   ...state,
   version: state.version ?? 'v1',
-  time: {
-    ...state.time,
-    date: cloneDate(state.time.date),
-  },
+  time: { ...state.time, date: cloneDate(state.time.date) },
   financial: {
     balanceSheet: cloneBalanceSheet(state.financial.balanceSheet),
     capital: { ...state.financial.capital },

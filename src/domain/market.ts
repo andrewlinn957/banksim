@@ -42,13 +42,16 @@ export interface MarketState {
   riskFreeShort: number;
   riskFreeLong: number;
   mortgageSpread: number;
+  consumerLoanSpread: number;
   corporateLoanSpread: number;
   wholesaleFundingSpread: number;
   seniorDebtSpread: number;
   giltRepoHaircut: number;
   corpBondRepoHaircut: number;
   competitorRetailDepositRate: number;
+  competitorTermDepositRate: number;
   competitorMortgageRate: number;
+  competitorConsumerLoanRate: number;
   competitorCorporateDepositRate?: number;
 
   gdpGrowthMoM: number;

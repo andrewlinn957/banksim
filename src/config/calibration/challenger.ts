@@ -10,8 +10,8 @@ export const createChallengerCalibration = (): CalibrationPack => {
   setProductBalance(state, AssetProductType.Gilts, 0.4e9);
   setProductBalance(state, LiabilityProductType.RetailSavingsDeposits, 1.1e9);
   setProductBalance(state, LiabilityProductType.CorporateOperatingDeposits, 0.3e9);
-  setProductBalance(state, LiabilityProductType.WholesaleFundingST, 0.7e9);
-  setProductBalance(state, LiabilityProductType.WholesaleFundingLT, 0.9e9);
+  setProductBalance(state, LiabilityProductType.RetailTermDeposits, 0.7e9);
+  setProductBalance(state, LiabilityProductType.WholesaleFundingLT, 1.6e9);
   rebalanceCash(state);
 
   config.behaviour.depositBaselineGrowthMonthly = 0.0014;
@@ -37,14 +37,12 @@ export const createChallengerCalibration = (): CalibrationPack => {
   return {
     id: 'challenger',
     name: 'Challenger bank',
-    description: 'Higher growth and wholesale reliance with tighter capital/liquidity tolerance.',
+    description: 'Higher growth with heavier structural wholesale funding and tighter capital/liquidity tolerance.',
     config,
     initialState: state,
     envelope: {
       cet1Ratio: [0.07, 0.45],
       lcr: [0.85, 8.0],
-      // Prescribed ASF/RSF; 24m trajectory is 2.814 after franchise aggregation
-      // correction. The upper envelope is a calibration guard, not a prudential limit.
       nsfr: [0.85, 2.9],
       roe: [-0.08, 0.3],
     },

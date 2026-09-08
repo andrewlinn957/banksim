@@ -3,7 +3,7 @@ import { BankState } from '../domain/bankState';
 import { Shock } from '../domain/shocks';
 import { initialState as baseInitialState } from './initialState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
-import { LiabilityProductType, AssetProductType, ProductType } from '../domain/enums';
+import { LiabilityProductType, AssetProductType, ProductType, BalanceSheetSide, Currency, MaturityBucket } from '../domain/enums';
 import { SimulationConfig } from '../domain/config';
 import { baseConfig } from './baseConfig';
 import { calculateRiskMetrics, evaluateCompliance } from '../engine/metrics';
@@ -78,15 +78,23 @@ const applyInitialOverride = (
 ): BankState => {
   const state = cloneBankState(baseInitialState);
   if (override?.financial?.balanceSheet?.items) {
+    const overrides = override.financial.balanceSheet.items;
     state.financial.balanceSheet.items = state.financial.balanceSheet.items.map((item) => {
-      const ov = override.financial?.balanceSheet?.items?.find((o) => o.productType === item.productType);
+      const ov = overrides.find((o) => o.productType === item.productType);
       if (!ov) return item;
-      return {
-        ...item,
-        ...ov,
-        encumbrance: ov.encumbrance ? { ...ov.encumbrance } : item.encumbrance,
-      };
+      return { ...item, ...ov, encumbrance: ov.encumbrance ? { ...ov.encumbrance } : item.encumbrance };
     });
+    // Short-term wholesale funding is no longer an opening-bank line, but stress scenarios may introduce it.
+    const stOverride = overrides.find((o) => o.productType === LiabilityProductType.WholesaleFundingST);
+    if (stOverride && !state.financial.balanceSheet.items.some((i) => i.productType === LiabilityProductType.WholesaleFundingST)) {
+      state.financial.balanceSheet.items.push({
+        side: BalanceSheetSide.Liability, productType: LiabilityProductType.WholesaleFundingST,
+        label: 'Short-Term Wholesale Funding', currency: Currency.GBP, balance: Math.max(0, stOverride.balance ?? 0),
+        interestRate: stOverride.interestRate ?? state.market.riskFreeShort + state.market.wholesaleFundingSpread,
+        maturityBucket: MaturityBucket.LessThan1Y, liquidityTag: config.liquidityTags[LiabilityProductType.WholesaleFundingST],
+        encumbrance: { encumberedAmount: 0 },
+      });
+    }
   }
   if (override?.financial?.capital) {
     state.financial.capital = { ...state.financial.capital, ...override.financial.capital };
@@ -117,7 +125,7 @@ const applyInitialOverride = (
   }
 
   const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
-  const loanProducts = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;
+  const loanProducts = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;
   loanProducts.forEach((productType, idx) => {
     const item = state.financial.balanceSheet.items.find((i) => i.productType === productType);
     if (!item) return;
@@ -172,6 +180,13 @@ const applyInitialOverride = (
     const total = buckets.reduce((sum, b) => sum + b.notional, 0);
     const balance = state.financial.balanceSheet.items.find(i => i.productType === p)?.balance ?? 0;
     if (total > 0) buckets.forEach(b => b.notional *= balance / total);
+    else if (balance > 0) {
+      const line = state.financial.balanceSheet.items.find(i => i.productType === p);
+      const tenor = p === LiabilityProductType.WholesaleFundingST
+        ? (config.behaviour.fundingLadder?.stRefinanceTenorMonths ?? 6)
+        : (config.behaviour.fundingLadder?.ltRefinanceTenorMonths ?? 36);
+      state.fundingLadders[p] = [{ tenorMonths: tenor, monthsToMaturity: tenor, notional: balance, rate: line?.interestRate ?? 0 }];
+    }
   }
   const cash = state.financial.balanceSheet.items.find(i => i.productType === AssetProductType.CashReserves)!;
   const netOther = state.financial.balanceSheet.items.filter(i => i !== cash).reduce((sum, i) => sum + (i.side === 'Asset' ? i.balance : -i.balance), 0);

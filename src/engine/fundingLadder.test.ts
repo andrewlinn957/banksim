@@ -32,25 +32,30 @@ describe('Funding ladder lifecycle', () => {
   it('rollover stress reduces refinancing capacity and increases short-term funding cost', () => {
     const engine = createSimulationEngine();
 
+    const baselineState = cloneBankState(initialState);
+    (baselineState.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);
+    const stressedState = cloneBankState(initialState);
+    (stressedState.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);
+
     const baseline = engine.step({
-      state: cloneBankState(initialState),
+      state: baselineState,
       config: baseConfig,
       actions: [],
       shocks: [],
     }).nextState;
 
     const stressed = engine.step({
-      state: cloneBankState(initialState),
+      state: stressedState,
       config: baseConfig,
       actions: [],
       shocks: [{ type: 'rolloverStress', accessMultiplier: 0.6, spreadBps: 150 }],
     }).nextState;
 
     const baselineSt = baseline.financial.balanceSheet.items.find(
-      (item) => item.productType === LiabilityProductType.WholesaleFundingST
+      (item) => item.productType === LiabilityProductType.WholesaleFundingLT
     );
     const stressedSt = stressed.financial.balanceSheet.items.find(
-      (item) => item.productType === LiabilityProductType.WholesaleFundingST
+      (item) => item.productType === LiabilityProductType.WholesaleFundingLT
     );
 
     expect(stressedSt?.interestRate ?? 0).toBeGreaterThan(baselineSt?.interestRate ?? 0);

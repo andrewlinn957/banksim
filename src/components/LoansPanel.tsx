@@ -13,19 +13,20 @@ interface Props {
   workoutPipelines?: Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 }
 
-const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.CorporateLoans] as const;
+const LOAN_PORTFOLIOS = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans] as const;
 type LoanPortfolioType = (typeof LOAN_PORTFOLIOS)[number];
 
 const PORTFOLIO_LABEL: Record<LoanPortfolioType, string> = {
   [AssetProductType.Mortgages]: 'Mortgages',
-  [AssetProductType.CorporateLoans]: 'Corporate Loans',
+  [AssetProductType.ConsumerLoans]: 'Personal Credit',
+  [AssetProductType.CorporateLoans]: 'SME & Business',
 };
 
 const PD_THRESHOLDS = { greenMax: 0.005, amberMax: 0.02 };
 const LGD_THRESHOLDS = { greenMax: 0.25, amberMax: 0.45 };
 const PDXLGD_THRESHOLDS = { greenMax: 0.002, amberMax: 0.008 };
 const REMAINING_TERM_THRESHOLDS = { greenMax: 120, amberMax: 300 };
-const SECTOR_ORDER = ['retailMortgage', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
+const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
 const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
 
 type RagTone = 'rag-green' | 'rag-amber' | 'rag-red';
@@ -306,6 +307,7 @@ const getDefaultPortfolio = (
   loanCohorts: Partial<Record<ProductType, LoanCohort[]>> | undefined
 ): LoanPortfolioType => {
   if (hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages)) return AssetProductType.Mortgages;
+  if (hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans)) return AssetProductType.ConsumerLoans;
   if (hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans)) return AssetProductType.CorporateLoans;
   return AssetProductType.Mortgages;
 };
@@ -313,7 +315,7 @@ const getDefaultPortfolio = (
 const isLoanPortfolioItem = (
   item: BalanceSheetItem
 ): item is BalanceSheetItem & { productType: LoanPortfolioType } =>
-  item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.CorporateLoans;
+  item.productType === AssetProductType.Mortgages || item.productType === AssetProductType.ConsumerLoans || item.productType === AssetProductType.CorporateLoans;
 
 const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Props) => {
   const loans = useMemo(() => items.filter(isLoanPortfolioItem), [items]);
@@ -325,16 +327,24 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
     () => hasPortfolioData(items, loanCohorts, AssetProductType.Mortgages),
     [items, loanCohorts]
   );
+  const consumerAvailable = useMemo(
+    () => hasPortfolioData(items, loanCohorts, AssetProductType.ConsumerLoans),
+    [items, loanCohorts]
+  );
   const corporateAvailable = useMemo(
     () => hasPortfolioData(items, loanCohorts, AssetProductType.CorporateLoans),
     [items, loanCohorts]
   );
 
   useEffect(() => {
-    const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages ? mortgagesAvailable : corporateAvailable;
+    const isSelectedAvailable = selectedPortfolio === AssetProductType.Mortgages
+      ? mortgagesAvailable
+      : selectedPortfolio === AssetProductType.ConsumerLoans
+        ? consumerAvailable
+        : corporateAvailable;
     if (isSelectedAvailable) return;
     setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
-  }, [corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);
+  }, [consumerAvailable, corporateAvailable, items, loanCohorts, mortgagesAvailable, selectedPortfolio]);
 
   const [loanSummarySort, setLoanSummarySort] = useState<{ key: LoanSummaryColumnKey; direction: SortDirection } | null>(null);
   const [loanSummaryFilters, setLoanSummaryFilters] = useState<Record<LoanSummaryColumnKey, string>>(() => ({
@@ -535,6 +545,16 @@ const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Pro
             disabled={!mortgagesAvailable}
           >
             {PORTFOLIO_LABEL[AssetProductType.Mortgages]}
+          </button>
+          <button
+            type="button"
+            className={`tab-button ${selectedPortfolio === AssetProductType.ConsumerLoans ? 'active' : ''}`}
+            onClick={() => setSelectedPortfolio(AssetProductType.ConsumerLoans)}
+            role="tab"
+            aria-selected={selectedPortfolio === AssetProductType.ConsumerLoans}
+            disabled={!consumerAvailable}
+          >
+            {PORTFOLIO_LABEL[AssetProductType.ConsumerLoans]}
           </button>
           <button
             type="button"

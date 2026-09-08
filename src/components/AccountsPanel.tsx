@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BankState } from '../domain/bankState';
-import { BalanceSheetSide, ProductType } from '../domain/enums';
+import { BalanceSheetSide, LiabilityProductType, ProductType } from '../domain/enums';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { formatCurrency, formatRate, formatChange } from '../utils/formatters';
 import { SeriesPoint, StatementRow } from '../types/statements';
@@ -57,7 +57,7 @@ const buildAssetRows = (state: BankState, history: BankState[]): StatementRow[] 
 };
 
 const buildLiabilityRows = (state: BankState, history: BankState[]): StatementRow[] => {
-  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
+  const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability && !(i.productType === LiabilityProductType.WholesaleFundingST && Math.abs(i.balance) < 1));
   const rows = liabilities.map((item) => buildBalanceRow(item, history));
 
   const cet1Series = seriesFromHistory(history, (s) => s.financial.capital.cet1);

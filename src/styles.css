@@ -1499,3 +1499,6 @@ summary { cursor:pointer; }
 .leverage-reconciliation th,.leverage-reconciliation td { padding:12px 14px; border-bottom:1px solid var(--border); text-align:left; }
 .leverage-reconciliation td,.leverage-reconciliation th:last-child { text-align:right; }
 .leverage-reconciliation thead,.leverage-reconciliation tfoot { background:var(--bg-2); font-weight:700; }
+
+/* Small-retail-bank decision hierarchy */
+.department-policy-panel{gap:.8rem}.policy-fields-primary{grid-template-columns:repeat(2,minmax(0,1fr))}.policy-disclosure{border-top:1px solid var(--border);padding-top:.55rem}.policy-disclosure>summary{font-weight:700;cursor:pointer}.loan-policy-grid{display:grid;gap:.55rem}.loan-policy-row{display:grid;grid-template-columns:minmax(150px,.9fr) repeat(2,minmax(150px,1fr));gap:.65rem;align-items:end;padding:.65rem 0;border-bottom:1px solid var(--border)}.loan-policy-row>div:first-child{align-self:center}.loan-policy-row>div:first-child small{display:block;margin-top:.15rem}.loan-policy-row .field{margin:0}@media(max-width:800px){.policy-fields-primary,.loan-policy-row{grid-template-columns:1fr}.loan-policy-row{align-items:stretch}}

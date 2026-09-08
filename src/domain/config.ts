@@ -53,6 +53,8 @@ export interface GlobalSimulationParameters {
   fixedOperatingCostPerMonth: number;
   initialPortfolioSeed?: number;
   competitorDepositReactionSpeed?: number;
+  competitorTermDepositReactionSpeed?: number;
+  competitorConsumerLoanReactionSpeed?: number;
   competitorCorporateDepositReactionSpeed?: number;
   competitorMortgageReactionSpeed?: number;
   competitorCorporateLoanSpreadReactionSpeed?: number;
@@ -289,6 +291,19 @@ export interface SharePriceModelParameters {
   equityIssuanceDiscount: number;
 }
 
+export interface BoeFundingParameters {
+  strSpreadBps: number;
+  iltrSpreadBps: number;
+  strTenorMonths: number;
+  iltrTenorMonths: number;
+  levelAHaircut: number;
+}
+
+export interface DepositRiskParameters {
+  uninsuredRunoffSensitivity: number;
+  largeDepositorRunoffSensitivity: number;
+}
+
 export interface BehaviourParameters {
   depositBaselineGrowthMonthly: number;
   loanBaselineGrowthMonthly: number;
@@ -310,6 +325,8 @@ export interface BehaviourParameters {
   confidenceStateMachine?: ConfidenceStateMachineParameters;
   conductRisk?: ConductRiskParameters;
   sharePriceModel?: SharePriceModelParameters;
+  boeFunding?: BoeFundingParameters;
+  depositRisk?: DepositRiskParameters;
 }
 
 export interface IdiosyncraticRunParameters {

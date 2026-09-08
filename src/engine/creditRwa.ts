@@ -5,11 +5,14 @@ import { SimulationConfig } from '../domain/config';
 import { AssetProductType } from '../domain/enums';
 import { cohortEcl, workoutPresentValue, workoutRecoveryEstimator } from './impairment';
 
-// UK CRR 127. Corporate book is unsecured; mortgages meet Article 125 eligibility.
+// Simplified standardised credit RWA. Mortgage eligibility remains a portfolio-level assumption;
+// the new LTV lever affects economic PD/LGD and stress rather than claiming exact pre-2027 CRR LTV buckets.
 export const assetCreditRwa = (state: BankState, config: SimulationConfig, item: BalanceSheetItem): number => {
   const p = item.productType, performingWeight = config.productParameters[p]?.riskWeight ?? 0;
   if (p === AssetProductType.DerivativeAssets) return hedgeExposures(state).credit * performingWeight;
-  if (p !== AssetProductType.Mortgages && p !== AssetProductType.CorporateLoans) return Math.max(0,item.balance) * performingWeight;
+  if (![AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans].includes(p as AssetProductType)) {
+    return Math.max(0,item.balance) * performingWeight;
+  }
   const recovery = workoutRecoveryEstimator(state,config,p);
   const exposures = [
     ...(state.loanCohorts[p] ?? []).map(c => ({ gross: c.outstandingPrincipal, allowance: cohortEcl(c,config), defaulted: c.stage === 'stage3' })),

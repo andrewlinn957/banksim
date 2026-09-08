@@ -7,7 +7,7 @@ export const createUniversalCalibration = (): CalibrationPack => {
 
   setProductBalance(state, AssetProductType.Mortgages, 5.1e9);
   setProductBalance(state, AssetProductType.CorporateLoans, 3.6e9);
-  setProductBalance(state, LiabilityProductType.WholesaleFundingST, 1e9);
+  setProductBalance(state, LiabilityProductType.RetailTermDeposits, 1.2e9);
   setProductBalance(state, LiabilityProductType.WholesaleFundingLT, 2e9);
   rebalanceCash(state);
 

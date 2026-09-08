@@ -418,7 +418,7 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'repo borrow creates repo line, increases cash, and encumbers collateral',
     run: (ctx) => {
       const state = ctx.createState();
-      const repoAmount = 5e9;
+      const repoAmount = 1e9;
       const gilts = state.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Gilts);
       if (!gilts) {
         throw new Error('Missing gilts line for repo test');

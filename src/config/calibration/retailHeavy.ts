@@ -9,7 +9,7 @@ export const createRetailHeavyCalibration = (): CalibrationPack => {
   setProductBalance(state, AssetProductType.CorporateLoans, 2.3e9);
   setProductBalance(state, LiabilityProductType.RetailSavingsDeposits, 6e9);
   setProductBalance(state, LiabilityProductType.CorporateNonOperatingDeposits, 0.15e9);
-  setProductBalance(state, LiabilityProductType.WholesaleFundingST, 0.05e9);
+  setProductBalance(state, LiabilityProductType.RetailTermDeposits, 2.2e9);
   rebalanceCash(state);
 
   config.behaviour.depositBaselineGrowthMonthly = 0.0025;

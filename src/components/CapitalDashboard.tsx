@@ -5,11 +5,11 @@ import { formatCurrency, formatPct } from '../utils/formatters';
 
 export function capitalDashboardData(state: BankState, config: SimulationConfig) {
   const rwa = state.risk.riskMetrics.rwa;
-  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1;
+  const cet1 = eligibleCet1(state, config), at1 = state.financial.capital.at1, tier2 = Math.max(0, state.financial.capital.tier2 ?? 0);
   const minima = ownFundsRequirements(config.riskLimits, rwa);
   const b = config.riskLimits.capitalBufferStack;
   const buffer = b.conservationBuffer + b.countercyclicalBuffer + b.systemicBuffer;
-  const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - at1 / rwa - minima.cet1) : 0;
+  const substitution = rwa > 0 ? Math.max(0, minima.tier1 - at1 / rwa - minima.cet1, minima.total - (at1 + tier2) / rwa - minima.cet1) : 0;
   const rows = [
     { label: 'Pillar 1 CET1', ratio: config.riskLimits.minCet1Ratio },
     { label: 'Pillar 2A CET1', ratio: minima.cet1 - config.riskLimits.minCet1Ratio },
@@ -18,10 +18,10 @@ export function capitalDashboardData(state: BankState, config: SimulationConfig)
     { label: 'Countercyclical buffer', ratio: b.countercyclicalBuffer },
     { label: 'Systemic buffer', ratio: b.systemicBuffer },
   ];
-  return { rwa, cet1, at1, rows, cards: [
+  return { rwa, cet1, at1, tier2, rows, cards: [
     { name: 'CET1', amount: cet1, minimum: minima.cet1, requirement: minima.cet1 + substitution + buffer },
     { name: 'Tier 1', amount: cet1 + at1, minimum: minima.tier1, requirement: Math.max(minima.tier1, minima.total) + buffer },
-    { name: 'Total capital', amount: cet1 + at1, minimum: minima.total, requirement: minima.total + buffer },
+    { name: 'Total capital', amount: cet1 + at1 + tier2, minimum: minima.total, requirement: minima.total + buffer },
   ].map(c => ({ ...c, actual: rwa > 0 ? c.amount / rwa : NaN, requiredAmount: c.requirement * rwa })) };
 }
 
@@ -49,7 +49,7 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
   const min = Math.min(0, Number.isFinite(d.cards[0].actual) ? Math.floor(d.cards[0].actual / .05) * .05 : 0);
   const y = (r: number) => 410 - (r - min) / (max - min) * 370;
   const ticks = Array.from({ length: 5 }, (_, i) => min + (max - min) * i / 4);
-  const segments = [{ name: 'CET1', amount: d.cet1, color: '#15578d' }, { name: 'AT1', amount: d.at1, color: '#159de0' }, { name: 'Tier 2', amount: 0, color: '#8261c7' }];
+  const segments = [{ name: 'CET1', amount: d.cet1, color: '#15578d' }, { name: 'AT1', amount: d.at1, color: '#159de0' }, { name: 'Tier 2', amount: d.tier2, color: '#8261c7' }];
   let cumulative = 0;
   return <div className="capital-dashboard">
     <div className="capital-cards">{d.cards.map(c => {
@@ -72,19 +72,19 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
     })}</div>
     <div className="capital-detail-grid">
       <section className="capital-card"><h3>Capital composition</h3>
-        <p className="capital-total">Total capital held <strong>{formatCurrency(d.cet1+d.at1)} ({formatPct(d.cards[2].actual)})</strong></p>
-        {d.rwa > 0 ? <svg className="capital-composition" viewBox="0 0 740 460" role="img" aria-label={`Capital composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(d.at1)}, no Tier 2 issued. RWA ${formatCurrency(d.rwa)}. ${levels.map(l=>`${l.name} ${formatPct(l.ratio)}`).join('. ')}`}>
+        <p className="capital-total">Total capital held <strong>{formatCurrency(d.cet1+d.at1+d.tier2)} ({formatPct(d.cards[2].actual)})</strong></p>
+        {d.rwa > 0 ? <svg className="capital-composition" viewBox="0 0 740 460" role="img" aria-label={`Capital composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(d.at1)}, ${d.tier2 > 0 ? `Tier 2 ${formatCurrency(d.tier2)}` : 'no Tier 2 issued'}. RWA ${formatCurrency(d.rwa)}. ${levels.map(l=>`${l.name} ${formatPct(l.ratio)}`).join('. ')}`}>
           {ticks.map(t=><g key={t}><path d={`M65 ${y(t)}H355`} stroke="var(--border)"/><text x="55" y={y(t)+5} textAnchor="end">{formatPct(t,0)}</text></g>)}
           <text transform="translate(18 180) rotate(-90)" textAnchor="middle">% of RWA</text>
           {segments.filter(s=>s.amount!==0).map(s=>{ const start=cumulative; cumulative+=s.amount/d.rwa; const top=y(Math.max(start,cumulative)), bottom=y(Math.min(start,cumulative)); return <g key={s.name}><rect x="110" y={top} width="190" height={Math.max(0,bottom-top)} fill={s.color}/>{bottom-top>35&&<text x="205" y={(top+bottom)/2} textAnchor="middle" className="stack-label">{s.name}<tspan x="205" dy="20">{formatCurrency(s.amount)}</tspan></text>}</g>; })}
           {groups.map((g,i)=>{const labelY=65+groups.slice(0,i).reduce((sum,p)=>sum+34+p.names.length*22,0);return <g key={g.ratio}><path d={`M300 ${y(g.ratio)}H330L385 ${labelY}H400`} fill="none" stroke={g.color} strokeWidth="1.7" strokeDasharray={g.dash}/><circle cx="330" cy={y(g.ratio)} r="3" fill={g.color}/><text x="414" y={labelY-4}>{g.names.map((name,j)=><tspan key={name} x="414" dy={j===0?0:22}>{name}</tspan>)}<tspan x="414" dy="24" fontWeight="700">{formatPct(g.ratio)} · {formatCurrency(g.ratio*d.rwa)}</tspan></text></g>;})}
           <text x="205" y="447" textAnchor="middle" fontWeight="700">RWA {formatCurrency(d.rwa)}</text>
         </svg> : <p>Capital ratios are unavailable when RWA is zero.</p>}
-        <ul className="capital-legend">{segments.map(s=><li key={s.name}><i style={{background:s.color}}/>{s.name} · {formatCurrency(s.amount)}{s.name==='Tier 2'?' · none issued':''}</li>)}</ul>
+        <ul className="capital-legend">{segments.map(s=><li key={s.name}><i style={{background:s.color}}/>{s.name} · {formatCurrency(s.amount)}{s.name==='Tier 2'&&s.amount===0?' · none issued':''}</li>)}</ul>
       </section>
       <section className="capital-card"><h3>Requirement breakdown</h3><div className="table-scroll"><table><thead><tr><th>CET1 requirement</th><th>% of RWA</th><th>Amount</th></tr></thead><tbody>{d.rows.map(r=><tr key={r.label}><td>{r.label}</td><td>{formatPct(r.ratio)}</td><td>{formatCurrency(r.ratio*d.rwa)}</td></tr>)}<tr className="total-row"><th>Total CET1 requirement</th><td>{formatPct(d.cards[0].requirement)}</td><td>{formatCurrency(d.cards[0].requiredAmount)}</td></tr></tbody></table></div>
         <div className="table-scroll"><table><tbody>{d.cards.slice(1).map(c=><tr key={c.name}><th>{c.name} requirement</th><td>{formatPct(c.requirement)}</td><td>{formatCurrency(c.requiredAmount)}</td></tr>)}</tbody></table></div>
-        <p className="muted">Requirements include combined buffers. CET1 used to cover other capital minima is shown explicitly; Tier 1 also covers the total capital minimum while no Tier 2 is issued.</p>
+        <p className="muted">Requirements include combined buffers. CET1 used to cover other capital minima is shown explicitly; {d.tier2 > 0 ? 'Tier 2 can satisfy part of the total-capital minimum but does not improve CET1 or leverage.' : 'Tier 1 also covers the total-capital minimum while no Tier 2 is issued.'}</p>
         <p className="capital-payout"><strong>Bank policy payout cap: {formatPct(state.risk.riskMetrics.maxPayoutRatio)}</strong><br/>Maximum share of positive profit available for distributions under bank policy. This is not the PRA maximum distributable amount calculation.</p>
       </section>
     </div>

@@ -12,7 +12,9 @@ export enum AssetProductType {
   CashReserves = 'CashReserves',
   Gilts = 'Gilts',
   Mortgages = 'Mortgages',
+  ConsumerLoans = 'ConsumerLoans',
   CorporateLoans = 'CorporateLoans',
+  // Legacy engine support. Generic reverse repo is no longer part of the default retail-bank balance sheet.
   ReverseRepo = 'ReverseRepo',
 }
 
@@ -25,10 +27,14 @@ export enum LiabilityProductType {
   // Segmented customer deposits.
   RetailTransactionalDeposits = 'RetailTransactionalDeposits',
   RetailSavingsDeposits = 'RetailSavingsDeposits',
+  RetailTermDeposits = 'RetailTermDeposits',
   CorporateOperatingDeposits = 'CorporateOperatingDeposits',
   CorporateNonOperatingDeposits = 'CorporateNonOperatingDeposits',
   WholesaleFundingST = 'WholesaleFundingST',
   WholesaleFundingLT = 'WholesaleFundingLT',
+  BankOfEnglandFunding = 'BankOfEnglandFunding',
+  Tier2Debt = 'Tier2Debt',
+  // Legacy engine support. Generic market repo is no longer part of the default retail-bank balance sheet.
   RepurchaseAgreements = 'RepurchaseAgreements',
 }
 

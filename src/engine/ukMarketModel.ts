@@ -789,6 +789,7 @@ export const advanceUkMarketState = (market: MarketState, dtMonths: number): voi
       0,
       0.12
     );
+    market.consumerLoanSpread = clamp(meanRevert(market.consumerLoanSpread, 0.045 + 1.2 * creditSpread, pass) + rng.normal() * noise, 0.02, 0.18);
     market.mortgageSpread = clamp(
       meanRevert(market.mortgageSpread, targetMortgage, pass) + rng.normal() * noise,
       0,
@@ -812,6 +813,8 @@ export const advanceUkMarketState = (market: MarketState, dtMonths: number): voi
       0,
       bankRateClamped
     );
+    const termDepositTarget = Math.max(0, bankRateClamped - 0.006);
+    market.competitorTermDepositRate = clamp(meanRevert(market.competitorTermDepositRate, termDepositTarget, 0.25) + rng.normal() * noise, 0, Math.max(bankRateClamped + .01, termDepositTarget));
     if (market.competitorCorporateDepositRate !== undefined) {
       // This `!== undefined` check narrows the type so TypeScript knows the field is safe to assign to.
       market.competitorCorporateDepositRate = clamp(
@@ -822,6 +825,7 @@ export const advanceUkMarketState = (market: MarketState, dtMonths: number): voi
     }
 
     const competitorMortgageTarget = yields.y5 + market.mortgageSpread - 0.005;
+    market.competitorConsumerLoanRate = clamp(meanRevert(market.competitorConsumerLoanRate, bankRateClamped + market.consumerLoanSpread, 0.18) + rng.normal() * noise, 0.03, 0.35);
     market.competitorMortgageRate = clamp(
       meanRevert(market.competitorMortgageRate, competitorMortgageTarget, 0.2) + rng.normal() * noise,
       0,

@@ -34,6 +34,7 @@ const MONTHS_IN_YEAR = 12;
 const MAX_TERM_MONTHS_CAP = 420;
 const LOAN_SECTORS: LoanSector[] = [
   'retailMortgage',
+  'consumer',
   'commercialRealEstate',
   'sme',
   'largeCorporate',
@@ -338,7 +339,7 @@ const isValidGeography = (value: LoanGeography | undefined): value is LoanGeogra
   value !== undefined && LOAN_GEOGRAPHIES.includes(value);
 
 const fallbackSectorForProduct = (productType: ProductType): LoanSector =>
-  productType === AssetProductType.Mortgages ? 'retailMortgage' : 'largeCorporate';
+  productType === AssetProductType.Mortgages ? 'retailMortgage' : productType === AssetProductType.ConsumerLoans ? 'consumer' : 'sme';
 
 const fallbackGeographyForCohort = (cohortId: number): LoanGeography =>
   LOAN_GEOGRAPHIES[Math.abs(Math.floor(cohortId)) % LOAN_GEOGRAPHIES.length];
@@ -411,8 +412,10 @@ export const upsertOriginationCohort = (args: {
       annualInterestRate: Math.max(0, args.annualInterestRate),
       termMonths,
       ageMonths: 0,
-      annualPd: Math.max(0, args.annualPd),
-      lgd: clamp(args.lgd, 0, 1),
+      annualPd: Math.max(0, args.productType === AssetProductType.Mortgages ? args.annualPd * (1 + Math.max(0, (state.behaviour.mortgagePolicy?.maxLtv ?? .85) - .75) * 1.6) : args.annualPd),
+      lgd: args.productType === AssetProductType.Mortgages ? clamp(args.lgd + Math.max(0, (state.behaviour.mortgagePolicy?.maxLtv ?? .85) - .75) * .8, 0, .95) : clamp(args.lgd, 0, 1),
+      ltv: args.productType === AssetProductType.Mortgages ? (state.behaviour.mortgagePolicy?.maxLtv ?? .85) : undefined,
+      fixedPeriodMonths: args.productType === AssetProductType.Mortgages ? (state.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24) : undefined,
       affordabilityIndex: 1,
       renewalCount: 0,
       stage: 'stage1',

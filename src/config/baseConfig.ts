@@ -51,6 +51,25 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
       initialMinBucketOutstanding: 20e6,
     },
   },
+  [AssetProductType.ConsumerLoans]: {
+    productType: AssetProductType.ConsumerLoans,
+    riskWeight: 0.75,
+    baseDefaultRate: 0.025,
+    lossGivenDefault: 0.65,
+    volumeElasticityToRate: -0.55,
+    adverseSelectionRatePremiumThreshold: 0.01,
+    adverseSelectionPdSlope: 10,
+    adverseSelectionMaxMultiplier: 2.8,
+    loan: {
+      defaultTermMonths: 48,
+      maxTermMonths: 84,
+      initialSeasoningEnabled: true,
+      initialCouponDispersionBps: 120,
+      initialPdMultiplierRange: { min: 0.8, max: 1.5 },
+      initialLgdMultiplierRange: { min: 0.9, max: 1.1 },
+      initialMinBucketOutstanding: 10e6,
+    },
+  },
   [AssetProductType.CorporateLoans]: {
     productType: AssetProductType.CorporateLoans,
     riskWeight: 1.0,
@@ -105,6 +124,9 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     lossGivenDefault: 0,
     volumeElasticityToRate: 0.55,
   },
+  [LiabilityProductType.RetailTermDeposits]: {
+    productType: LiabilityProductType.RetailTermDeposits, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0.7,
+  },
   [LiabilityProductType.CorporateOperatingDeposits]: {
     productType: LiabilityProductType.CorporateOperatingDeposits,
     riskWeight: 0,
@@ -133,6 +155,8 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
     lossGivenDefault: 0,
     volumeElasticityToRate: 0,
   },
+  [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
   [LiabilityProductType.RepurchaseAgreements]: {
     productType: LiabilityProductType.RepurchaseAgreements,
     riskWeight: 0,
@@ -163,6 +187,9 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     hqlaLevel: HQLALevel.None,
     lcrInflowRate: 0.05,
     nsfrRsfFactor: .65,
+  },
+  [AssetProductType.ConsumerLoans]: {
+    productType: AssetProductType.ConsumerLoans, hqlaLevel: HQLALevel.None, lcrInflowRate: 0.05, nsfrRsfFactor: .85,
   },
   [AssetProductType.CorporateLoans]: {
     productType: AssetProductType.CorporateLoans,
@@ -200,6 +227,9 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     lcrOutflowRate: .1,
     nsfrAsfFactor: .9,
   },
+  [LiabilityProductType.RetailTermDeposits]: {
+    productType: LiabilityProductType.RetailTermDeposits, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .95,
+  },
   [LiabilityProductType.CorporateOperatingDeposits]: {
     productType: LiabilityProductType.CorporateOperatingDeposits,
     hqlaLevel: HQLALevel.None,
@@ -224,6 +254,8 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     lcrOutflowRate: 0.0,
     nsfrAsfFactor: 1.0,
   },
+  [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .5 },
+  [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 1 },
   [LiabilityProductType.RepurchaseAgreements]: {
     productType: LiabilityProductType.RepurchaseAgreements,
     hqlaLevel: HQLALevel.None,
@@ -240,6 +272,8 @@ const global: GlobalSimulationParameters = {
   fixedOperatingCostPerMonth: 0.014e9,
   initialPortfolioSeed: 123456789,
   competitorDepositReactionSpeed: 0.035,
+  competitorTermDepositReactionSpeed: 0.025,
+  competitorConsumerLoanReactionSpeed: 0.025,
   competitorCorporateDepositReactionSpeed: 0.045,
   competitorMortgageReactionSpeed: 0.035,
   competitorCorporateLoanSpreadReactionSpeed: 0.04,
@@ -331,6 +365,12 @@ const behaviour: BehaviourParameters = {
       mixMigrationRate: 0.06,
       mixMigrationDurationSensitivity: 0.08,
     },
+    [LiabilityProductType.RetailTermDeposits]: {
+      baselineGrowthMonthly: 0.008, baseChurnMonthly: 0, policyRateBeta: 0, competitorSensitivity: 0.75,
+      passThroughLag: 0.85, underpricingConvexity: 18, underpricingDurationSensitivity: 0.04,
+      franchiseDecayRate: 0.25, franchiseRecoveryRate: 0.04, reacquisitionDrag: 0.2,
+      stabilityDecayRate: 0.1, stabilityRecoveryRate: 0.08, mixMigrationRate: 0, mixMigrationDurationSensitivity: 0,
+    },
     [LiabilityProductType.CorporateOperatingDeposits]: {
       baselineGrowthMonthly: 0.0015,
       baseChurnMonthly: 0.003,
@@ -387,6 +427,14 @@ const behaviour: BehaviourParameters = {
       minAddressableMarketMultiplier: 0.55,
       maxAddressableMarketMultiplier: 1.45,
     },
+    [AssetProductType.ConsumerLoans]: {
+      baseDemandRateMonthly: 0.035, pricingSensitivity: 18, macroSensitivity: 1.6, baseApprovalRate: 0.62,
+      underwritingSensitivity: 0.7, drawdownRateMonthly: 0.7, cancellationRateMonthly: 0.08,
+      referenceMarketSize: 220e9, referenceBankShare: 0.0032, neutralGdpGrowthMonthly: 0.0015,
+      neutralUnemploymentRate: 0.045, neutralBorrowerRate: 0.105, neutralCreditSpread: 0.012,
+      gdpMarketSensitivity: 45, unemploymentMarketSensitivity: 6, borrowingCostMarketSensitivity: 2.5,
+      creditSpreadMarketSensitivity: 5, minAddressableMarketMultiplier: 0.4, maxAddressableMarketMultiplier: 1.5,
+    },
     [AssetProductType.CorporateLoans]: {
       baseDemandRateMonthly: 0.026,
       pricingSensitivity: 65,
@@ -433,6 +481,11 @@ const behaviour: BehaviourParameters = {
         maxIndex: 2.5,
         resetShareOnRenewal: 0.35,
       },
+      [AssetProductType.ConsumerLoans]: {
+        baselineDriftMonthly: 0.004, couponGapSensitivity: 2.5, policyRateSensitivity: 0.8,
+        unemploymentSensitivity: 5.0, gdpContractionSensitivity: 18, recoverySpeedMonthly: 0.05,
+        pdStressSlope: 1.5, minIndex: 0.7, maxIndex: 3.5, resetShareOnRenewal: 0.3,
+      },
       [AssetProductType.CorporateLoans]: {
         baselineDriftMonthly: 0.003,
         couponGapSensitivity: 3.2,
@@ -454,6 +507,10 @@ const behaviour: BehaviourParameters = {
         riskSelectivity: 0.65,
         minPrepayRateMonthly: 0.0008,
         maxPrepayRateMonthly: 0.015,
+      },
+      [AssetProductType.ConsumerLoans]: {
+        minSeasoningMonths: 6, basePrepayRateMonthly: 0.004, incentiveSensitivity: 0.35, riskSelectivity: 0.35,
+        minPrepayRateMonthly: 0.001, maxPrepayRateMonthly: 0.02,
       },
       [AssetProductType.CorporateLoans]: {
         minSeasoningMonths: 6,
@@ -605,6 +662,8 @@ const behaviour: BehaviourParameters = {
     franchiseHit: 0.06,
     reputationHit: 0.08,
   },
+  boeFunding: { strSpreadBps: 0, iltrSpreadBps: 3, strTenorMonths: 1, iltrTenorMonths: 6, levelAHaircut: 0.03 },
+  depositRisk: { uninsuredRunoffSensitivity: 0.35, largeDepositorRunoffSensitivity: 0.8 },
   sharePriceModel: {
     peNeutral: 8,
     peMin: 3,
