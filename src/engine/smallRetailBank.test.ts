@@ -21,6 +21,11 @@ describe('small UK retail-bank model', () => {
     expect(initialState.fundingLadders[L.RetailTermDeposits]?.length).toBeGreaterThan(1);
   });
 
+  it('does not add an unused short-term wholesale line during an ordinary close', () => {
+    const out = engine.step({ state: cloneBankState(initialState), config: baseConfig, shocks: [], actions: [] }).nextState;
+    expect(out.financial.balanceSheet.items.some(i => i.productType === L.WholesaleFundingST)).toBe(false);
+  });
+
   it('replenishes competitively priced fixed-term savings as contractual buckets mature', () => {
     let state = cloneBankState(initialState);
     for (let month = 0; month < 18; month++) {

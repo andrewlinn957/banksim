@@ -345,7 +345,16 @@ const App = () => {
 
   const clearTransactions = () => {
     setPendingRiskAppetite(undefined);
-    setActionForm(prev => ({ ...prev, issueLTDebtAmount: '', issueEquityAmount: '', hedgeDirection: 'none', hedgeNotional: '' }));
+    setActionForm(prev => ({
+      ...prev,
+      issueLTDebtAmount: '',
+      issueEquityAmount: '',
+      issueTier2Amount: '',
+      boeFacility: 'none',
+      boeFundingAmount: '',
+      hedgeDirection: 'none',
+      hedgeNotional: '',
+    }));
     setSelectedDecisions(prev => prev.filter(id => !['funding','capital','hedge'].includes(id)));
   };
   const backProposal = (decision: BoardDecision) => {

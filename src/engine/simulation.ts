@@ -685,7 +685,10 @@ const ensureFundingLadderCoverage = (
   config: SimulationConfig,
   productType: FundingProduct
 ): void => {
-  const line = ensureLineItem(
+  const buckets = getFundingLadderBuckets(state, productType);
+  const existingLine = findItem(state.financial.balanceSheet, productType);
+  if (!existingLine && buckets.length === 0) return;
+  const line = existingLine ?? ensureLineItem(
     state,
     BalanceSheetSide.Liability,
     productType,
@@ -695,7 +698,6 @@ const ensureFundingLadderCoverage = (
       : state.market.riskFreeLong + state.market.seniorDebtSpread,
     config
   );
-  const buckets = getFundingLadderBuckets(state, productType);
   const tenor = getDefaultRefinanceTenorMonths(config, productType);
   if (buckets.length === 0 && line.balance > 0) {
     addFundingBucket(state, productType, line.balance, line.interestRate, tenor);
