@@ -6,7 +6,7 @@ import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
 
 describe('risk reporting UI', () => {
-  it('renders a navigable risk dashboard with structural, macro and curve intelligence', () => {
+  it('renders a dense risk dashboard with structural, macro and curve intelligence', () => {
     const html = renderToStaticMarkup(
       <RiskDashboard state={initialState} config={baseConfig} attribution={null} />
     );
@@ -47,6 +47,7 @@ describe('risk reporting UI', () => {
     expect(html).toContain('NS level β0');
     expect(html).not.toContain('aria-label="Gilt curve yields"');
     expect(html).not.toContain('stable funding confidence');
+    expect(html).not.toContain('aria-label="Risk dashboard sections"');
 
     expect(html).not.toContain('Prudential dashboard');
     expect(html).not.toContain('Open help');
