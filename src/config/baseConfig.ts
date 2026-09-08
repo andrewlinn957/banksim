@@ -1,6 +1,5 @@
 import {
   AssetProductType,
-  HQLALevel,
   LiabilityProductType,
   ProductType,
 } from '../domain/enums';
@@ -12,29 +11,25 @@ import {
   ShockParameters,
   ToleranceParameters,
 } from '../domain/config';
-import { LiquidityTag } from '../domain/liquidity';
 
 const productParameters: Record<ProductType, ProductRiskParameters> = {
-  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, riskWeight: 1, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
-  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
-  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
   [AssetProductType.CashReserves]: {
     productType: AssetProductType.CashReserves,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0,
   },
   [AssetProductType.Gilts]: {
     productType: AssetProductType.Gilts,
-    riskWeight: 0,
     baseDefaultRate: 0.0005,
     lossGivenDefault: 0.1,
     volumeElasticityToRate: 0,
   },
   [AssetProductType.Mortgages]: {
     productType: AssetProductType.Mortgages,
-    riskWeight: 0.35,
     baseDefaultRate: 0.004,
     lossGivenDefault: 0.25,
     volumeElasticityToRate: -0.4,
@@ -53,7 +48,6 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
   },
   [AssetProductType.ConsumerLoans]: {
     productType: AssetProductType.ConsumerLoans,
-    riskWeight: 0.75,
     baseDefaultRate: 0.025,
     lossGivenDefault: 0.65,
     volumeElasticityToRate: -0.55,
@@ -72,7 +66,6 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
   },
   [AssetProductType.CorporateLoans]: {
     productType: AssetProductType.CorporateLoans,
-    riskWeight: 1.0,
     baseDefaultRate: 0.015,
     lossGivenDefault: 0.45,
     volumeElasticityToRate: -0.3,
@@ -91,112 +84,39 @@ const productParameters: Record<ProductType, ProductRiskParameters> = {
   },
   [LiabilityProductType.RetailCurrentAccounts]: {
     productType: LiabilityProductType.RetailCurrentAccounts,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0.25,
   },
   [LiabilityProductType.RetailTermDeposits]: {
-    productType: LiabilityProductType.RetailTermDeposits, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0.7,
+    productType: LiabilityProductType.RetailTermDeposits, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0.7,
   },
   [LiabilityProductType.CorporateOperatingDeposits]: {
     productType: LiabilityProductType.CorporateOperatingDeposits,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0.65,
   },
   [LiabilityProductType.CorporateNonOperatingDeposits]: {
     productType: LiabilityProductType.CorporateNonOperatingDeposits,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 1.0,
   },
   [LiabilityProductType.WholesaleFundingST]: {
     productType: LiabilityProductType.WholesaleFundingST,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0,
   },
   [LiabilityProductType.WholesaleFundingLT]: {
     productType: LiabilityProductType.WholesaleFundingLT,
-    riskWeight: 0,
     baseDefaultRate: 0.0,
     lossGivenDefault: 0,
     volumeElasticityToRate: 0,
   },
-  [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
-  [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, riskWeight: 0, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
-};
-
-const liquidityTags: Record<ProductType, LiquidityTag> = {
-  [AssetProductType.DerivativeAssets]: { productType: AssetProductType.DerivativeAssets, hqlaLevel: HQLALevel.None, lcrInflowRate: 0, nsfrRsfFactor: 1 },
-  [LiabilityProductType.DerivativeLiabilities]: { productType: LiabilityProductType.DerivativeLiabilities, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 0 },
-  [LiabilityProductType.CreditProvisions]: { productType: LiabilityProductType.CreditProvisions, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 0 },
-  [AssetProductType.CashReserves]: {
-    productType: AssetProductType.CashReserves,
-    hqlaLevel: HQLALevel.Level1,
-    lcrInflowRate: 0,
-    nsfrRsfFactor: 0,
-  },
-  [AssetProductType.Gilts]: {
-    productType: AssetProductType.Gilts,
-    hqlaLevel: HQLALevel.Level1,
-    lcrInflowRate: 0,
-    nsfrRsfFactor: 0,
-  },
-  [AssetProductType.Mortgages]: {
-    productType: AssetProductType.Mortgages,
-    hqlaLevel: HQLALevel.None,
-    lcrInflowRate: 0.05,
-    nsfrRsfFactor: .65,
-  },
-  [AssetProductType.ConsumerLoans]: {
-    productType: AssetProductType.ConsumerLoans, hqlaLevel: HQLALevel.None, lcrInflowRate: 0.05, nsfrRsfFactor: .85,
-  },
-  [AssetProductType.CorporateLoans]: {
-    productType: AssetProductType.CorporateLoans,
-    hqlaLevel: HQLALevel.None,
-    lcrInflowRate: 0.05,
-    nsfrRsfFactor: .85,
-  },
-  [LiabilityProductType.RetailCurrentAccounts]: {
-    productType: LiabilityProductType.RetailCurrentAccounts,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.10,
-    nsfrAsfFactor: 0.90,
-  },
-  [LiabilityProductType.RetailTermDeposits]: {
-    productType: LiabilityProductType.RetailTermDeposits, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .90,
-  },
-  [LiabilityProductType.CorporateOperatingDeposits]: {
-    productType: LiabilityProductType.CorporateOperatingDeposits,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: .25,
-    nsfrAsfFactor: .5,
-  },
-  [LiabilityProductType.CorporateNonOperatingDeposits]: {
-    productType: LiabilityProductType.CorporateNonOperatingDeposits,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: .4,
-    nsfrAsfFactor: .5,
-  },
-  [LiabilityProductType.WholesaleFundingST]: {
-    productType: LiabilityProductType.WholesaleFundingST,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 1.0,
-    nsfrAsfFactor: 0.0,
-  },
-  [LiabilityProductType.WholesaleFundingLT]: {
-    productType: LiabilityProductType.WholesaleFundingLT,
-    hqlaLevel: HQLALevel.None,
-    lcrOutflowRate: 0.0,
-    nsfrAsfFactor: 1.0,
-  },
-  [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .5 },
-  [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: 1 },
+  [LiabilityProductType.BankOfEnglandFunding]: { productType: LiabilityProductType.BankOfEnglandFunding, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
+  [LiabilityProductType.Tier2Debt]: { productType: LiabilityProductType.Tier2Debt, baseDefaultRate: 0, lossGivenDefault: 0, volumeElasticityToRate: 0 },
 };
 
 const global: GlobalSimulationParameters = {
@@ -654,7 +574,6 @@ const featureFlags = {
 export const baseConfig: SimulationConfig = {
   version: 'v1',
   productParameters,
-  liquidityTags,
   global,
   riskLimits,
   behaviour,
