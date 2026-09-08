@@ -43,7 +43,8 @@ export const createChallengerCalibration = (): CalibrationPack => {
     initialState: state,
     envelope: {
       cet1Ratio: [0.07, 0.45],
-      lcr: [0.85, 8.0],
+      // Rebased after retail current accounts were classified explicitly for LCR.
+      lcr: [0.85, 8.25],
       nsfr: [0.85, 2.9],
       roe: [-0.08, 0.3],
     },
