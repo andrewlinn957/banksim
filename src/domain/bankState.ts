@@ -1,6 +1,6 @@
 import { BalanceSheet } from './balanceSheet';
 import { IncomeStatement } from './pnl';
-import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState } from './risks';
+import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState, Pillar2AAssessmentState } from './risks';
 import { MarketState } from './market';
 import { CashFlowStatement } from './cashflow';
 import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
@@ -88,7 +88,7 @@ export interface SimulationTime {
 }
 
 export interface BehaviouralState {
-  riskAppetite?: { cet1: number; leverage: number; lcr: number; nsfr: number };
+  riskAppetite?: { cet1: number; leverage: number; lcr: number; nsfr: number; irrbbEveLimit?: number };
   depositFranchiseStrength: number;
   reputation: number;
   ratingNotchOffset: number;
@@ -127,6 +127,7 @@ export interface FinancialState {
 export interface RiskState {
   riskMetrics: RiskMetrics;
   compliance: ComplianceStatus;
+  pillar2A?: Pillar2AAssessmentState;
 }
 
 export interface SimulationStatus {
