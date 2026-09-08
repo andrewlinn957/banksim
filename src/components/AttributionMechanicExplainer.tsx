@@ -1,14 +1,12 @@
 import { AttributionLineSelection } from '../domain/attribution';
 import { getAttributionMechanicExplanation } from '../content/attributionExplainers';
 import { formatSignedPct } from '../utils/formatters';
-import HelpLink from './HelpLink';
 
 interface Props {
   selection: AttributionLineSelection;
-  onNavigateHelp?: (sectionId: string) => void;
 }
 
-const AttributionMechanicExplainer = ({ selection, onNavigateHelp }: Props) => {
+const AttributionMechanicExplainer = ({ selection }: Props) => {
   const explanation = getAttributionMechanicExplanation(selection);
   const impactClass =
     selection.effect > 0 ? 'positive' : selection.effect < 0 ? 'negative' : '';
@@ -34,18 +32,7 @@ const AttributionMechanicExplainer = ({ selection, onNavigateHelp }: Props) => {
           <div>{explanation.mitigation}</div>
         </div>
       </div>
-      <div className="metric-help-actions">
-        <span className="muted">
-          Linked events: {selection.eventIds.length}
-        </span>
-        {onNavigateHelp ? (
-          <HelpLink
-            label="Open mechanic"
-            sectionId={explanation.helpSectionId}
-            onNavigate={onNavigateHelp}
-          />
-        ) : null}
-      </div>
+      <div className="metric-help-actions"><span className="muted">Linked events: {selection.eventIds.length}</span></div>
     </div>
   );
 };

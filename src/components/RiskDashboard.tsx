@@ -3,6 +3,7 @@ import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide } from '../domain/enums';
 import { StepAttribution } from '../domain/attribution';
 import { formatCurrency, formatPct, formatSignedPct } from '../utils/formatters';
+import './RiskDashboard.css';
 
 interface Props {
   state: BankState;
