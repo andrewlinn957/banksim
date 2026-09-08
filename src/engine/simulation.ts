@@ -1499,7 +1499,6 @@ export const stepFundingLadders = (
 
 const RETAIL_DEPOSIT_PRODUCTS: LiabilityProductType[] = [
   LiabilityProductType.RetailCurrentAccounts,
-  LiabilityProductType.RetailTermDeposits,
 ];
 
 const CORPORATE_DEPOSIT_PRODUCTS: LiabilityProductType[] = [

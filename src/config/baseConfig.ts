@@ -215,7 +215,7 @@ const liquidityTags: Record<ProductType, LiquidityTag> = {
     nsfrAsfFactor: 0.90,
   },
   [LiabilityProductType.RetailTermDeposits]: {
-    productType: LiabilityProductType.RetailTermDeposits, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .95,
+    productType: LiabilityProductType.RetailTermDeposits, hqlaLevel: HQLALevel.None, lcrOutflowRate: 0, nsfrAsfFactor: .90,
   },
   [LiabilityProductType.CorporateOperatingDeposits]: {
     productType: LiabilityProductType.CorporateOperatingDeposits,

@@ -42,6 +42,17 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);
     expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);
   });
+  it('uses retail runoff inside 30 days and maturity-based NSFR factors for fixed-term savings', () => {
+    const s = cloneBankState(initialState);
+    s.fundingLadders[L.RetailTermDeposits] = [
+      { monthsToMaturity: 1, tenorMonths: 12, notional: 100, rate: .04 },
+      { monthsToMaturity: 12, tenorMonths: 12, notional: 100, rate: .04 },
+    ];
+    line(s,L.RetailTermDeposits).balance=200;
+    const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.RetailTermDeposits)!;
+    expect(l.outflow).toBeCloseTo(10);
+    expect(l.asf).toBeCloseTo(190);
+  });
   it('uses contractual wholesale maturities at 1, 6 and 12 months', () => {
     const s = cloneBankState(initialState);
     s.fundingLadders[L.WholesaleFundingLT] = [1,5,6,11,12].map(monthsToMaturity => ({ monthsToMaturity, tenorMonths: 24, notional: 100, rate: 0 }));
