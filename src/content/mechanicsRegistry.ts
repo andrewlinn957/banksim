@@ -75,7 +75,7 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
   {
     id: 'deposit-behaviour',
     category: 'Customers',
-    title: 'Instant savings and business deposits',
+    title: 'Instant retail and business deposits',
     plainDescription:
       'You set the rate for instant retail and SME or business deposits. The game compares your rate with the market rate.',
     whyItMatters:

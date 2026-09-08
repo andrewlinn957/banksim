@@ -18,6 +18,7 @@ describe('small UK retail-bank model', () => {
     expect(initialState.financial.balanceSheet.items.some(i => i.productType === L.RetailTransactionalDeposits)).toBe(false);
     expect(balance(initialState, L.RetailSavingsDeposits)).toBe(7.0e9);
     expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.label).toBe('Instant retail');
+    expect(initialState.financial.balanceSheet.items.find(i => i.productType === L.RetailSavingsDeposits)?.interestRate).toBeCloseTo(0.0167857143, 8);
     expect(balance(initialState, A.Mortgages)).toBeGreaterThan(balance(initialState, A.CorporateLoans));
     expect(balance(initialState, A.ConsumerLoans)).toBeGreaterThan(0);
     expect(balance(initialState, L.RetailTermDeposits)).toBeGreaterThan(0);
