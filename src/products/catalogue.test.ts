@@ -37,23 +37,65 @@ describe('product catalogue', () => {
     expect(liabilityProducts().every(product => product.side === BalanceSheetSide.Liability)).toBe(true);
   });
 
-  it('defines live loan and customer-deposit behaviour in the catalogue', () => {
-    expect(getProduct(AssetProductType.Mortgages).behaviour).toMatchObject({ isLoan: true, loanBenchmark: 'mortgage' });
-    expect(getProduct(AssetProductType.ConsumerLoans).behaviour).toMatchObject({ isLoan: true, loanBenchmark: 'consumer' });
-    expect(getProduct(AssetProductType.CorporateLoans).behaviour).toMatchObject({ isLoan: true, loanBenchmark: 'corporate' });
+  it('defines loans through the loan capability', () => {
+    expect(getProduct(AssetProductType.Mortgages).capabilities.loan).toEqual({
+      benchmark: 'mortgage',
+      behaviouralFlow: true,
+      underwritingEditable: true,
+    });
+    expect(getProduct(AssetProductType.ConsumerLoans).capabilities.loan).toEqual({
+      benchmark: 'consumer',
+      behaviouralFlow: true,
+      underwritingEditable: true,
+    });
+    expect(getProduct(AssetProductType.CorporateLoans).capabilities.loan).toEqual({
+      benchmark: 'corporate',
+      behaviouralFlow: true,
+      underwritingEditable: true,
+    });
+  });
 
-    expect(getProduct(LiabilityProductType.RetailCurrentAccounts).behaviour).toMatchObject({
-      isCustomerDeposit: true,
-      depositSegment: 'retail',
+  it('defines customer deposits through the customer-deposit capability', () => {
+    expect(getProduct(LiabilityProductType.RetailCurrentAccounts).capabilities.customerDeposit).toEqual({
+      segment: 'retail',
+      benchmark: 'retailCurrentAccount',
+      behaviouralFlow: true,
+    });
+    expect(getProduct(LiabilityProductType.RetailTermDeposits).capabilities.customerDeposit).toEqual({
+      segment: 'retail',
+      benchmark: 'termDeposit',
+      behaviouralFlow: true,
+      termFunding: true,
+    });
+    expect(getProduct(LiabilityProductType.CorporateOperatingDeposits).capabilities.customerDeposit).toEqual({
+      segment: 'corporate',
+      benchmark: 'corporateDeposit',
+      behaviouralFlow: true,
+    });
+  });
+
+  it('derives the legacy engine behaviour view from capabilities', () => {
+    expect(getProduct(AssetProductType.Mortgages).behaviour).toMatchObject({
+      isLoan: true,
+      loanBenchmark: 'mortgage',
+      affectsBehaviouralLoanFlow: true,
     });
     expect(getProduct(LiabilityProductType.RetailTermDeposits).behaviour).toMatchObject({
       isCustomerDeposit: true,
       depositSegment: 'retail',
+      affectsBehaviouralDepositFlow: true,
       isTermDeposit: true,
     });
-    expect(getProduct(LiabilityProductType.CorporateOperatingDeposits).behaviour).toMatchObject({
-      isCustomerDeposit: true,
-      depositSegment: 'corporate',
+  });
+
+  it('defines issuable wholesale debt through a funding capability', () => {
+    expect(getProduct(LiabilityProductType.WholesaleFundingST).capabilities.wholesaleFunding).toEqual({
+      tenorClass: 'short',
+      issuable: true,
+    });
+    expect(getProduct(LiabilityProductType.WholesaleFundingLT).capabilities.wholesaleFunding).toEqual({
+      tenorClass: 'long',
+      issuable: true,
     });
   });
 
