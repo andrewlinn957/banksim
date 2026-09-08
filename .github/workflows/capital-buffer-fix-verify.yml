@@ -1,0 +1,42 @@
+name: Verify capital buffer implementation
+
+on:
+  push:
+    branches:
+      - feature/capital-buffer-framework
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/capital-buffer-framework
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Fix dynamic buffer requirement references
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/engine/metrics.ts')
+          s=p.read_text()
+          s=s.replace("tier1Requirement: Math.max(minima.tier1,minima.total) + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,", "tier1Requirement: Math.max(minima.tier1,minima.total) + capitalBuffers.combinedBufferRate,")
+          s=s.replace("totalCapitalRequirement: minima.total + computeCet1Requirement(config.riskLimits) - config.riskLimits.minCet1Ratio,", "totalCapitalRequirement: minima.total + capitalBuffers.combinedBufferRate,")
+          p.write_text(s)
+          Path('.github/workflows/capital-buffer-fix-verify.yml').unlink()
+          PY
+      - run: npm ci
+      - run: npm run test:fast
+      - run: npm run typecheck && npm run build
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix dynamic buffer capital requirements"
+          git push origin HEAD:feature/capital-buffer-framework
