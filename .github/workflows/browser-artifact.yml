@@ -29,3 +29,5 @@ jobs:
         with:
           name: banksim-retail-dist
           path: dist
+
+# Temporary workflow used only to validate the exact production bundle before PR merge.
