@@ -18,6 +18,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: audit-small-uk-retail-bank
+      - name: Adapt migration to current cohort constructor
+        run: |
+          sed -i '95d' .github/scripts/apply_retail_refocus.py
       - name: Apply coordinated patch
         run: python .github/scripts/apply_retail_refocus.py
       - name: Commit patch
