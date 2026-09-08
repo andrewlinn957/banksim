@@ -69,16 +69,19 @@ text = replace_once(
 )
 text = replace_once(
     text,
-    "                  <td>{loan.maturityBucket}</td>",
-    "                  <td>{maturityLabel(loan.maturityBucket)}</td>",
+    "                <td>{l.maturityBucket}</td>",
+    "                <td>{maturityLabel(l.maturityBucket)}</td>",
     'maturity cell',
 )
+
+legend = """          <div className=\"muted\" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>\n            <span className=\"rag-badge rag-green\">Green safer</span>\n            <span className=\"rag-badge rag-amber\">Amber middle</span>\n            <span className=\"rag-badge rag-red\">Red riskier</span>\n          </div>\n"""
+text = replace_once(text, legend, '', 'arbitrary cohort risk legend')
 path.write_text(text)
 
-# UI test: assert enum implementation names do not leak into the page.
+# UI test: assert implementation enum names do not leak and current risk labels are explicit.
 path = Path('src/ui/loansPanelRetail.test.tsx')
 text = path.read_text()
 needle = "  expect(html).toContain('Maturity bucket');\n});"
-replacement = "  expect(html).toContain('Maturity bucket');\n  expect(html).toContain('3–5 years');\n  expect(html).not.toContain('ThreeToFiveY');\n  expect(html).toContain('Current PD');\n  expect(html).toContain('Current LGD');\n});"
+replacement = "  expect(html).toContain('Maturity bucket');\n  expect(html).toContain('3–5 years');\n  expect(html).not.toContain('ThreeToFiveY');\n  expect(html).toContain('Current PD');\n  expect(html).toContain('Current LGD');\n  expect(html).not.toContain('Green safer');\n});"
 text = replace_once(text, needle, replacement, 'UI maturity/risk labels')
 path.write_text(text)
