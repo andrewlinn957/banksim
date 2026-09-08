@@ -46,9 +46,6 @@ import { AttributionLineSelection, StepAttribution } from './domain/attribution'
 import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
-import { buildPreRunGuardrails } from './content/guardrails';
-import TutorialOverlay from './components/TutorialOverlay';
-import { readTutorialCompleted, writeTutorialCompleted } from './content/tutorialState';
 
 const controller = new SimulationController(baseConfig);
 const tabs = [
@@ -82,15 +79,6 @@ const tabLabels: Record<string, string> = {
   Help: 'Help',
 };
 
-interface TutorialStepView {
-  title: string;
-  summary: string;
-  instructions: string[];
-  ready: boolean;
-  readinessHint: string;
-  primaryActionLabel?: string;
-  onPrimaryAction?: () => void;
-}
 
 const formatRateInputPct = (rate: number | null | undefined): string => {
   if (rate === undefined || rate === null || !Number.isFinite(rate)) return '';
@@ -159,7 +147,7 @@ const App = () => {
   const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
   const openReport = (tab: string) => { setIsActionsOpen(false); setActiveTab(tab); };
 
-  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors || isTutorialOpen) return; setPauseReason(''); setAutoRemaining(months); };
+  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors) return; setPauseReason(''); setAutoRemaining(months); };
   const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
@@ -171,13 +159,6 @@ const App = () => {
     controller.createSnapshot(initialState),
   ]);
   const [runCounter, setRunCounter] = useState(1);
-  const [tutorialCompleted, setTutorialCompleted] = useState<boolean>(() => readTutorialCompleted());
-  const [isTutorialOpen, setIsTutorialOpen] = useState<boolean>(false);
-  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
-  const [tutorialRunAnchorStep, setTutorialRunAnchorStep] = useState<number | null>(null);
-  const [tutorialRiskPreparedStep, setTutorialRiskPreparedStep] = useState<number | null>(null);
-  const [tutorialSawGuardrail, setTutorialSawGuardrail] = useState(false);
-  const [tutorialMitigationApplied, setTutorialMitigationApplied] = useState(false);
 
   const totalEquity = useMemo(
     () =>
@@ -230,7 +211,7 @@ const App = () => {
   }, [theme]);
 
   const preview = useMemo<StepPreview | null>(() => {
-    if (parsedActionForm.hasErrors || clockRunning || (!(isActionsOpen && activeTab==='Boardroom') && !isTutorialOpen)) return null;
+    if (parsedActionForm.hasErrors || clockRunning || !(isActionsOpen && activeTab==='Boardroom')) return null;
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
     if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     const scenarioStep = getScenarioStepPayload({
@@ -257,7 +238,7 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, isTutorialOpen, activeTab, clockRunning, pendingRiskAppetite]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite]);
 
   const recommendations = useMemo(() => {
     controller.setConfig(simConfig);
@@ -274,25 +255,6 @@ const App = () => {
       }),
     [activeScenario, bankState, lastAttribution, recommendations, scenarioScore]
   );
-  const guardrails = useMemo(
-    () =>
-      buildPreRunGuardrails({
-        state: bankState,
-        config: simConfig,
-        parsedValues: parsedActionForm.values,
-        hasValidationErrors: parsedActionForm.hasErrors,
-        preview: preview
-          ? {
-              stressedCet1Ratio: preview.stressed.risk.riskMetrics.cet1Ratio,
-              stressedLcr: preview.stressed.risk.riskMetrics.lcr,
-              stressedNsfr: preview.stressed.risk.riskMetrics.nsfr,
-              breachProbability: preview.breachProbability,
-            }
-          : null,
-      }),
-    [bankState, parsedActionForm.hasErrors, parsedActionForm.values, preview, simConfig]
-  );
-
   const milestoneEventsFromPayload = (payload: ReturnType<typeof getScenarioStepPayload>): SimulationEvent[] =>
     payload.milestones.map((milestone) => ({
       id: `milestone-${milestone.id}`,
@@ -368,10 +330,10 @@ const App = () => {
   };
 
   useEffect(() => {
-    if (!clockRunning || isTutorialOpen || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
+    if (!clockRunning || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
     const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
     return () => window.clearTimeout(timer);
-  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, isTutorialOpen, parsedActionForm.hasErrors, pendingRiskAppetite]);
+  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite]);
 
   // Leave the bank paused when returning from another tab or opening a modal.
   useEffect(() => {
@@ -380,7 +342,6 @@ const App = () => {
     return () => document.removeEventListener('visibilitychange', hide);
   }, []);
   useEffect(() => { if (isActionsOpen) { setAutoRemaining(null); setActiveTab('Boardroom'); } }, [isActionsOpen]);
-  useEffect(() => { if (isTutorialOpen) setAutoRemaining(null); }, [isTutorialOpen]);
 
   const handleSaveCurrentRun = () => {
     if (currentTimeline.length === 0 || currentSnapshots.length === 0) return;
@@ -480,288 +441,19 @@ const App = () => {
     setActiveTab('Help');
   };
 
-  const competitorCorporateDepositRate =
-    bankState.market.competitorCorporateDepositRate ?? bankState.market.competitorRetailDepositRate;
-
-  const applyTutorialSafeSetup = () => {
-    setActionForm((prev) => ({
-      ...prev,
-      retailDepositRate: formatRateInputPct(Math.max(0, bankState.market.competitorRetailDepositRate + 0.001)),
-      corporateDepositRate: formatRateInputPct(Math.max(0, competitorCorporateDepositRate + 0.001)),
-      mortgageRate: formatRateInputPct(Math.max(0, bankState.market.competitorMortgageRate + 0.003)),
-      corporateLoanRate: formatRateInputPct(
-        Math.max(0, bankState.market.baseRate + bankState.market.corporateLoanSpread + 0.007)
-      ),
-      mortgageUnderwritingTightness: '0.55',
-      corporateUnderwritingTightness: '0.55',
-      issueLTDebtAmount: '',
-      issueEquityAmount: '',
-      dividendPayoutRatio: '0.10',
-      at1CouponMode: 'auto',
-      hedgeDirection: 'none',
-      hedgeNotional: '',
-      hedgeFixedRate: '',
-      hedgeMaturityMonths: '24',
-    }));
-    setActiveTab('Overview');
-    setIsActionsOpen(true);
-  };
-
-  const applyTutorialRiskSetup = () => {
-    setActionForm((prev) => ({
-      ...prev,
-      retailDepositRate: formatRateInputPct(Math.max(0, bankState.market.competitorRetailDepositRate - 0.012)),
-      corporateDepositRate: formatRateInputPct(Math.max(0, competitorCorporateDepositRate - 0.015)),
-      mortgageRate: formatRateInputPct(Math.max(0, bankState.market.competitorMortgageRate + 0.015)),
-      corporateLoanRate: formatRateInputPct(
-        Math.max(0, bankState.market.baseRate + bankState.market.corporateLoanSpread + 0.02)
-      ),
-      mortgageUnderwritingTightness: '0.10',
-      corporateUnderwritingTightness: '0.10',
-      issueLTDebtAmount: '',
-      issueEquityAmount: '',
-      dividendPayoutRatio: '0.70',
-      at1CouponMode: 'auto',
-      hedgeDirection: 'none',
-      hedgeNotional: '',
-      hedgeFixedRate: '',
-      hedgeMaturityMonths: '24',
-    }));
-    setTutorialRiskPreparedStep(bankState.time.step);
-    setTutorialSawGuardrail(false);
-    setTutorialMitigationApplied(false);
-    setActiveTab('Overview');
-    setIsActionsOpen(true);
-  };
-
-  const applyTutorialMitigationSetup = () => {
-    setActionForm((prev) => ({
-      ...prev,
-      retailDepositRate: formatRateInputPct(Math.max(0, bankState.market.competitorRetailDepositRate + 0.001)),
-      corporateDepositRate: formatRateInputPct(Math.max(0, competitorCorporateDepositRate + 0.001)),
-      mortgageRate: formatRateInputPct(Math.max(0, bankState.market.competitorMortgageRate + 0.004)),
-      corporateLoanRate: formatRateInputPct(
-        Math.max(0, bankState.market.baseRate + bankState.market.corporateLoanSpread + 0.009)
-      ),
-      mortgageUnderwritingTightness: '0.70',
-      corporateUnderwritingTightness: '0.70',
-      issueLTDebtAmount: '1500000000',
-      issueEquityAmount: '800000000',
-      dividendPayoutRatio: '0.05',
-      at1CouponMode: 'auto',
-      hedgeDirection: 'none',
-      hedgeNotional: '',
-      hedgeFixedRate: '',
-      hedgeMaturityMonths: '24',
-    }));
-    setTutorialMitigationApplied(true);
-    setActiveTab('Overview');
-    setIsActionsOpen(true);
-  };
-
-  const tutorialSafeConfigured = useMemo(() => {
-    if (parsedActionForm.hasErrors) return false;
-    const values = parsedActionForm.values;
-    const retail = values.retailDepositRate;
-    const corporate = values.corporateDepositRate;
-    const mortgage = values.mortgageRate;
-    const corporateLoan = values.corporateLoanRate;
-    const mortgageUw = values.mortgageUnderwritingTightness;
-    const corporateUw = values.corporateUnderwritingTightness;
-    const payout = values.dividendPayoutRatio;
-    if (
-      retail === undefined ||
-      corporate === undefined ||
-      mortgage === undefined ||
-      corporateLoan === undefined ||
-      mortgageUw === undefined ||
-      corporateUw === undefined ||
-      payout === undefined
-    ) {
-      return false;
-    }
-
-    const corporateLoanReference = bankState.market.baseRate + bankState.market.corporateLoanSpread;
-    return (
-      retail >= bankState.market.competitorRetailDepositRate - 0.001 &&
-      retail <= bankState.market.competitorRetailDepositRate + 0.02 &&
-      corporate >= competitorCorporateDepositRate - 0.001 &&
-      corporate <= competitorCorporateDepositRate + 0.02 &&
-      mortgage >= bankState.market.competitorMortgageRate - 0.001 &&
-      mortgage <= bankState.market.competitorMortgageRate + 0.02 &&
-      corporateLoan <= corporateLoanReference + 0.015 &&
-      mortgageUw >= 0.4 &&
-      corporateUw >= 0.4 &&
-      payout <= 0.2
-    );
-  }, [bankState.market, competitorCorporateDepositRate, parsedActionForm.hasErrors, parsedActionForm.values]);
-
-  useEffect(() => {
-    if (!isTutorialOpen || tutorialStepIndex !== 4) return;
-    if (guardrails.length > 0 || eventLog.some((event) => event.severity === 'warning')) {
-      setTutorialSawGuardrail(true);
-    }
-  }, [eventLog, guardrails.length, isTutorialOpen, tutorialStepIndex]);
-
-  const tutorialRunCompleted = tutorialRunAnchorStep !== null && bankState.time.step > tutorialRunAnchorStep;
-  const tutorialReviewedDeltas = tutorialRunCompleted && Boolean(lastAttribution) && activeTab === 'Overview';
-  const tutorialRiskRunCompleted =
-    tutorialRiskPreparedStep !== null && bankState.time.step > tutorialRiskPreparedStep;
-  const tutorialMitigationReady = tutorialSawGuardrail && tutorialMitigationApplied;
-
-  const tutorialSteps: TutorialStepView[] = [
-    {
-      title: 'Set a safe baseline',
-      summary: 'Start by applying conservative pricing and underwriting so month 1 is stable.',
-      instructions: [
-        'Open Departments and set balanced pricing around competitor rates.',
-        'Keep underwriting tightness above 0.4 and payout ratio low.',
-        'Goal: establish a resilient starting point before experimentation.',
-      ],
-      ready: tutorialSafeConfigured,
-      readinessHint: 'Apply a safe setup first.',
-      primaryActionLabel: 'Apply safe setup',
-      onPrimaryAction: applyTutorialSafeSetup,
-    },
-    {
-      title: 'Run one month',
-      summary: 'Execute one step to generate real metric movement and events.',
-      instructions: [
-        'Use the tutorial’s “Run one month” button.',
-        'The tutorial advances once month counter increases by 1.',
-      ],
-      ready: tutorialRunCompleted,
-      readinessHint: 'Run one month to continue.',
-      primaryActionLabel: 'Run one month',
-      onPrimaryAction: () => { setIsActionsOpen(false); handleRunNextMonth(); },
-    },
-    {
-      title: 'Read CET1 and LCR deltas',
-      summary: 'Review why metrics moved before changing strategy.',
-      instructions: [
-        'Go to Risk dashboard and inspect the last-close changes.',
-        'Focus on CET1 and LCR lines to understand driver direction.',
-      ],
-      ready: tutorialReviewedDeltas,
-      readinessHint: 'Open Risk dashboard after running one month.',
-      primaryActionLabel: 'Go to Risk dashboard',
-      onPrimaryAction: () => setActiveTab('Overview'),
-    },
-    {
-      title: 'Trigger a controlled risky move',
-      summary: 'Apply intentionally aggressive settings and run one month to surface risk warnings.',
-      instructions: [
-        'Apply risky setup from tutorial action.',
-        'Run one month and observe how guardrails/events react.',
-      ],
-      ready: tutorialRiskRunCompleted,
-      readinessHint: 'Apply risky setup and run one month.',
-      primaryActionLabel: tutorialRiskPreparedStep===bankState.time.step?'Run risky month':'Apply risky setup',
-      onPrimaryAction: () => { if(tutorialRiskPreparedStep===bankState.time.step) {setIsActionsOpen(false);handleRunNextMonth();} else applyTutorialRiskSetup(); },
-    },
-    {
-      title: 'Mitigate the warning signal',
-      summary: 'After seeing warnings, apply stabilizing levers to recover resilience.',
-      instructions: [
-        'Confirm warnings/guardrails were observed.',
-        'Apply mitigation setup to reduce payout risk and add funding/capital support.',
-      ],
-      ready: tutorialMitigationReady,
-      readinessHint: 'Observe warning signal, then apply mitigation setup.',
-      primaryActionLabel: 'Apply mitigation setup',
-      onPrimaryAction: applyTutorialMitigationSetup,
-    },
-  ];
-
-  const tutorialStep = tutorialSteps[Math.min(tutorialStepIndex, tutorialSteps.length - 1)];
-
-  const resetTutorialProgress = () => {
-    setTutorialStepIndex(0);
-    setTutorialRunAnchorStep(null);
-    setTutorialRiskPreparedStep(null);
-    setTutorialSawGuardrail(false);
-    setTutorialMitigationApplied(false);
-  };
-
-  const openTutorial = (resetProgress: boolean) => {
-    if (resetProgress) {
-      resetTutorialProgress();
-    }
-    setIsTutorialOpen(true);
-    setActiveTab('Overview');
-  };
-
-  const completeTutorial = () => {
-    setTutorialCompleted(true);
-    writeTutorialCompleted(true);
-    setIsTutorialOpen(false);
-    resetTutorialProgress();
-    setEventLog((prev) => [
-      ...prev,
-      {
-        id: `ui-tutorial-${Date.now()}`,
-        severity: 'info',
-        message: 'Tutorial completed. Use "Replay tutorial" from the header any time.',
-        timestamp: Date.now(),
-      },
-    ]);
-  };
-
-  const handleTutorialNext = () => {
-    if (!tutorialStep.ready) return;
-    if (tutorialStepIndex === 0) {
-      setTutorialRunAnchorStep(bankState.time.step);
-      setIsActionsOpen(true);
-    }
-    if (tutorialStepIndex === 1) {
-      setActiveTab('Overview');
-      setIsActionsOpen(false);
-    }
-    if (tutorialStepIndex === 2) {
-      setIsActionsOpen(true);
-    }
-    if (tutorialStepIndex === 3) {
-      setIsActionsOpen(true);
-    }
-    if (tutorialStepIndex >= tutorialSteps.length - 1) {
-      completeTutorial();
-      return;
-    }
-    setTutorialStepIndex((prev) => Math.min(prev + 1, tutorialSteps.length - 1));
-  };
-
-  const handleTutorialButton = () => {
-    if (tutorialCompleted) {
-      openTutorial(true);
-      return;
-    }
-    if (isTutorialOpen) {
-      setIsTutorialOpen(false);
-      return;
-    }
-    openTutorial(false);
-  };
-
-  const tutorialButtonLabel = tutorialCompleted
-    ? 'Replay tutorial'
-    : isTutorialOpen
-      ? 'Hide tutorial'
-      : tutorialStepIndex > 0
-        ? 'Resume tutorial'
-        : 'Start tutorial';
 
   return (
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
-        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button" onClick={handleTutorialButton}>{tutorialButtonLabel}</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
+        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
       <nav className="tabs report-navigation" aria-label="Bank reports and tools">
         {tabs.map(tab=><button key={tab} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined} onClick={()=>tab==='Boardroom'?setActiveTab('Boardroom'):openReport(tab)}>{tabLabels[tab]??tab}</button>)}
       </nav>
       <section className="time-console compact-clock" aria-label="Simulation time controls">
        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{bankState.time.date.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'})}</span></div>
-       <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning||isTutorialOpen} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
+       <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
        <div className="clock-status" role="status">{clockRunning?Number.isFinite(autoRemaining)?`Running · ${autoRemaining} months remaining`:'Running continuously':pauseReason}</div>
       </section>
       {attentionReason(bankState,simConfig)&&!bankState.status.hasFailed&&<div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={()=>openDepartment(responsibleDepartment)}>Manage {responsibleDepartment.toLowerCase()} →</button></div>}
@@ -1025,24 +717,6 @@ const App = () => {
         </section>
       )}
 
-      {tutorialStep && (
-        <TutorialOverlay
-          visible={isTutorialOpen}
-          stepNumber={tutorialStepIndex + 1}
-          totalSteps={tutorialSteps.length}
-          title={tutorialStep.title}
-          summary={tutorialStep.summary}
-          instructions={tutorialStep.instructions}
-          ready={tutorialStep.ready}
-          readinessHint={tutorialStep.readinessHint}
-          primaryActionLabel={tutorialStep.primaryActionLabel}
-          onPrimaryAction={tutorialStep.onPrimaryAction}
-          onPrevious={tutorialStepIndex > 0 ? () => setTutorialStepIndex((prev) => Math.max(0, prev - 1)) : undefined}
-          onNext={handleTutorialNext}
-          onDismiss={() => setIsTutorialOpen(false)}
-          isLastStep={tutorialStepIndex >= tutorialSteps.length - 1}
-        />
-      )}
 
     </div>
   );
