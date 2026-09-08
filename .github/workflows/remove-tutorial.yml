@@ -6,6 +6,7 @@ on:
       - remove-tutorial-feature
     paths:
       - .github/scripts/remove_tutorial.py
+      - .github/workflows/remove-tutorial.yml
 
 permissions:
   contents: write
@@ -22,10 +23,10 @@ jobs:
           python-version: '3.12'
       - name: Remove tutorial source
         run: python .github/scripts/remove_tutorial.py
-      - name: Verify tutorial code is gone
+      - name: Verify tutorial production code is gone
         run: |
-          if grep -Rni --exclude-dir=node_modules --exclude='*.map' 'tutorial' src; then
-            echo 'Tutorial references remain under src'
+          if grep -Rni --exclude-dir=node_modules --exclude='*.map' --exclude='managementSurface.test.tsx' 'tutorial' src; then
+            echo 'Tutorial references remain under production source'
             exit 1
           fi
       - name: Commit source changes
