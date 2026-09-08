@@ -33,6 +33,7 @@ export enum LiabilityProductType {
   WholesaleFundingST = 'WholesaleFundingST',
   WholesaleFundingLT = 'WholesaleFundingLT',
   BankOfEnglandFunding = 'BankOfEnglandFunding',
+  Tier2Debt = 'Tier2Debt',
   // Legacy engine support. Generic market repo is no longer part of the default retail-bank balance sheet.
   RepurchaseAgreements = 'RepurchaseAgreements',
 }
