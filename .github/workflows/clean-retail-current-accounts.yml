@@ -23,8 +23,6 @@ jobs:
           def read(path): return Path(path).read_text()
           def write(path, text): Path(path).write_text(text)
 
-          # Remove every live use of the abandoned retail-transactional product before renaming
-          # the surviving sight-deposit product.
           p='src/config/scenarios.ts'; s=read(p)
           s=s.replace("            { productType: LiabilityProductType.RetailTransactionalDeposits, balance: 3.5e9 },\n            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 4.5e9 },", "            { productType: LiabilityProductType.RetailSavingsDeposits, balance: 8.0e9 },")
           write(p,s)
@@ -42,18 +40,14 @@ jobs:
           s=s.replace('[LiabilityProductType.RetailTransactionalDeposits, LiabilityProductType.RetailSavingsDeposits]', '[LiabilityProductType.RetailSavingsDeposits]')
           write(p,s)
 
-          # Tests that previously sent the same pricing action to two retail sight products now send it once.
           action_pattern = re.compile(r"\n\s*\{\n\s*type: 'adjustRate',\n\s*productType: LiabilityProductType\.RetailTransactionalDeposits,\n\s*newRate: [^\n]+,\n\s*\},")
           for p in ['src/engine/competitorReaction.test.ts','src/engine/conductRisk.test.ts','src/engine/depositFranchiseDynamics.test.ts','src/engine/modelRegression.test.ts']:
-              s=read(p)
-              s=action_pattern.sub('',s)
-              write(p,s)
+              s=read(p); s=action_pattern.sub('',s); write(p,s)
 
           p='src/engine/depositFranchiseDynamics.test.ts'; s=read(p).replace('        LiabilityProductType.RetailTransactionalDeposits,\n',''); write(p,s)
           p='src/engine/modelRegression.test.ts'; s=read(p).replace('  productBalance(state, LiabilityProductType.RetailTransactionalDeposits) +\n',''); write(p,s)
           p='src/engine/smallRetailBank.test.ts'; s=read(p)
-          s=re.sub(r"\n    expect\((?:initialState|out)\.financial\.balanceSheet\.items\.some\(i => i\.productType === L\.RetailTransactionalDeposits\)\)\.toBe\(false\);",'',s)
-          write(p,s)
+          s=re.sub(r"\n    expect\((?:initialState|out)\.financial\.balanceSheet\.items\.some\(i => i\.productType === L\.RetailTransactionalDeposits\)\)\.toBe\(false\);",'',s); write(p,s)
 
           p='src/engine/simulation.ts'; s=read(p)
           s=s.replace('  LiabilityProductType.RetailTransactionalDeposits,\n','')
@@ -61,17 +55,14 @@ jobs:
           s=s.replace("      const competitor = item.productType === LiabilityProductType.RetailTransactionalDeposits\n        ? item.interestRate\n        : meta.behaviour.isTermDeposit\n          ? state.market.competitorTermDepositRate\n          : meta.behaviour.depositSegment === 'corporate'\n            ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate\n            : state.market.competitorRetailDepositRate;", "      const competitor = meta.behaviour.isTermDeposit\n        ? state.market.competitorTermDepositRate\n        : meta.behaviour.depositSegment === 'corporate'\n          ? state.market.competitorCorporateDepositRate ?? state.market.competitorRetailDepositRate\n          : state.market.competitorRetailDepositRate;")
           write(p,s)
 
-          # Delete the old product definition/configuration rather than retaining save compatibility.
           p='src/domain/enums.ts'; s=read(p).replace("  RetailTransactionalDeposits = 'RetailTransactionalDeposits',\n",''); write(p,s)
-          p='src/domain/productMeta.ts'; s=read(p)
-          s=re.sub(r"\n  \[LiabilityProductType\.RetailTransactionalDeposits\]: \{[^\n]+\},",'',s); write(p,s)
+          p='src/domain/productMeta.ts'; s=read(p); s=re.sub(r"\n  \[LiabilityProductType\.RetailTransactionalDeposits\]: \{[^\n]+\},",'',s); write(p,s)
           p='src/config/baseConfig.ts'; s=read(p)
           for indent in ['  ','  ','    ']:
               pattern = rf"\n{indent}\[LiabilityProductType\.RetailTransactionalDeposits\]: \{{\n(?:.*\n)*?{indent}\}},\n{indent}\[LiabilityProductType\.RetailSavingsDeposits\]"
               s=re.sub(pattern,f"\n{indent}[LiabilityProductType.RetailSavingsDeposits]",s,count=1)
           write(p,s)
 
-          # Rename the surviving product and related fields throughout source, tests and docs.
           replacements = [
               ('RetailSavingsDeposits','RetailCurrentAccounts'),
               ('competitorRetailDepositRate','competitorRetailCurrentAccountRate'),
@@ -90,26 +81,18 @@ jobs:
               for old,new in replacements: text=text.replace(old,new)
               path.write_text(text)
 
-          # Current-account behavioural parameters are direct assumptions, not a weighted memory
-          # of the deleted current-account/savings split.
           p='src/config/baseConfig.ts'; s=read(p)
           s=s.replace('volumeElasticityToRate: 0.4642857142857143,','volumeElasticityToRate: 0.25,',1)
           s=s.replace('lcrOutflowRate: 0.08571428571428572,\n    nsfrAsfFactor: 0.9142857142857143,','lcrOutflowRate: 0.10,\n    nsfrAsfFactor: 0.90,',1)
-          s=re.sub(
-              r"    \[LiabilityProductType\.RetailCurrentAccounts\]: \{\n      // Blended Retail current accounts assumptions from the former 2/7 transactional \+ 5/7 savings mix\.\n(?:.*\n)*?    \},",
-              """    [LiabilityProductType.RetailCurrentAccounts]: {\n      baselineGrowthMonthly: 0.002,\n      baseChurnMonthly: 0.0035,\n      policyRateBeta: 0.02,\n      competitorSensitivity: 0.45,\n      passThroughLag: 0.45,\n      underpricingConvexity: 20,\n      underpricingDurationSensitivity: 0.08,\n      franchiseDecayRate: 0.5,\n      franchiseRecoveryRate: 0.04,\n      reacquisitionDrag: 0.35,\n      stabilityDecayRate: 0.5,\n      stabilityRecoveryRate: 0.06,\n      mixMigrationRate: 0,\n      mixMigrationDurationSensitivity: 0,\n    },""",
-              s,count=1)
+          s=re.sub(r"    \[LiabilityProductType\.RetailCurrentAccounts\]: \{\n      // Blended Retail current accounts assumptions from the former 2/7 transactional \+ 5/7 savings mix\.\n(?:.*\n)*?    \},", """    [LiabilityProductType.RetailCurrentAccounts]: {\n      baselineGrowthMonthly: 0.002,\n      baseChurnMonthly: 0.0035,\n      policyRateBeta: 0.02,\n      competitorSensitivity: 0.45,\n      passThroughLag: 0.45,\n      underpricingConvexity: 20,\n      underpricingDurationSensitivity: 0.08,\n      franchiseDecayRate: 0.5,\n      franchiseRecoveryRate: 0.04,\n      reacquisitionDrag: 0.35,\n      stabilityDecayRate: 0.5,\n      stabilityRecoveryRate: 0.06,\n      mixMigrationRate: 0,\n      mixMigrationDurationSensitivity: 0,\n    },""",s,count=1)
           write(p,s)
 
-          # Round the opening current-account pricing. Do not preserve the artificial blended rate.
           p='src/config/initialState.ts'; s=read(p)
           s=s.replace("'Retail current accounts', 7.0e9, 0.016785714285714286", "'Retail current accounts', 7.0e9, 0.017")
           s=s.replace('[LiabilityProductType.RetailCurrentAccounts]: 0.016785714285714286,','[LiabilityProductType.RetailCurrentAccounts]: 0.017,')
           s=s.replace('[LiabilityProductType.RetailCurrentAccounts]: 1.0760714285714286,','[LiabilityProductType.RetailCurrentAccounts]: 1.0,')
           write(p,s)
 
-          # Regulatory treatment is classification-based, not product-history-weighted.
-          # Retail current accounts are transactional: the FSCS-covered share is stable retail.
           p='src/engine/prudential.ts'; s=read(p)
           marker='// 2026 UK standardised portfolio assumptions: docs/model-basis.md.\n'
           helper="""\nconst clamp01 = (v: number): number => Math.max(0, Math.min(1, v));\n\nexport const retailCurrentAccountRegulatoryFactors = (s: BankState) => {\n  const stableShare = clamp01(s.behaviour.insuredRetailDepositShare ?? 0);\n  const otherShare = 1 - stableShare;\n  return {\n    stableShare,\n    otherShare,\n    lcrOutflowFactor: stableShare * 0.05 + otherShare * 0.10,\n    nsfrAsfFactor: stableShare * 0.95 + otherShare * 0.90,\n  };\n};\n"""
@@ -121,27 +104,20 @@ jobs:
           if old not in s: raise SystemExit('prudential term-funding block not found')
           s=s.replace(old,new,1); write(p,s)
 
-          # Replace obsolete retail-segmentation and weighted-factor tests with classification tests.
           p='src/engine/depositSegmentation.test.ts'; s=read(p)
           s=re.sub(r"\n  it\('retail segments react differently to the same pricing change', \(\) => \{.*?\n  \}\);\n",'\n',s,flags=re.S); write(p,s)
 
           p='src/engine/prudential.test.ts'; s=read(p)
           s=s.replace("import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines } from './prudential';", "import { centralBankExclusion, commitmentLiquidity, prudentialLiquidityLines, retailCurrentAccountRegulatoryFactors } from './prudential';")
-          s=re.sub(
-              r"  it\('uses (?:instant-retail|retail/corporate) and corporate liquidity factors independently of reputation', \(\) => \{.*?\n  \}\);",
-              """  it('classifies retail current accounts explicitly for LCR and NSFR', () => {\n    const factors = retailCurrentAccountRegulatoryFactors(initialState);\n    expect(factors.stableShare).toBeCloseTo(0.9);\n    expect(factors.otherShare).toBeCloseTo(0.1);\n    expect(factors.lcrOutflowFactor).toBeCloseTo(0.055);\n    expect(factors.nsfrAsfFactor).toBeCloseTo(0.945);\n    const lines = prudentialLiquidityLines(initialState, baseConfig);\n    const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;\n    expect(retail.outflow / retail.balance).toBeCloseTo(0.055);\n    expect(retail.asf / retail.balance).toBeCloseTo(0.945);\n    const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;\n    const otherBusiness = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;\n    expect(operating.outflow / operating.balance).toBeCloseTo(0.25);\n    expect(operating.asf / operating.balance).toBeCloseTo(0.5);\n    expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);\n    expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);\n  });""",s,count=1,flags=re.S)
+          s=re.sub(r"  it\('uses (?:instant-retail|retail-current-account|retail/corporate) and corporate liquidity factors independently of reputation', \(\) => \{.*?\n  \}\);", """  it('classifies retail current accounts explicitly for LCR and NSFR', () => {\n    const factors = retailCurrentAccountRegulatoryFactors(initialState);\n    expect(factors.stableShare).toBeCloseTo(0.9);\n    expect(factors.otherShare).toBeCloseTo(0.1);\n    expect(factors.lcrOutflowFactor).toBeCloseTo(0.055);\n    expect(factors.nsfrAsfFactor).toBeCloseTo(0.945);\n    const lines = prudentialLiquidityLines(initialState, baseConfig);\n    const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;\n    expect(retail.outflow / retail.balance).toBeCloseTo(0.055);\n    expect(retail.asf / retail.balance).toBeCloseTo(0.945);\n    const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;\n    const otherBusiness = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;\n    expect(operating.outflow / operating.balance).toBeCloseTo(0.25);\n    expect(operating.asf / operating.balance).toBeCloseTo(0.5);\n    expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);\n    expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);\n  });""",s,count=1,flags=re.S)
           s=s.replace('line(s,L.RetailTransactionalDeposits).balance=100;','line(s,L.RetailCurrentAccounts).balance=100;')
           write(p,s)
 
           p='src/engine/smallRetailBank.test.ts'; s=read(p).replace('toBeCloseTo(0.0167857143, 8)','toBeCloseTo(0.017, 8)'); write(p,s)
-
           p='src/content/mechanicsRegistry.ts'; s=read(p)
           s=s.replace("'For LCR and NSFR, retail balances are split between stable and other retail deposits. Stable balances receive the lower runoff and higher ASF factors.',", "'For LCR and NSFR, FSCS-covered retail current-account balances are treated as stable retail deposits. The uncovered share is treated as other retail deposits.'")
           write(p,s)
-
-          p='src/components/ActionsPanel.tsx'; s=read(p)
-          s=s.replace('Main retail current accounts funding price.','Interest rate paid on retail current-account balances.')
-          write(p,s)
+          p='src/components/ActionsPanel.tsx'; s=read(p).replace('Main retail current accounts funding price.','Interest rate paid on retail current-account balances.'); write(p,s)
 
           forbidden=['RetailTransactionalDeposits','RetailSavingsDeposits','Instant retail','instant retail','competitorRetailDepositRate','retailDepositRate','0.016785714285714286','0.08571428571428572','0.9142857142857143','1.0760714285714286']
           offenders=[]
