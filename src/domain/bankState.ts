@@ -1,6 +1,6 @@
 import { BalanceSheet } from './balanceSheet';
 import { IncomeStatement } from './pnl';
-import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState, Pillar2AAssessmentState, OsiiAssessmentState } from './risks';
+import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState, Pillar2AAssessmentState, OsiiAssessmentState, LeverageFrameworkAssessmentState } from './risks';
 import { MarketState } from './market';
 import { CashFlowStatement } from './cashflow';
 import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
@@ -129,6 +129,7 @@ export interface RiskState {
   compliance: ComplianceStatus;
   pillar2A?: Pillar2AAssessmentState;
   osii?: OsiiAssessmentState;
+  leverageFramework?: LeverageFrameworkAssessmentState;
 }
 
 export interface SimulationStatus {
