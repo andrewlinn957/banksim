@@ -290,20 +290,26 @@ export default function CapitalDashboard({ state, config }: { state: BankState; 
           {positionedResources.filter((part) => part.amount !== 0).map((part) => {
             const top = Math.min(chartY(part.start), chartY(part.end));
             const height = Math.abs(chartY(part.end) - chartY(part.start));
-            return <g key={part.name}>
+            return <g key={part.name} data-capital-resource={part.name}>
               <rect x="115" y={top} width="150" height={height} className={`capital-resource capital-resource-${part.tone}`} />
-              {height > 38 && <text x="190" y={top + height / 2 - 8} textAnchor="middle" className="capital-resource-label">
+              {height > 38 ? <text x="190" y={top + height / 2 - 8} textAnchor="middle" className="capital-resource-label">
                 <tspan x="190">{part.name}</tspan>
                 <tspan x="190" dy="20">{formatPct(part.amount / d.rwa)}</tspan>
                 <tspan x="190" dy="18">{formatCurrency(part.amount)}</tspan>
-              </text>}
+              </text> : height > 18 ? <text x="190" y={top + height / 2 + 4} textAnchor="middle" className="capital-resource-label capital-resource-label-compact">
+                <tspan x="190">{part.name}</tspan>
+              </text> : null}
             </g>;
           })}
           {groupedLevels.map((group, index) => {
             const sourceY = chartY(group.ratio);
             const labelY = 70 + index * 70;
             return <g key={`${group.ratio}-${group.names.join('-')}`} className={`capital-level capital-level-${group.tone}`}>
-              <path d={`M265 ${sourceY}H315L365 ${labelY}H390`} />
+              <path
+                d={`M265 ${sourceY}H315L365 ${labelY}H390`}
+                data-capital-level-leader={group.names.join(' / ')}
+                style={{ fill: 'none' }}
+              />
               <circle cx="315" cy={sourceY} r="3" />
               <text x="402" y={labelY - 5}>
                 {group.names.map((name, i) => <tspan key={name} x="402" dy={i === 0 ? 0 : 18}>{name}</tspan>)}
