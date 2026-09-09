@@ -47,7 +47,12 @@ const TopMetricsPanel = ({
   onNavigateHelp,
 }: Props) => {
   const cet1HardDistance = riskMetrics.cet1Ratio - config.riskLimits.minCet1Ratio;
-  const leverageHardDistance = riskMetrics.leverageRatio - config.riskLimits.minLeverageRatio;
+  const leverageInScope = riskMetrics.leverageFrameworkInScope ?? false;
+  const leverageThreshold = leverageInScope
+    ? riskMetrics.leverageApplicableThresholdRate ?? config.riskLimits.minLeverageRatio
+    : riskMetrics.leverageBaseRate ?? config.riskLimits.minLeverageRatio;
+  const leverageDistance = riskMetrics.leverageRatio - leverageThreshold;
+  const leverageThresholdLabel = leverageInScope ? 'Requirement' : 'PRA expectation';
   const lcrHardDistance = riskMetrics.lcr - config.riskLimits.minLcr;
   const nsfrHardDistance = riskMetrics.nsfr - config.riskLimits.minNsfr;
   const confidenceStateLabel =
@@ -81,8 +86,8 @@ const TopMetricsPanel = ({
           label="Leverage Ratio"
           value={formatPct(riskMetrics.leverageRatio)}
           helper="Tier 1 capital over total exposure."
-          tooltip={`Hard minimum ${formatPct(config.riskLimits.minLeverageRatio)}. Distance ${formatSignedPct(leverageHardDistance)}.`}
-          helpSectionId="risk-metrics-and-compliance"
+          tooltip={`${leverageThresholdLabel} ${formatPct(leverageThreshold)}. Distance ${formatSignedPct(leverageDistance)}.`}
+          helpSectionId="uk-leverage-framework"
           onNavigateHelp={onNavigateHelp}
         />
         <Metric
