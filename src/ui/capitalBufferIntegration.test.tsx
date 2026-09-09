@@ -62,7 +62,7 @@ it('applies an O-SII increase consistently to requirements, payout restrictions 
   expect(dashboard.cards[2].requirement).toBeCloseTo(after.totalCapitalRequirement ?? NaN, 12);
 
   const html = renderToStaticMarkup(<CapitalDashboard state={state} config={baseConfig} />);
-  expect(html).toContain(`O-SII buffer</td><td>${formatPct(after.osiiBufferRate ?? 0)}`);
+  expect(html).toContain(`O-SII buffer</th><td>${formatPct(after.osiiBufferRate ?? 0)}`);
   expect(html).toContain(`Bank policy payout cap: ${formatPct(after.maxPayoutRatio)}`);
   expect(html).toContain(`requirement ${formatPct(after.cet1Requirement)}`);
 });
