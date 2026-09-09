@@ -3,6 +3,7 @@ import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide, AssetProductType } from '../domain/enums';
 import { eligibleCet1, centralBankExclusion, committedExposure } from '../engine/prudential';
 import { hedgeExposures } from '../engine/hedgeValuation';
+import { calculateRiskMetrics } from '../engine/metrics';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
 import './LeverageDashboard.css';
@@ -14,16 +15,22 @@ export function leverageDashboardData(state: BankState, config: SimulationConfig
   const derivatives = hedgeExposures(state).leverage;
   const reserves = centralBankExclusion(state);
   const commitments = committedExposure(state) * 0.2;
-  const exposure = book - derivativeBook + derivatives - reserves + commitments;
+  const metrics = calculateRiskMetrics({ state, config });
+  const exposure = metrics.leverageExposure;
   const cet1 = eligibleCet1(state, config);
   const at1 = state.financial.capital.at1;
   const tier1 = cet1 + at1;
-  const minimum = config.riskLimits.minLeverageRatio;
-  const target = Math.max(minimum, state.behaviour.riskAppetite?.leverage ?? minimum * 1.05);
-  const ratio = exposure > 0 ? tier1 / exposure : NaN;
-  const required = exposure * minimum;
+  const inScope = metrics.leverageFrameworkInScope ?? false;
+  const minimum = metrics.leverageBaseRate ?? config.riskLimits.minLeverageRatio;
+  const threshold = metrics.leverageApplicableThresholdRate ?? minimum;
+  const cet1Threshold = metrics.leverageCet1ThresholdRate ?? minimum * 0.75;
+  const target = Math.max(threshold, state.behaviour.riskAppetite?.leverage ?? threshold * 1.05);
+  const ratio = metrics.leverageRatio;
+  const required = exposure * threshold;
+  const baseRequired = exposure * minimum;
+  const cet1Required = exposure * cet1Threshold;
   const targetRequired = exposure * target;
-  const limit = minimum > 0 ? Math.max(0, tier1 / minimum) : NaN;
+  const limit = threshold > 0 ? Math.max(0, tier1 / threshold) : NaN;
   const internalLimit = target > 0 ? Math.max(0, tier1 / target) : NaN;
 
   return {
@@ -32,13 +39,33 @@ export function leverageDashboardData(state: BankState, config: SimulationConfig
     tier1,
     exposure,
     minimum,
+    threshold,
+    cet1Threshold,
     target,
     ratio,
     required,
+    baseRequired,
+    cet1Required,
     targetRequired,
     surplus: tier1 - required,
+    cet1Surplus: cet1 - cet1Required,
     limit,
     internalLimit,
+    inScope,
+    scopeRoute: metrics.leverageFrameworkScopeRoute ?? 'belowThresholds',
+    expectationMissed: metrics.leverageExpectationMissed ?? false,
+    bufferShortfall: metrics.leverageBufferShortfall ?? false,
+    cclb: metrics.leverageCclbRate ?? 0,
+    alrb: metrics.leverageAlrbRate ?? 0,
+    cclbIndicative: metrics.leverageCclbIndicativeRate ?? 0,
+    alrbIndicative: metrics.leverageAlrbIndicativeRate ?? 0,
+    retailDeposits: metrics.leverageRetailDeposits ?? 0,
+    averageRetailDeposits: metrics.leverageRetailDepositsThreeYearAverage ?? 0,
+    nonUkAssets: metrics.leverageNonUkAssets ?? 0,
+    averageNonUkAssets: metrics.leverageNonUkAssetsThreeYearAverage ?? 0,
+    retailDepositsThreshold: metrics.leverageRetailDepositThreshold ?? 75e9,
+    nonUkAssetsThreshold: metrics.leverageNonUkAssetThreshold ?? 10e9,
+    nextAssessmentStep: metrics.leverageFrameworkNextAssessmentStep,
     exposureRows: [
       { label: 'On-balance-sheet assets', value: book },
       { label: 'Remove derivative book assets', value: -derivativeBook },
@@ -210,16 +237,22 @@ export default function LeverageDashboard({
   history: BankState[];
 }) {
   const d = leverageDashboardData(state, config);
-  const gap = d.ratio - d.minimum;
+  const frameworkLabel = d.inScope ? 'Requirement' : 'Expectation';
+  const gap = d.ratio - d.threshold;
   const status = !Number.isFinite(d.ratio)
     ? 'Unavailable'
-    : gap >= 0
-      ? 'Meets requirement'
-      : 'Below requirement';
-  const shortfall = gap < 0;
+    : d.inScope
+      ? d.ratio < d.minimum
+        ? 'Below minimum'
+        : d.bufferShortfall
+          ? 'Buffer shortfall'
+          : 'Meets requirement'
+      : d.expectationMissed
+        ? 'Below expectation'
+        : 'Expectation met';
+  const shortfall = d.inScope ? d.ratio < d.minimum || d.bufferShortfall : d.expectationMissed;
   const spare = d.limit - d.exposure;
-  const internalSpare = d.internalLimit - d.exposure;
-  const ratioTarget = distinctTarget(d.minimum, d.target);
+  const ratioTarget = distinctTarget(d.threshold, d.target);
   const capitalTarget = distinctTarget(d.required, d.targetRequired);
   const exposureTarget = distinctTarget(d.limit, d.internalLimit);
   const parts = [
@@ -242,6 +275,7 @@ export default function LeverageDashboard({
     Math.max(
       0.09,
       d.target * 1.2,
+      d.threshold * 1.2,
       Number.isFinite(d.ratio) ? d.ratio * 1.15 : 0,
       compositionMax * 1.15
     ) / 0.01
@@ -249,7 +283,10 @@ export default function LeverageDashboard({
   const chartRange = Math.max(0.01, chartMax - chartMin);
   const chartY = (n: number) => 250 - ((n - chartMin) / chartRange) * 205;
   const ticks = Array.from({ length: 5 }, (_, i) => chartMin + (chartRange * i) / 4);
-  const targetsGrouped = Math.abs(d.target - d.minimum) < 1e-10;
+  const targetsGrouped = Math.abs(d.target - d.threshold) < 1e-10;
+  const scopeName = d.inScope ? 'In scope' : 'Expectation only';
+  const cclbDisplay = d.inScope ? formatPct(d.cclb) : `${formatPct(d.cclbIndicative)} indicative`;
+  const alrbDisplay = d.inScope ? formatPct(d.alrb) : `${formatPct(d.alrbIndicative)} indicative`;
 
   return (
     <div className="capital-dashboard leverage-dashboard">
@@ -260,19 +297,19 @@ export default function LeverageDashboard({
           shortfall={shortfall}
           headline={formatPct(d.ratio)}
           secondary={[
-            { label: 'Requirement', value: formatPct(d.minimum) },
+            { label: frameworkLabel, value: formatPct(d.threshold) },
             { label: 'Headroom', value: pp(gap), valueClass: 'capital-gap' },
           ]}
           gauge={{
             actual: d.ratio,
-            threshold: d.minimum,
+            threshold: d.threshold,
             target: ratioTarget,
-            thresholdLabel: 'Requirement',
+            thresholdLabel: frameworkLabel,
             targetLabel: 'Internal target',
           }}
           footer={[
             { label: 'Actual Tier 1 capital', value: formatCurrency(d.tier1) },
-            { label: 'Required Tier 1', value: formatCurrency(d.required) },
+            { label: `${frameworkLabel} Tier 1`, value: formatCurrency(d.required) },
             { label: 'Capital headroom', value: signedMoney(d.surplus), valueClass: 'capital-gap' },
           ]}
         />
@@ -283,7 +320,7 @@ export default function LeverageDashboard({
           shortfall={shortfall}
           headline={formatCurrency(d.tier1)}
           secondary={[
-            { label: 'Requirement', value: formatCurrency(d.required) },
+            { label: frameworkLabel, value: formatCurrency(d.required) },
             { label: 'Headroom', value: signedMoney(d.surplus), valueClass: 'capital-gap' },
           ]}
           gauge={{
@@ -291,12 +328,12 @@ export default function LeverageDashboard({
             threshold: d.required,
             target: capitalTarget,
             money: true,
-            thresholdLabel: 'Requirement',
+            thresholdLabel: frameworkLabel,
             targetLabel: 'Internal target',
           }}
           footer={[
             { label: 'Actual leverage ratio', value: formatPct(d.ratio) },
-            { label: 'Required ratio', value: formatPct(d.minimum) },
+            { label: d.inScope ? 'Minimum ratio' : 'Expectation', value: formatPct(d.minimum) },
             { label: 'Ratio headroom', value: pp(gap), valueClass: 'capital-gap' },
           ]}
         />
@@ -315,12 +352,12 @@ export default function LeverageDashboard({
             threshold: d.limit,
             target: exposureTarget,
             money: true,
-            thresholdLabel: 'Regulatory limit',
+            thresholdLabel: d.inScope ? 'Regulatory limit' : 'Expectation limit',
             targetLabel: 'Internal limit',
           }}
           footer={[
             { label: 'Actual leverage ratio', value: formatPct(d.ratio) },
-            { label: 'Minimum ratio', value: formatPct(d.minimum) },
+            { label: d.inScope ? 'Requirement' : 'Expectation', value: formatPct(d.threshold) },
             {
               label: 'Spare exposure capacity',
               value: d.exposure > 0 ? formatPct(spare / d.exposure) : 'N/A',
@@ -344,8 +381,8 @@ export default function LeverageDashboard({
                 role="img"
                 aria-label={`Tier 1 composition: CET1 ${formatCurrency(d.cet1)}, AT1 ${formatCurrency(
                   d.at1
-                )}; exposure ${formatCurrency(d.exposure)}. Requirement ${formatPct(
-                  d.minimum
+                )}; exposure ${formatCurrency(d.exposure)}. ${frameworkLabel} ${formatPct(
+                  d.threshold
                 )}, internal target ${formatPct(d.target)}.`}
               >
                 {ticks.map(tick => (
@@ -394,7 +431,7 @@ export default function LeverageDashboard({
                   );
                 })}
                 <path
-                  d={`M58 ${chartY(d.minimum)}H320`}
+                  d={`M58 ${chartY(d.threshold)}H320`}
                   fill="none"
                   stroke="#7956bd"
                   strokeWidth="2"
@@ -417,15 +454,15 @@ export default function LeverageDashboard({
               <div className="leverage-threshold-list">
                 {targetsGrouped ? (
                   <div className="leverage-threshold">
-                    <span>Requirement & internal target</span>
-                    <strong>{formatPct(d.minimum)}</strong>
+                    <span>{frameworkLabel} & internal target</span>
+                    <strong>{formatPct(d.threshold)}</strong>
                     <small>{formatCurrency(d.required)} Tier 1</small>
                   </div>
                 ) : (
                   <>
                     <div className="leverage-threshold">
-                      <span>Leverage requirement</span>
-                      <strong>{formatPct(d.minimum)}</strong>
+                      <span>{d.inScope ? 'Leverage requirement' : 'Leverage expectation'}</span>
+                      <strong>{formatPct(d.threshold)}</strong>
                       <small>{formatCurrency(d.required)} Tier 1</small>
                     </div>
                     <div className="leverage-threshold target">
@@ -451,19 +488,26 @@ export default function LeverageDashboard({
         </section>
 
         <section className="capital-card leverage-requirements-card">
-          <h3>Requirement breakdown</h3>
+          <h3>Leverage framework</h3>
+          <div className="leverage-table-section">
+            <h4>Scope</h4>
+            <table className="leverage-detail-table">
+              <tbody>
+                <tr><th>Status</th><td>{scopeName}</td></tr>
+                <tr><th>Retail deposits · 3y avg</th><td>{formatCurrency(d.averageRetailDeposits)} / {formatCurrency(d.retailDepositsThreshold)}</td></tr>
+                <tr><th>Non-UK assets · 3y avg</th><td>{formatCurrency(d.averageNonUkAssets)} / {formatCurrency(d.nonUkAssetsThreshold)}</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div className="leverage-table-section">
             <h4>Ratio thresholds</h4>
             <table className="leverage-detail-table">
               <tbody>
-                <tr>
-                  <th>Leverage requirement</th>
-                  <td>{formatPct(d.minimum)}</td>
-                </tr>
-                <tr>
-                  <th>Internal target</th>
-                  <td>{formatPct(d.target)}</td>
-                </tr>
+                <tr><th>{d.inScope ? 'Minimum' : 'Expectation'}</th><td>{formatPct(d.minimum)}</td></tr>
+                <tr><th>CCLB</th><td>{cclbDisplay}</td></tr>
+                <tr><th>ALRB</th><td>{alrbDisplay}</td></tr>
+                <tr className="emphasis-row"><th>{frameworkLabel}</th><td>{formatPct(d.threshold)}</td></tr>
+                <tr><th>Internal target</th><td>{formatPct(d.target)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -471,32 +515,12 @@ export default function LeverageDashboard({
             <h4>Capital position</h4>
             <table className="leverage-detail-table">
               <tbody>
-                <tr>
-                  <th>Total leverage exposure</th>
-                  <td>{formatCurrency(d.exposure)}</td>
-                </tr>
-                <tr>
-                  <th>Required Tier 1 capital</th>
-                  <td>{formatCurrency(d.required)}</td>
-                </tr>
-                <tr>
-                  <th>Tier 1 at internal target</th>
-                  <td>{formatCurrency(d.targetRequired)}</td>
-                </tr>
-                <tr className="emphasis-row">
-                  <th>Actual Tier 1 capital</th>
-                  <td>{formatCurrency(d.tier1)}</td>
-                </tr>
-                <tr>
-                  <th>Surplus to requirement</th>
-                  <td className={d.surplus >= 0 ? 'positive-value' : undefined}>{signedMoney(d.surplus)}</td>
-                </tr>
-                <tr>
-                  <th>Headroom to internal target</th>
-                  <td className={d.tier1 - d.targetRequired >= 0 ? 'positive-value' : undefined}>
-                    {signedMoney(d.tier1 - d.targetRequired)}
-                  </td>
-                </tr>
+                <tr><th>Total leverage exposure</th><td>{formatCurrency(d.exposure)}</td></tr>
+                <tr><th>{frameworkLabel} Tier 1</th><td>{formatCurrency(d.required)}</td></tr>
+                <tr><th>{frameworkLabel} CET1</th><td>{formatCurrency(d.cet1Required)}</td></tr>
+                <tr className="emphasis-row"><th>Actual Tier 1 capital</th><td>{formatCurrency(d.tier1)}</td></tr>
+                <tr><th>Tier 1 headroom</th><td className={d.surplus >= 0 ? 'positive-value' : undefined}>{signedMoney(d.surplus)}</td></tr>
+                <tr><th>CET1 headroom</th><td className={d.cet1Surplus >= 0 ? 'positive-value' : undefined}>{signedMoney(d.cet1Surplus)}</td></tr>
               </tbody>
             </table>
           </div>
