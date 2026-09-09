@@ -16,7 +16,10 @@ describe('leverage dashboard',()=>{
   expect(d.surplus).toBeCloseTo((m.leverageRatio-d.threshold)*m.leverageExposure,4);
   expect(d.limit*d.threshold).toBeCloseTo(d.tier1,4);
   expect(d.threshold).toBeCloseTo(.0325,12);
+  expect(d.minimumCet1).toBeCloseTo(.024375,12);
+  expect(d.minimumAt1Eligible).toBeCloseTo(.008125,12);
   expect(d.cclbIndicative).toBeCloseTo(.007,12);
+  expect(d.indicativeThreshold).toBeCloseTo(.0395,12);
  });
  it('shows the chosen internal target while retaining the applicable framework threshold',()=>{
   const state=cloneBankState(initialState);
@@ -35,6 +38,8 @@ describe('leverage dashboard',()=>{
   const d=leverageDashboardData(state,baseConfig);
   expect(d.inScope).toBe(true);
   expect(d.minimum).toBeCloseTo(.0325,12);
+  expect(d.minimumCet1).toBeCloseTo(.024375,12);
+  expect(d.minimumAt1Eligible).toBeCloseTo(.008125,12);
   expect(d.cclb).toBeCloseTo(.007,12);
   expect(d.threshold).toBeCloseTo(.0395,12);
   expect(d.cet1Threshold).toBeCloseTo(.031375,12);
