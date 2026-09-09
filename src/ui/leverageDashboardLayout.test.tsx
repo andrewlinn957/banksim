@@ -74,6 +74,25 @@ it('renders the two leverage requirement bars with the 75% CET1 quality floor', 
   expect(html).toContain('3.95%');
   expect(html).toContain('data-requirement-view="ratio"');
   expect(html).toContain('data-requirement-view="amount"');
+
+  const shares = [...html.matchAll(/data-requirement-share="([^"]+)"/g)].map(match => Number(match[1]));
+  expect(shares).toHaveLength(6);
+  expect(shares[0] + shares[1]).toBeCloseTo(1, 10);
+  expect(shares.slice(2).reduce((total, share) => total + share, 0)).toBeCloseTo(1, 10);
+});
+
+it('keeps leverage position threshold callout labels visibly separated', () => {
+  const html = renderToStaticMarkup(
+    <LeverageDashboard state={initialState} config={baseConfig} history={[initialState]} />
+  );
+
+  const labelYs = [...html.matchAll(/data-threshold-label-y="([^"]+)"/g)]
+    .map(match => Number(match[1]))
+    .sort((a, b) => a - b);
+
+  expect(labelYs).toHaveLength(3);
+  expect(labelYs[1] - labelYs[0]).toBeGreaterThanOrEqual(50);
+  expect(labelYs[2] - labelYs[1]).toBeGreaterThanOrEqual(50);
 });
 
 it('renders negative CET1 below zero while retaining positive AT1 in the leverage position chart', () => {
