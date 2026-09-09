@@ -22,10 +22,13 @@ export function leverageDashboardData(state: BankState, config: SimulationConfig
   const tier1 = cet1 + at1;
   const inScope = metrics.leverageFrameworkInScope ?? false;
   const minimum = metrics.leverageBaseRate ?? config.riskLimits.minLeverageRatio;
+  const minimumCet1 = minimum * (metrics.leverageMinimumCet1Share ?? 0.75);
   const threshold = metrics.leverageApplicableThresholdRate ?? minimum;
-  const cet1Threshold = metrics.leverageCet1ThresholdRate ?? minimum * 0.75;
+  const cet1Threshold = metrics.leverageCet1ThresholdRate ?? minimumCet1;
   const target = Math.max(threshold, state.behaviour.riskAppetite?.leverage ?? threshold * 1.05);
   const ratio = metrics.leverageRatio;
+  const leverageCet1Ratio = metrics.leverageCet1Ratio ?? (exposure > 0 ? cet1 / exposure : NaN);
+  const hardMinimumBreached = inScope && (ratio < minimum || leverageCet1Ratio < minimumCet1);
   const required = exposure * threshold;
   const baseRequired = exposure * minimum;
   const cet1Required = exposure * cet1Threshold;
@@ -39,10 +42,13 @@ export function leverageDashboardData(state: BankState, config: SimulationConfig
     tier1,
     exposure,
     minimum,
+    minimumCet1,
     threshold,
     cet1Threshold,
     target,
     ratio,
+    leverageCet1Ratio,
+    hardMinimumBreached,
     required,
     baseRequired,
     cet1Required,
@@ -242,7 +248,7 @@ export default function LeverageDashboard({
   const status = !Number.isFinite(d.ratio)
     ? 'Unavailable'
     : d.inScope
-      ? d.ratio < d.minimum
+      ? d.hardMinimumBreached
         ? 'Below minimum'
         : d.bufferShortfall
           ? 'Buffer shortfall'
@@ -250,7 +256,7 @@ export default function LeverageDashboard({
       : d.expectationMissed
         ? 'Below expectation'
         : 'Expectation met';
-  const shortfall = d.inScope ? d.ratio < d.minimum || d.bufferShortfall : d.expectationMissed;
+  const shortfall = d.inScope ? d.hardMinimumBreached || d.bufferShortfall : d.expectationMissed;
   const spare = d.limit - d.exposure;
   const ratioTarget = distinctTarget(d.threshold, d.target);
   const capitalTarget = distinctTarget(d.required, d.targetRequired);
