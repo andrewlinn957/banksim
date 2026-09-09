@@ -6,6 +6,7 @@
  * we can model thousands of loans as a small number of cohorts.
  */
 import { ProductType } from './enums';
+import { UkItl1Region } from './ukItl1';
 
 export type LoanStage = 'stage1' | 'stage2' | 'stage3';
 export type LoanSector =
@@ -15,15 +16,8 @@ export type LoanSector =
   | 'sme'
   | 'largeCorporate'
   | 'other';
-export type LoanGeography =
-  | 'london'
-  | 'south'
-  | 'midlands'
-  | 'north'
-  | 'scotland'
-  | 'wales'
-  | 'northernIreland'
-  | 'other';
+export type LegacyLoanGeography = 'south' | 'midlands' | 'north' | 'other';
+export type LoanGeography = UkItl1Region | LegacyLoanGeography;
 
 export interface LoanCohort {
   productType: ProductType;
