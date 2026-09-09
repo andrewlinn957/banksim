@@ -71,6 +71,26 @@ export interface OsiiAssessmentState {
   quarterEndObservations: OsiiQuarterEndObservation[];
 }
 
+export type LeverageScopeRoute = 'belowThresholds' | 'retailDeposits' | 'nonUkAssets' | 'both';
+
+export interface LeverageAccountingReferenceObservation {
+  step: number;
+  date: string;
+  retailDeposits: number;
+  nonUkAssets: number;
+}
+
+export interface LeverageFrameworkAssessmentState {
+  inScope: boolean;
+  scopeRoute: LeverageScopeRoute;
+  assessmentStep: number;
+  assessmentDate: string;
+  nextAssessmentStep: number;
+  averageRetailDeposits: number;
+  averageNonUkAssets: number;
+  accountingReferenceObservations: LeverageAccountingReferenceObservation[];
+}
+
 export interface RiskMetrics {
   internalLeverageTargetRatio?: number;
   internalLcrTargetRatio?: number;
@@ -100,6 +120,27 @@ export interface RiskMetrics {
   osiiNextThresholdRate?: number;
   osiiNextAssessmentStep?: number;
   osiiThresholdScheduleYear?: number;
+  leverageFrameworkInScope?: boolean;
+  leverageFrameworkScopeRoute?: LeverageScopeRoute;
+  leverageRetailDeposits?: number;
+  leverageRetailDepositsThreeYearAverage?: number;
+  leverageNonUkAssets?: number;
+  leverageNonUkAssetsThreeYearAverage?: number;
+  leverageRetailDepositThreshold?: number;
+  leverageNonUkAssetThreshold?: number;
+  leverageBaseRate?: number;
+  leverageMinimumCet1Share?: number;
+  leverageCclbRate?: number;
+  leverageAlrbRate?: number;
+  leverageCclbIndicativeRate?: number;
+  leverageAlrbIndicativeRate?: number;
+  leverageBufferRate?: number;
+  leverageApplicableThresholdRate?: number;
+  leverageCet1ThresholdRate?: number;
+  leverageCet1Ratio?: number;
+  leverageExpectationMissed?: boolean;
+  leverageBufferShortfall?: boolean;
+  leverageFrameworkNextAssessmentStep?: number;
   rwa: number;
   tier1Ratio?: number;
   totalCapitalRatio?: number;
@@ -228,6 +269,8 @@ export interface ComplianceStatus {
   cet1Breached: boolean;
   ownFundsBreached?: boolean;
   leverageBreached: boolean;
+  leverageExpectationMissed?: boolean;
+  leverageBufferShortfall?: boolean;
   lcrBreached: boolean;
   nsfrBreached: boolean;
   concentrationBreached: boolean;

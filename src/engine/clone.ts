@@ -11,7 +11,7 @@ import { BalanceSheet } from '../domain/balanceSheet';
 import { CashFlowStatement } from '../domain/cashflow';
 import { MarketState } from '../domain/market';
 import { IncomeStatement } from '../domain/pnl';
-import { ComplianceStatus, OsiiAssessmentState, Pillar2AAssessmentState, RiskMetrics } from '../domain/risks';
+import { ComplianceStatus, LeverageFrameworkAssessmentState, OsiiAssessmentState, Pillar2AAssessmentState, RiskMetrics } from '../domain/risks';
 import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { ProductType } from '../domain/enums';
 
@@ -40,6 +40,14 @@ const clonePillar2A = (p: Pillar2AAssessmentState | undefined): Pillar2AAssessme
 
 const cloneOsii = (o: OsiiAssessmentState | undefined): OsiiAssessmentState | undefined =>
   o ? { ...o, quarterEndObservations: o.quarterEndObservations.map((x) => ({ ...x })) } : undefined;
+
+const cloneLeverageFramework = (
+  l: LeverageFrameworkAssessmentState | undefined
+): LeverageFrameworkAssessmentState | undefined =>
+  l ? {
+    ...l,
+    accountingReferenceObservations: l.accountingReferenceObservations.map((x) => ({ ...x })),
+  } : undefined;
 
 const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   ...b,
@@ -123,6 +131,7 @@ export const cloneBankState = (state: BankState): BankState => ({
     compliance: cloneCompliance(state.risk.compliance),
     pillar2A: clonePillar2A(state.risk.pillar2A),
     osii: cloneOsii(state.risk.osii),
+    leverageFramework: cloneLeverageFramework(state.risk.leverageFramework),
   },
   board: { ...state.board },
   equityMarket: cloneEquityMarket(state.equityMarket),

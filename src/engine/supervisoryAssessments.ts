@@ -10,6 +10,10 @@ import {
   advanceOsiiAssessmentAtClose,
   initializeOpeningOsiiAssessment,
 } from './capitalBuffers';
+import {
+  advanceLeverageFrameworkAssessmentAtClose,
+  initializeOpeningLeverageFrameworkAssessment,
+} from './leverageFramework';
 
 /**
  * Scenario and calibration builders clone the fully assessed base bank before
@@ -20,6 +24,7 @@ import {
 export const resetOpeningSupervisoryAssessments = (state: BankState): void => {
   state.risk.pillar2A = undefined;
   state.risk.osii = undefined;
+  state.risk.leverageFramework = undefined;
 };
 
 /** Establish supervisory state after all opening-state overrides have been applied. */
@@ -28,6 +33,7 @@ export const initializeOpeningSupervisoryAssessments = (
   config: SimulationConfig
 ): void => {
   initializeOpeningOsiiAssessment(state, config);
+  initializeOpeningLeverageFrameworkAssessment(state);
   const preview = calculateRiskMetrics({ state, config });
   initializeOpeningPillar2AAssessment({
     state,
@@ -51,4 +57,5 @@ export const advanceSupervisoryAssessmentsAtClose = (
     eveSensitivity100bp: metrics.eveSensitivity100bp,
   });
   advanceOsiiAssessmentAtClose(state, config);
+  advanceLeverageFrameworkAssessmentAtClose(state);
 };

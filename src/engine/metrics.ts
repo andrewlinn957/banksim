@@ -4,6 +4,7 @@ import { ownFundsRequirements } from './prudential';
 import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentialLiquidityLines } from './prudential';
 import { pillar2AAssessmentForMetrics } from './pillar2A';
 import { calculateCapitalBufferFramework } from './capitalBuffers';
+import { calculateLeverageFramework } from './leverageFramework';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
@@ -488,6 +489,18 @@ export const calculateRiskMetrics = ({
     leverageExposure > 0
       ? (adjustedCet1 + state.financial.capital.at1) / leverageExposure
       : Infinity;
+  const leverageCet1Ratio = leverageExposure > 0 ? adjustedCet1 / leverageExposure : Infinity;
+  const leverageFramework = calculateLeverageFramework({
+    state,
+    config,
+    institutionSpecificCcybRate: capitalBuffers.ccybRate,
+    systemicBufferRate: capitalBuffers.osiiRate,
+  });
+  const leverageExpectationMissed = !leverageFramework.inScope && leverageRatio < leverageFramework.baseRate;
+  const leverageBufferShortfall = leverageFramework.inScope && (
+    leverageRatio < leverageFramework.applicableThresholdRate ||
+    leverageCet1Ratio < leverageFramework.cet1ThresholdRate
+  );
 
   const hqla = computeHqla(regulatoryHqlaItems(assets));
   const depositQualityIndex = computeDepositQualityIndex(state);
@@ -592,13 +605,34 @@ export const calculateRiskMetrics = ({
     osiiNextThresholdRate: capitalBuffers.osiiNextThresholdRate,
     osiiNextAssessmentStep: capitalBuffers.osiiNextAssessmentStep,
     osiiThresholdScheduleYear: capitalBuffers.osiiThresholdScheduleYear,
+    leverageFrameworkInScope: leverageFramework.inScope,
+    leverageFrameworkScopeRoute: leverageFramework.scopeRoute,
+    leverageRetailDeposits: leverageFramework.retailDeposits,
+    leverageRetailDepositsThreeYearAverage: leverageFramework.averageRetailDeposits,
+    leverageNonUkAssets: leverageFramework.nonUkAssets,
+    leverageNonUkAssetsThreeYearAverage: leverageFramework.averageNonUkAssets,
+    leverageRetailDepositThreshold: leverageFramework.retailDepositsThreshold,
+    leverageNonUkAssetThreshold: leverageFramework.nonUkAssetsThreshold,
+    leverageBaseRate: leverageFramework.baseRate,
+    leverageMinimumCet1Share: leverageFramework.minimumCet1Share,
+    leverageCclbRate: leverageFramework.cclbRate,
+    leverageAlrbRate: leverageFramework.alrbRate,
+    leverageCclbIndicativeRate: leverageFramework.cclbIndicativeRate,
+    leverageAlrbIndicativeRate: leverageFramework.alrbIndicativeRate,
+    leverageBufferRate: leverageFramework.bufferRate,
+    leverageApplicableThresholdRate: leverageFramework.applicableThresholdRate,
+    leverageCet1ThresholdRate: leverageFramework.cet1ThresholdRate,
+    leverageCet1Ratio,
+    leverageExpectationMissed,
+    leverageBufferShortfall,
+    leverageFrameworkNextAssessmentStep: leverageFramework.nextAssessmentStep,
     minimumCet1Ratio: minima.cet1, minimumTier1Ratio: minima.tier1, minimumTotalCapitalRatio: minima.total,
     tier1Requirement:
       (rwa > 0
         ? Math.max(minima.tier1, minima.total - tier2 / rwa)
         : Math.max(minima.tier1, minima.total)) + capitalBuffers.combinedBufferRate,
     totalCapitalRequirement: minima.total + capitalBuffers.combinedBufferRate,
-    internalLeverageTargetRatio: Math.max(config.riskLimits.minLeverageRatio, state.behaviour.riskAppetite?.leverage ?? config.riskLimits.minLeverageRatio*1.05),
+    internalLeverageTargetRatio: Math.max(leverageFramework.applicableThresholdRate, state.behaviour.riskAppetite?.leverage ?? leverageFramework.applicableThresholdRate*1.05),
     internalLcrTargetRatio: Math.max(config.riskLimits.minLcr, state.behaviour.riskAppetite?.lcr ?? config.riskLimits.minLcr*1.1),
     internalNsfrTargetRatio: Math.max(config.riskLimits.minNsfr, state.behaviour.riskAppetite?.nsfr ?? config.riskLimits.minNsfr*1.05),
     praBufferTarget, praBufferBreached: cet1Ratio < praBufferTarget,
@@ -639,16 +673,27 @@ export const calculateRiskMetrics = ({
   };
 };
 
-export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => ({
-  cet1Breached: !(metrics.cet1Ratio >= (metrics.minimumCet1Ratio ?? limits.minCet1Ratio)),
-  ownFundsBreached:
-    !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (metrics.minimumTier1Ratio ?? limits.minTier1Ratio ?? 0.06)) ||
-    !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (metrics.minimumTotalCapitalRatio ?? limits.minTotalCapitalRatio ?? 0.08)),
-  leverageBreached: !(metrics.leverageRatio >= limits.minLeverageRatio),
-  lcrBreached: !(metrics.lcr >= limits.minLcr),
-  nsfrBreached: !(metrics.nsfr >= limits.minNsfr),
-  concentrationBreached:
-    metrics.sectorConcentration > limits.concentration.maxSingleSectorShare ||
-    metrics.geographyConcentration > limits.concentration.maxSingleGeographyShare,
-  mdaTriggered: metrics.mdaTriggered,
-});
+export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => {
+  const leverageBaseRate = metrics.leverageBaseRate ?? limits.minLeverageRatio;
+  const leverageInScope = metrics.leverageFrameworkInScope ?? false;
+  const leverageCet1MinimumRate = leverageBaseRate * (metrics.leverageMinimumCet1Share ?? 0.75);
+  const leverageMinimumBreached = leverageInScope && (
+    !(metrics.leverageRatio >= leverageBaseRate) ||
+    !((metrics.leverageCet1Ratio ?? Infinity) >= leverageCet1MinimumRate)
+  );
+  return {
+    cet1Breached: !(metrics.cet1Ratio >= (metrics.minimumCet1Ratio ?? limits.minCet1Ratio)),
+    ownFundsBreached:
+      !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (metrics.minimumTier1Ratio ?? limits.minTier1Ratio ?? 0.06)) ||
+      !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (metrics.minimumTotalCapitalRatio ?? limits.minTotalCapitalRatio ?? 0.08)),
+    leverageBreached: leverageMinimumBreached,
+    leverageExpectationMissed: !leverageInScope && !(metrics.leverageRatio >= leverageBaseRate),
+    leverageBufferShortfall: leverageInScope && !leverageMinimumBreached && Boolean(metrics.leverageBufferShortfall),
+    lcrBreached: !(metrics.lcr >= limits.minLcr),
+    nsfrBreached: !(metrics.nsfr >= limits.minNsfr),
+    concentrationBreached:
+      metrics.sectorConcentration > limits.concentration.maxSingleSectorShare ||
+      metrics.geographyConcentration > limits.concentration.maxSingleGeographyShare,
+    mdaTriggered: metrics.mdaTriggered,
+  };
+};
