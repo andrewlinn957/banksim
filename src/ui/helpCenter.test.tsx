@@ -19,6 +19,10 @@ describe('HelpCenterPanel', () => {
     expect(html).toContain('Pillar 2A and the SREP cycle');
     expect(html).toContain('once every 24 months');
     expect(html).toContain('PS15/20');
+    expect(html).toContain('UK leverage ratio framework');
+    expect(html).toContain('£75bn');
+    expect(html).toContain('CCLB');
+    expect(html).toContain('ALRB');
     expect(html).toContain('LCR = HQLA');
     expect(html).toContain('CET1 ratio = adjusted CET1 / RWA');
     expect(html).toContain('<pre');
