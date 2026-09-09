@@ -108,7 +108,7 @@ function RegionMap({ regionalRwa }: { regionalRwa: Record<UkItl1Region, number> 
               onFocus={() => setActive(region)}
               onBlur={() => setActive(null)}
             >
-              <title>{UK_ITL1_LABELS[region]} · {formatCurrency(regionalRwa[region])} RWA</title>
+              <title>{`${UK_ITL1_LABELS[region]} · ${formatCurrency(regionalRwa[region])} RWA`}</title>
             </path>
           ))}
         </svg>

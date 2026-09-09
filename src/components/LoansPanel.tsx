@@ -4,6 +4,7 @@ import { BalanceSheetItem } from '../domain/balanceSheet';
 import { LoanPipelineState } from '../domain/bankState';
 import { AssetProductType, MaturityBucket, ProductType } from '../domain/enums';
 import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
+import { canonicalLoanGeography, UK_ITL1_LABELS, UK_ITL1_REGIONS } from '../domain/ukItl1';
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 import { getProduct } from '../products/catalogue';
 import { LoanProductType, productTypesWithCapability } from '../products/capabilities';
@@ -19,7 +20,7 @@ const LOAN_PORTFOLIOS = productTypesWithCapability('loan');
 type LoanPortfolioType = LoanProductType;
 
 const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
-const GEOGRAPHY_ORDER = ['london', 'south', 'midlands', 'north', 'scotland', 'wales', 'northernIreland', 'other'] as const;
+const GEOGRAPHY_ORDER = UK_ITL1_REGIONS;
 
 const STAGE_LABEL: Record<LoanStage, string> = {
   stage1: 'Stage 1',
@@ -37,18 +38,16 @@ const SECTOR_LABEL: Record<LoanSector, string> = {
 };
 
 const GEOGRAPHY_LABEL: Record<LoanGeography, string> = {
-  london: 'London',
+  ...UK_ITL1_LABELS,
   south: 'South',
   midlands: 'Midlands',
   north: 'North',
-  scotland: 'Scotland',
-  wales: 'Wales',
-  northernIreland: 'Northern Ireland',
   other: 'Other',
 };
 
 const cohortSector = (cohort: LoanCohort): LoanSector => cohort.sector ?? 'other';
-const cohortGeography = (cohort: LoanCohort): LoanGeography => cohort.geography ?? 'other';
+const cohortGeography = (cohort: LoanCohort): LoanGeography =>
+  canonicalLoanGeography(cohort.geography, cohort.cohortId);
 
 const MATURITY_LABEL: Record<MaturityBucket, string> = {
   [MaturityBucket.Overnight]: 'Overnight',
@@ -239,7 +238,7 @@ const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
     key: 'geography',
     label: 'Geography',
     filterUnit: 'raw',
-    placeholder: 'e.g. North',
+    placeholder: 'e.g. London',
     value: (cohort) =>
       Math.max(0, GEOGRAPHY_ORDER.indexOf(cohortGeography(cohort) as (typeof GEOGRAPHY_ORDER)[number])),
     display: (cohort) => GEOGRAPHY_LABEL[cohortGeography(cohort)],
