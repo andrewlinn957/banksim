@@ -109,6 +109,20 @@ describe('current UK leverage framework', () => {
     expect(compliance.leverageBreached).toBe(false);
   });
 
+  it('requires CET1 to cover 75% of the binding leverage minimum', () => {
+    const state = cloneBankState(initialState);
+    forceLeverageScope(state);
+    state.financial.capital.cet1 = 0.2e9;
+    state.financial.capital.accumulatedOCI = 0;
+    state.financial.capital.at1 = 0.7e9;
+    const metrics = calculateRiskMetrics({ state, config: baseConfig });
+    const compliance = evaluateCompliance(metrics, baseConfig.riskLimits);
+
+    expect(metrics.leverageRatio).toBeGreaterThan(UK_LEVERAGE_RULES.baseRate);
+    expect(metrics.leverageCet1Ratio).toBeLessThan(UK_LEVERAGE_RULES.baseRate * UK_LEVERAGE_RULES.minimumCet1Share);
+    expect(compliance.leverageBreached).toBe(true);
+  });
+
   it('makes the 3.25% minimum binding in scope and keeps leverage-buffer shortfall separate from MDA', () => {
     const hardBreach = cloneBankState(initialState);
     forceLeverageScope(hardBreach);
