@@ -266,6 +266,7 @@ function RequirementBar({
   view: RequirementView;
 }) {
   const value = (rate: number) => view === 'ratio' ? formatPct(rate) : formatCurrency(rate * exposure);
+  const positiveRateTotal = segments.reduce((total, segment) => total + Math.max(0, segment.rate), 0);
   return (
     <div className="leverage-requirement-row">
       <div className="leverage-requirement-row-heading">
@@ -273,17 +274,24 @@ function RequirementBar({
         <strong>{formatPct(totalRate)} / {formatCurrency(totalRate * exposure)}</strong>
       </div>
       <div className="leverage-requirement-bar" role="img" aria-label={`${title}: ${formatPct(totalRate)}`}>
-        {segments.map(segment => (
-          <div
-            key={segment.label}
-            className={`leverage-requirement-segment ${segment.rate === 0 ? 'zero' : ''}`}
-            style={{ background: segment.color, flexGrow: segment.rate, flexBasis: segment.rate === 0 ? 54 : 0 }}
-            data-requirement-segment={segment.label}
-          >
-            <b>{value(segment.rate)}</b>
-            {view === 'ratio' && segment.rate > 0.001 && <small>{formatCurrency(segment.rate * exposure)}</small>}
-          </div>
-        ))}
+        {segments.map(segment => {
+          const share = positiveRateTotal > 0 && segment.rate > 0 ? segment.rate / positiveRateTotal : 0;
+          return (
+            <div
+              key={segment.label}
+              className={`leverage-requirement-segment ${segment.rate === 0 ? 'zero' : ''}`}
+              style={{
+                background: segment.color,
+                flex: segment.rate === 0 ? '0 0 54px' : `${share} 1 0`,
+              }}
+              data-requirement-segment={segment.label}
+              data-requirement-share={share}
+            >
+              <b>{value(segment.rate)}</b>
+              {view === 'ratio' && segment.rate > 0.001 && <small>{formatCurrency(segment.rate * exposure)}</small>}
+            </div>
+          );
+        })}
       </div>
       <ul className="leverage-requirement-legend">
         {segments.map(segment => (
@@ -439,6 +447,53 @@ export default function LeverageDashboard({
   const chartRange = Math.max(0.01, chartMax - chartMin);
   const chartY = (n: number) => 252 - ((n - chartMin) / chartRange) * 202;
   const ticks = Array.from({ length: 5 }, (_, i) => chartMin + (chartRange * i) / 4);
+  const thresholdCallouts = [
+    {
+      key: 'target',
+      actualY: chartY(d.target),
+      labelY: chartY(d.target) - 8,
+      label: 'Internal leverage target',
+      value: formatPct(d.target),
+      amount: `${formatCurrency(d.targetRequired)} Tier 1`,
+      color: '#d81b78',
+      dash: '4 3',
+      className: 'target',
+    },
+    {
+      key: 'minimum',
+      actualY: chartY(d.minimum),
+      labelY: chartY(d.minimum) - 8,
+      label: d.inScope ? 'Minimum Tier 1 requirement' : 'Minimum Tier 1 expectation',
+      value: formatPct(d.minimum),
+      amount: `${formatCurrency(d.baseRequired)} Tier 1`,
+      color: '#164f91',
+      dash: '6 4',
+      className: '',
+    },
+    {
+      key: 'cet1',
+      actualY: chartY(d.minimumCet1),
+      labelY: chartY(d.minimumCet1) - 8,
+      label: 'Minimum CET1 component',
+      value: formatPct(d.minimumCet1),
+      amount: formatCurrency(d.minimumCet1 * d.exposure),
+      color: '#62a8db',
+      dash: '3 3',
+      className: 'cet1',
+    },
+  ].sort((a, b) => a.actualY - b.actualY);
+  const thresholdLabelGap = 52;
+  for (let i = 1; i < thresholdCallouts.length; i += 1) {
+    thresholdCallouts[i].labelY = Math.max(
+      thresholdCallouts[i].labelY,
+      thresholdCallouts[i - 1].labelY + thresholdLabelGap
+    );
+  }
+  const bottomOverflow = Math.max(0, thresholdCallouts[thresholdCallouts.length - 1].labelY + 34 - 286);
+  if (bottomOverflow > 0) thresholdCallouts.forEach(callout => { callout.labelY -= bottomOverflow; });
+  const topOverflow = Math.max(0, 52 - thresholdCallouts[0].labelY);
+  if (topOverflow > 0) thresholdCallouts.forEach(callout => { callout.labelY += topOverflow; });
+
   const scopeName = d.inScope ? 'In scope' : 'Expectation only';
   const bufferThreshold = d.inScope ? d.threshold : d.indicativeThreshold;
   const bufferCclb = d.inScope ? d.cclb : d.cclbIndicative;
@@ -585,20 +640,24 @@ export default function LeverageDashboard({
                   </g>
                 );
               })}
-              <path d={`M48 ${chartY(d.target)}H355L382 ${chartY(d.target)}`} fill="none" stroke="#d81b78" strokeWidth="2" strokeDasharray="4 3" />
-              <text x="394" y={chartY(d.target) - 7} className="threshold-label target">Internal leverage target</text>
-              <text x="394" y={chartY(d.target) + 12} className="threshold-value target">{formatPct(d.target)}</text>
-              <text x="394" y={chartY(d.target) + 29} className="threshold-amount">{formatCurrency(d.targetRequired)} Tier 1</text>
-
-              <path d={`M48 ${chartY(d.minimum)}H355L382 ${chartY(d.minimum)}`} fill="none" stroke="#164f91" strokeWidth="2" strokeDasharray="6 4" />
-              <text x="394" y={chartY(d.minimum) - 7} className="threshold-label">{d.inScope ? 'Minimum Tier 1 requirement' : 'Minimum Tier 1 expectation'}</text>
-              <text x="394" y={chartY(d.minimum) + 12} className="threshold-value">{formatPct(d.minimum)}</text>
-              <text x="394" y={chartY(d.minimum) + 29} className="threshold-amount">{formatCurrency(d.baseRequired)} Tier 1</text>
-
-              <path d={`M48 ${chartY(d.minimumCet1)}H355L382 ${chartY(d.minimumCet1)}`} fill="none" stroke="#62a8db" strokeWidth="2" strokeDasharray="3 3" />
-              <text x="394" y={chartY(d.minimumCet1) - 7} className="threshold-label cet1">Minimum CET1 component</text>
-              <text x="394" y={chartY(d.minimumCet1) + 12} className="threshold-value cet1">{formatPct(d.minimumCet1)}</text>
-              <text x="394" y={chartY(d.minimumCet1) + 29} className="threshold-amount">{formatCurrency(d.minimumCet1 * d.exposure)}</text>
+              {thresholdCallouts.map(callout => (
+                <g
+                  key={callout.key}
+                  data-threshold-callout={callout.key}
+                  data-threshold-label-y={callout.labelY.toFixed(2)}
+                >
+                  <path
+                    d={`M48 ${callout.actualY}H355L382 ${callout.labelY + 4}`}
+                    fill="none"
+                    stroke={callout.color}
+                    strokeWidth="2"
+                    strokeDasharray={callout.dash}
+                  />
+                  <text x="394" y={callout.labelY} className={`threshold-label ${callout.className}`.trim()}>{callout.label}</text>
+                  <text x="394" y={callout.labelY + 18} className={`threshold-value ${callout.className}`.trim()}>{callout.value}</text>
+                  <text x="394" y={callout.labelY + 35} className="threshold-amount">{callout.amount}</text>
+                </g>
+              ))}
 
               <text x="192.5" y="304" textAnchor="middle" fontWeight="700">Tier 1 capital ({formatPct(d.ratio)})</text>
             </svg>
