@@ -47,6 +47,14 @@ it('renders the redesigned position and requirement composition views', () => {
   expect(html).not.toContain('Requirement breakdown');
 });
 
+it('renders capital-position threshold callouts as unfilled leader lines and labels AT1 in the stack', () => {
+  const html = renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig} />);
+  expect(html).toContain('data-capital-level-leader=');
+  expect(html).toContain('style="fill:none"');
+  expect(html).toContain('data-capital-resource="AT1"');
+  expect(html).toContain('capital-resource-label capital-resource-label-compact');
+});
+
 it('shows the 24-month Pillar 2A assessment as a waterfall with drill-down calculation details', () => {
   const html = renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig} />);
   expect(html).toContain('Pillar 2A assessment');
