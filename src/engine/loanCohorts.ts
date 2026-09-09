@@ -26,6 +26,7 @@ import {
   LoanStage,
   LoanWorkoutBucket,
 } from '../domain/loanCohorts';
+import { canonicalLoanGeography, UK_ITL1_REGIONS } from '../domain/ukItl1';
 import { PRODUCTS } from '../products/catalogue';
 
 // Used to convert annual rates/PDs into monthly equivalents.
@@ -41,13 +42,11 @@ const LOAN_SECTORS: LoanSector[] = [
   'other',
 ];
 const LOAN_GEOGRAPHIES: LoanGeography[] = [
-  'london',
+  ...UK_ITL1_REGIONS,
+  // Legacy values are accepted during load/validation and canonicalised below.
   'south',
   'midlands',
   'north',
-  'scotland',
-  'wales',
-  'northernIreland',
   'other',
 ];
 
@@ -342,7 +341,7 @@ const fallbackSectorForProduct = (productType: ProductType): LoanSector =>
   productType === AssetProductType.Mortgages ? 'retailMortgage' : productType === AssetProductType.ConsumerLoans ? 'consumer' : 'sme';
 
 const fallbackGeographyForCohort = (cohortId: number): LoanGeography =>
-  LOAN_GEOGRAPHIES[Math.abs(Math.floor(cohortId)) % LOAN_GEOGRAPHIES.length];
+  UK_ITL1_REGIONS[Math.abs(Math.floor(cohortId)) % UK_ITL1_REGIONS.length];
 
 const normaliseSector = (productType: ProductType, cohortId: number, sector: LoanSector | undefined): LoanSector =>
   isValidSector(sector) ? sector : fallbackSectorForProduct(productType);
@@ -350,7 +349,7 @@ const normaliseSector = (productType: ProductType, cohortId: number, sector: Loa
 const normaliseGeography = (
   cohortId: number,
   geography: LoanGeography | undefined
-): LoanGeography => (isValidGeography(geography) ? geography : fallbackGeographyForCohort(cohortId));
+): LoanGeography => canonicalLoanGeography(geography, cohortId);
 
 export const upsertOriginationCohort = (args: {
   state: BankState;
@@ -1116,14 +1115,18 @@ const defaultSectorMix = (productType: ProductType): Array<{ key: LoanSector; we
 };
 
 const defaultGeographyMix = (): Array<{ key: LoanGeography; weight: number }> => [
+  { key: 'northEast', weight: 0.04 },
+  { key: 'northWest', weight: 0.09 },
+  { key: 'yorkshireAndTheHumber', weight: 0.07 },
+  { key: 'eastMidlands', weight: 0.08 },
+  { key: 'westMidlands', weight: 0.10 },
+  { key: 'eastOfEngland', weight: 0.08 },
   { key: 'london', weight: 0.28 },
-  { key: 'south', weight: 0.17 },
-  { key: 'midlands', weight: 0.18 },
-  { key: 'north', weight: 0.2 },
+  { key: 'southEast', weight: 0.07 },
+  { key: 'southWest', weight: 0.04 },
   { key: 'scotland', weight: 0.08 },
   { key: 'wales', weight: 0.05 },
   { key: 'northernIreland', weight: 0.02 },
-  { key: 'other', weight: 0.02 },
 ];
 
 export const generateSeasonedLoanCohorts = (args: {
