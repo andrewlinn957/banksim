@@ -31,7 +31,7 @@ describe('Loan cohort state compaction', () => {
       renewalCount: 0,
       stage: 'stage1' as const,
       sector: 'retailMortgage' as const,
-      geography: 'south' as const,
+      geography: 'southEast' as const,
     }));
     state.workoutPipelines[AssetProductType.Mortgages] = [];
 
