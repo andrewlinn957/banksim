@@ -5,21 +5,51 @@ import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
 import { cloneBankState } from '../engine/clone';
 
-it('renders a consistent compact leverage dashboard', () => {
+it('renders the opening bank as subject to the leverage expectation', () => {
   const html = renderToStaticMarkup(
     <LeverageDashboard state={initialState} config={baseConfig} history={[initialState]} />
   );
 
   expect((html.match(/leverage-summary-card/g) ?? []).length).toBe(3);
+  expect(html).toContain('Leverage framework');
   expect(html).toContain('Ratio thresholds');
   expect(html).toContain('Capital position');
   expect(html).toContain('leverage-compact-table');
-  expect(html).toContain('Regulatory limit');
-  expect(html).toContain('Internal limit');
+  expect(html).toContain('Expectation only');
+  expect(html).toContain('Expectation limit');
+  expect(html).toContain('CCLB');
+  expect(html).toContain('ALRB');
+  expect(html).toContain('indicative');
+  expect(html).toContain('£75.00bn');
+  expect(html).toContain('£10.00bn');
   expect(html).not.toContain('Additional leverage buffers');
-  expect(html).not.toContain('not separately modelled');
 });
 
+it('switches concise labels to requirement when the bank is in scope', () => {
+  const state = cloneBankState(initialState);
+  state.risk.leverageFramework = {
+    inScope: true,
+    scopeRoute: 'retailDeposits',
+    assessmentStep: 0,
+    assessmentDate: new Date(state.time.date).toISOString(),
+    nextAssessmentStep: 12,
+    averageRetailDeposits: 80e9,
+    averageNonUkAssets: 0,
+    accountingReferenceObservations: [-24, -12, 0].map(step => ({
+      step,
+      date: new Date(state.time.date).toISOString(),
+      retailDeposits: 80e9,
+      nonUkAssets: 0,
+    })),
+  };
+  const html = renderToStaticMarkup(
+    <LeverageDashboard state={state} config={baseConfig} history={[state]} />
+  );
+  expect(html).toContain('In scope');
+  expect(html).toContain('Regulatory limit');
+  expect(html).toContain('Leverage requirement');
+  expect(html).not.toContain('Expectation limit');
+});
 
 it('renders negative CET1 below zero while retaining positive AT1 in the composition chart', () => {
   const state = cloneBankState(initialState);
