@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './styles.css';
 import './capitalDashboard.css';
+import './capitalDashboardTooltips.css';
 
 const root = document.getElementById('root');
 
