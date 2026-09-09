@@ -1,0 +1,36 @@
+.capital-requirements-card .requirement-bar-block:first-child .requirement-segment-legend span:has(.requirement-key-other) {
+  position: relative;
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
+
+.capital-requirements-card .requirement-bar-block:first-child .requirement-segment-legend span:has(.requirement-key-other)::after {
+  content: 'Additional CET1 required where AT1/Tier 2 are not being used to meet minima';
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 300px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--panel-strong);
+  box-shadow: var(--overlay-shadow);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.capital-requirements-card .requirement-bar-block:first-child .requirement-segment-legend span:has(.requirement-key-other):hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
