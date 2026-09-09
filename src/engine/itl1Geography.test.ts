@@ -11,7 +11,8 @@ describe('ITL1 loan geographies', () => {
   it('seeds every opening loan cohort into a canonical ITL1 region', () => {
     const cohorts = Object.values(initialState.loanCohorts ?? {}).flatMap(value => value ?? []);
     expect(cohorts.length).toBeGreaterThan(0);
-    cohorts.forEach(cohort => expect(isUkItl1Region(cohort.geography)).toBe(true));
+    expect(cohorts.every(cohort => isUkItl1Region(cohort.geography))).toBe(true);
+    expect(new Set(cohorts.map(cohort => cohort.geography)).size).toBeGreaterThan(1);
   });
 
   it('maps legacy broad buckets deterministically into ITL1 regions', () => {
