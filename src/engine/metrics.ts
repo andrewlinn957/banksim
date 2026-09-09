@@ -676,14 +676,19 @@ export const calculateRiskMetrics = ({
 export const evaluateCompliance = (metrics: RiskMetrics, limits: RiskLimits): ComplianceStatus => {
   const leverageBaseRate = metrics.leverageBaseRate ?? limits.minLeverageRatio;
   const leverageInScope = metrics.leverageFrameworkInScope ?? false;
+  const leverageCet1MinimumRate = leverageBaseRate * (metrics.leverageMinimumCet1Share ?? 0.75);
+  const leverageMinimumBreached = leverageInScope && (
+    !(metrics.leverageRatio >= leverageBaseRate) ||
+    !((metrics.leverageCet1Ratio ?? Infinity) >= leverageCet1MinimumRate)
+  );
   return {
     cet1Breached: !(metrics.cet1Ratio >= (metrics.minimumCet1Ratio ?? limits.minCet1Ratio)),
     ownFundsBreached:
       !(metrics.tier1Ratio === undefined || metrics.tier1Ratio >= (metrics.minimumTier1Ratio ?? limits.minTier1Ratio ?? 0.06)) ||
       !(metrics.totalCapitalRatio === undefined || metrics.totalCapitalRatio >= (metrics.minimumTotalCapitalRatio ?? limits.minTotalCapitalRatio ?? 0.08)),
-    leverageBreached: leverageInScope && !(metrics.leverageRatio >= leverageBaseRate),
+    leverageBreached: leverageMinimumBreached,
     leverageExpectationMissed: !leverageInScope && !(metrics.leverageRatio >= leverageBaseRate),
-    leverageBufferShortfall: leverageInScope && Boolean(metrics.leverageBufferShortfall),
+    leverageBufferShortfall: leverageInScope && !leverageMinimumBreached && Boolean(metrics.leverageBufferShortfall),
     lcrBreached: !(metrics.lcr >= limits.minLcr),
     nsfrBreached: !(metrics.nsfr >= limits.minNsfr),
     concentrationBreached:
