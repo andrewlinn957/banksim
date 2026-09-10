@@ -1,4 +1,5 @@
-import { createSimulationEngine, SimulationEvent, SimulationStepOutput } from '../engine/simulation';
+import { SimulationEvent, SimulationStepOutput } from '../engine/simulation';
+import { createSimulationEngineWithTreasuryLifecycle as createSimulationEngine } from '../engine/simulationFacade';
 import { cloneBankState } from '../engine/clone';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
