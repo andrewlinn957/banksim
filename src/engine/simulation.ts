@@ -64,7 +64,9 @@ import {
 } from './loanCohorts';
 import { buildStepAttribution } from './attribution';
 import { StepAttribution } from '../domain/attribution';
+import { createEmptyStepExecutionResult, type AssetTradeExecution, type StepExecutionResult } from '../domain/execution';
 import { applyFeatureFlagsToConfig, resolveFeatureFlags } from './featureFlags';
+import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from './contractualAssetLifecycle';
 
 // Tiny "by-reference" wrapper so shocks can compound multipliers in-place.
 type Ref<T> = { value: T };
@@ -96,6 +98,7 @@ interface ActionContext {
   state: BankState;
   config: SimulationConfig;
   events: SimulationEvent[];
+  executions: StepExecutionResult;
 }
 
 export type ActionHandler<T extends PlayerAction = PlayerAction> = Handler<T, ActionContext>;
@@ -134,7 +137,9 @@ const actionHandlers: ActionHandlerMap = {
     );
   },
   buySellAsset: (action: BuySellAssetAction, ctx) => {
-    applyBuySellAsset(ctx.state, ctx.config, action.productType, action.amountDelta, ctx.events);
+    const tenorMonths = action.tenorMonths ?? (action.maturityYears !== undefined ? Math.round(action.maturityYears * 12) : undefined);
+    const execution = applyBuySellAsset(ctx.state, ctx.config, action.productType, action.amountDelta, ctx.events, tenorMonths);
+    if (execution) ctx.executions.assetTrades.push(execution);
   },
   issueTier2: (action: IssueTier2Action, ctx) => { applyIssueTier2(ctx.state,ctx.config,action.amount,action.maturityMonths,ctx.events); },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
@@ -152,7 +157,10 @@ const actionHandlers: ActionHandlerMap = {
     ctx.state.behaviour.treasuryPolicy = nextPolicy;
     // Treasury allocation changes are player actions. A standing policy is not silently
     // re-applied every month, preserving the consequences of choosing to do nothing.
-    if (changed) applyTreasuryPolicy(ctx.state, ctx.config, ctx.events);
+    if (changed) {
+      const execution = applyTreasuryPolicy(ctx.state, ctx.config, ctx.events);
+      if (execution) ctx.executions.assetTrades.push(execution);
+    }
   },
   setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
   setUnderwriting: (action: SetUnderwritingAction, ctx) => {
@@ -362,6 +370,8 @@ export interface SimulationStepOutput {
   nextState: BankState;
   events: SimulationEvent[];
   diagnostics: SimulationDiagnostics;
+  /** Structured settlements/results. Events remain presentation only. */
+  executions: StepExecutionResult;
 }
 
 export interface SimulationEngine {
@@ -818,12 +828,12 @@ const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: '
   events.push(createEvent('info',`${facility} drawing ${executable.toFixed(2)} at ${(rate*100).toFixed(2)}%, secured on gilts`,['funding','liquidity']));
 };
 
-const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events: SimulationEvent[]): void => {
+const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events: SimulationEvent[]): AssetTradeExecution | undefined => {
   const policy = state.behaviour.treasuryPolicy;
-  if (!policy) return;
+  if (!policy) return undefined;
   const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
   const gilts = findItem(state.financial.balanceSheet, AssetProductType.Gilts);
-  if (!cash || !gilts) return;
+  if (!cash || !gilts) return undefined;
   const total = Math.max(0, cash.balance) + Math.max(0, gilts.balance);
   const targetShare = clamp(policy.giltShareOfHqla, 0, 1);
   const currentShare = total > 0 ? Math.max(0, gilts.balance) / total : 0;
@@ -832,8 +842,11 @@ const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events:
   if (currentShare < targetShare - tolerance) desiredShare = targetShare - tolerance;
   if (currentShare > targetShare + tolerance) desiredShare = targetShare + tolerance;
   const delta = total * desiredShare - gilts.balance;
-  if (Math.abs(delta) > 1e4) applyBuySellAsset(state, config, AssetProductType.Gilts, delta, events);
+  const execution = Math.abs(delta) > 1e4
+    ? applyBuySellAsset(state, config, AssetProductType.Gilts, delta, events, Math.round(policy.giltDurationYears * 12))
+    : undefined;
   if (gilts.security) gilts.security.effectiveDurationYears = clamp(policy.giltDurationYears, .25, 15);
+  return execution;
 };
 
 const stepContractualRetailFunding = (state: BankState, config: SimulationConfig, dtMonths: number, events: SimulationEvent[]): void => {
@@ -950,71 +963,77 @@ const applyBuySellAsset = (
   config: SimulationConfig,
   productType: AssetProductType,
   amountDelta: number,
-  events: SimulationEvent[]
-): void => {
-  // Simple asset purchase/sale at par value (no mark-to-market).
+  events: SimulationEvent[],
+  tenorMonths?: number
+): AssetTradeExecution | undefined => {
   const asset = findItem(state.financial.balanceSheet, productType);
   const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!asset || !cash) return;
+  if (!asset || !cash) return undefined;
 
-  if (PRODUCTS[productType]?.behaviour?.isLoan) {
+  const product = PRODUCTS[productType];
+  const requestedAmount = Math.abs(amountDelta);
+  const side: 'buy' | 'sell' = amountDelta >= 0 ? 'buy' : 'sell';
+
+  if (product?.behaviour?.isLoan) {
     const params = config.productParameters[productType];
     if (amountDelta >= 0) {
-      const requested = amountDelta;
       const executed = upsertOriginationCohort({
         state,
         config,
         productType,
         cohortId: state.time.step,
-        principal: requested,
+        principal: requestedAmount,
         annualInterestRate: asset.interestRate,
         annualPd: params.baseDefaultRate,
         lgd: params.lossGivenDefault,
       });
-      if (executed + 1e-6 < requested) {
-        events.push(createEvent('warning', `Insufficient cash to buy ${productType}: requested ${requested.toFixed(2)}, executed ${executed.toFixed(2)}`));
+      if (executed + 1e-6 < requestedAmount) {
+        events.push(createEvent('warning', `Insufficient cash to buy ${productType}: requested ${requestedAmount.toFixed(2)}, executed ${executed.toFixed(2)}`));
       }
       events.push(createEvent('info', `Bought ${productType}: +${executed.toFixed(2)}, cash -${executed.toFixed(2)}`));
-    } else {
-      const requested = Math.abs(amountDelta);
-      const executed = applyExtraPrepayment({ state, productType, amount: requested });
-      events.push(createEvent('info', `Sold ${productType}: -${executed.toFixed(2)}, cash +${executed.toFixed(2)}`));
+      return { kind: 'assetTrade', productType, side, requestedAmount, executedAmount: executed, tenorMonths, executionRate: asset.interestRate };
     }
-    return;
+    const executed = applyExtraPrepayment({ state, productType, amount: requestedAmount });
+    events.push(createEvent('info', `Sold ${productType}: -${executed.toFixed(2)}, cash +${executed.toFixed(2)}`));
+    return { kind: 'assetTrade', productType, side, requestedAmount, executedAmount: executed, tenorMonths, executionRate: asset.interestRate };
   }
-  if (productType === AssetProductType.DerivativeAssets) { events.push(createEvent('warning', 'Manage derivatives through hedge trades.')); return; }
+
+  const treasuryCapability = product?.capabilities.treasuryAsset;
+  if (!treasuryCapability?.tradable) {
+    events.push(createEvent('warning', `${product?.label ?? productType} is not directly tradable.`));
+    return undefined;
+  }
+
   if (amountDelta >= 0) {
-    // buying asset
-    const buyAmount = Math.min(amountDelta, Math.max(0, cash.balance));
-    if (asset.security) asset.security.amortisedCost = (asset.security.amortisedCost ?? asset.balance) + buyAmount;
-    asset.balance += buyAmount;
-    cash.balance -= buyAmount;
-    if (buyAmount < amountDelta) {
-      events.push(
-        createEvent(
-          'warning',
-          `Insufficient cash to buy ${productType}: requested ${amountDelta.toFixed(2)}, executed ${buyAmount.toFixed(2)}`
-        )
-      );
+    const executed = Math.min(requestedAmount, Math.max(0, cash.balance));
+    if (asset.security) asset.security.amortisedCost = (asset.security.amortisedCost ?? asset.balance) + executed;
+    asset.balance += executed;
+    cash.balance -= executed;
+    if (executed + 1e-6 < requestedAmount) {
+      events.push(createEvent('warning', `Insufficient cash to buy ${productType}: requested ${requestedAmount.toFixed(2)}, executed ${executed.toFixed(2)}`));
     }
-    events.push(
-      createEvent('info', `Bought ${productType}: +${buyAmount.toFixed(2)}, cash -${buyAmount.toFixed(2)}`)
-    );
-  } else {
-    const sellAmount = Math.min(Math.max(0, asset.balance - (asset.encumbrance?.encumberedAmount ?? 0)), Math.abs(amountDelta));
-    if (asset.security && asset.balance > 0) {
-      const security = asset.security, fraction = sellAmount / asset.balance;
-      const cost = security.amortisedCost ?? asset.balance;
-      if (security.classification === 'FVOCI') security.pendingRecycling = (security.pendingRecycling ?? 0) + (asset.balance - cost + (security.lossAllowance ?? 0)) * fraction;
-      security.amortisedCost = cost * (1-fraction);
-      security.lossAllowance = (security.lossAllowance ?? 0) * (1-fraction);
-    }
-    asset.balance -= sellAmount;
-    adjustCashOrFail(state, sellAmount, events);
-    events.push(
-      createEvent('info', `Sold ${productType}: -${sellAmount.toFixed(2)}, cash +${sellAmount.toFixed(2)}`)
-    );
+    events.push(createEvent('info', `Bought ${productType}: +${executed.toFixed(2)}, cash -${executed.toFixed(2)}`));
+    return { kind: 'assetTrade', productType, side, requestedAmount, executedAmount: executed, tenorMonths };
   }
+
+  const executed = Math.min(
+    Math.max(0, asset.balance - (asset.encumbrance?.encumberedAmount ?? 0)),
+    requestedAmount
+  );
+  if (asset.security && asset.balance > 0) {
+    const security = asset.security;
+    const fraction = executed / asset.balance;
+    const cost = security.amortisedCost ?? asset.balance;
+    if (security.classification === 'FVOCI') {
+      security.pendingRecycling = (security.pendingRecycling ?? 0) + (asset.balance - cost + (security.lossAllowance ?? 0)) * fraction;
+    }
+    security.amortisedCost = cost * (1 - fraction);
+    security.lossAllowance = (security.lossAllowance ?? 0) * (1 - fraction);
+  }
+  asset.balance -= executed;
+  adjustCashOrFail(state, executed, events);
+  events.push(createEvent('info', `Sold ${productType}: -${executed.toFixed(2)}, cash +${executed.toFixed(2)}`));
+  return { kind: 'assetTrade', productType, side, requestedAmount, executedAmount: executed, tenorMonths };
 };
 
 /**
@@ -1219,9 +1238,10 @@ export const applyActions = (
   config: SimulationConfig,
   actions: PlayerAction[],
   events: SimulationEvent[]
-): void => {
+): StepExecutionResult => {
   ensureFundingLadders(state, config);
-  const actionContext: ActionContext = { state, config, events };
+  const executions = createEmptyStepExecutionResult();
+  const actionContext: ActionContext = { state, config, events, executions };
   actions.forEach(action => {
     if (Object.values(action).some(v => typeof v === 'number' && !Number.isFinite(v)) || ('amount' in action && action.amount < 0) || ('notional' in action && action.notional < 0)) {
       events.push(createEvent('warning', 'Invalid transaction amount or rate. Action rejected.'));
@@ -1229,6 +1249,7 @@ export const applyActions = (
     }
     dispatchAction(action, actionContext);
   });
+  return executions;
 };
 
 export interface FundingLifecycleResult {
@@ -3002,6 +3023,8 @@ export const createSimulationEngine = (): SimulationEngine => {
     const dtYears = dtMonths / MONTHS_IN_YEAR;
     const cashStart = findItem(inputState.financial.balanceSheet, AssetProductType.CashReserves)?.balance ?? 0;
 
+    // Floating treasury assets reprice at the start of the accrual period.
+    syncFloatingTreasuryAssetRates(state);
     syncLoanBalancesFromCohorts(state);
     ensureFundingLadders(state, activeConfig);
     const shockEffects = applyShocks(state, activeConfig, shocks, events);
@@ -3012,7 +3035,7 @@ export const createSimulationEngine = (): SimulationEngine => {
           fvociOciMovement: 0,
           nonCashAdjustmentsByProduct: {},
         };
-    applyActions(state, activeConfig, actions, events);
+    const actionExecutions = applyActions(state, activeConfig, actions, events);
     // Do not automatically re-apply treasury allocation here. If the player takes no treasury
     // action, cash and gilts retain the consequences of ordinary balance-sheet flows.
     stepCompetitorReaction(state, activeConfig, dtMonths, events);
@@ -3147,6 +3170,15 @@ export const createSimulationEngine = (): SimulationEngine => {
           effectiveAccess: 1,
         };
 
+    // Contractual asset maturity is part of the month-end close, before final metrics/statements.
+    advanceContractualAssetLifecycle({
+      openingState: inputState,
+      closingState: state,
+      executions: actionExecutions.assetTrades,
+      events,
+      dtMonths,
+    });
+
     const supervisoryCloseMetrics = calculateRiskMetrics({
       state,
       config: activeConfig,
@@ -3162,6 +3194,8 @@ export const createSimulationEngine = (): SimulationEngine => {
     const statements = buildStatements(inputState, state, activeConfig, cashStart, capitalClose, losses);
     invariants(state, activeConfig, events, statements);
     advanceUkMarketState(state.market, dtMonths);
+    // Expose the newly prevailing Bank Rate without changing the closed period's P&L.
+    syncFloatingTreasuryAssetRates(state);
 
     if (fundingLifecycle.maturingNotional > 0) {
       events.push(
@@ -3190,7 +3224,7 @@ export const createSimulationEngine = (): SimulationEngine => {
           }),
     };
 
-    return { nextState: state, events, diagnostics };
+    return { nextState: state, events, diagnostics, executions: actionExecutions };
   };
 
   return { step };

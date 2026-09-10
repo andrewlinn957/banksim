@@ -379,6 +379,14 @@ const seedState: BankState = {
     [AssetProductType.ConsumerLoans]: [],
     [AssetProductType.CorporateLoans]: [],
   },
+  assetMaturityLadders: {
+    [AssetProductType.Gilts]: Array.from({ length: 120 }, (_, i) => ({
+      tenorMonths: 120,
+      monthsToMaturity: i + 1,
+      notional: 10e6,
+      rate: 0.041,
+    })),
+  },
   fundingLadders: {
     [LiabilityProductType.RetailTermDeposits]: Array.from({ length: 12 }, (_, i) => ({ tenorMonths: 12, monthsToMaturity: i + 1, notional: 125e6, rate: 0.038 })),
     [LiabilityProductType.WholesaleFundingLT]: [
@@ -386,14 +394,6 @@ const seedState: BankState = {
       { tenorMonths: 36, monthsToMaturity: 36, notional: 0.8e9 / 3, rate: 0.053 },
       { tenorMonths: 60, monthsToMaturity: 60, notional: 0.8e9 / 3, rate: 0.053 },
     ],
-    // Reuse the generic contractual ladder map for the opening gilt vintages. The engine will
-    // progressively mature these into reserves; no reinvestment is implied by the ladder itself.
-    [AssetProductType.Gilts]: Array.from({ length: 120 }, (_, i) => ({
-      tenorMonths: 120,
-      monthsToMaturity: i + 1,
-      notional: 10e6,
-      rate: 0.041,
-    })),
     [LiabilityProductType.BankOfEnglandFunding]: [],
     [LiabilityProductType.Tier2Debt]: [],
   },

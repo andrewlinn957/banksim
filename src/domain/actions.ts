@@ -20,7 +20,9 @@ export interface BuySellAssetAction {
   productType: AssetProductType;
   amountDelta: number; // positive = buy/increase, negative = sell/decrease
   rate?: number;
-  /** Optional contractual maturity for purchases such as gilts. */
+  /** Optional contractual tenor for securities/other term assets. */
+  tenorMonths?: number;
+  /** @deprecated Replay compatibility; new callers should use tenorMonths. */
   maturityYears?: number;
 }
 
@@ -61,6 +63,7 @@ export interface SetMortgagePolicyAction {
   fixedPeriodMonths: number;
 }
 
+/** @deprecated Legacy replay action. Live management uses explicit asset trades. */
 export interface SetTreasuryPolicyAction {
   type: 'setTreasuryPolicy';
   giltShareOfHqla: number;

@@ -1,4 +1,5 @@
 import {
+  AssetMaturityLadderMap,
   BankState,
   BehaviouralState,
   EquityMarketState,
@@ -112,6 +113,15 @@ const cloneFundingLadders = (raw: FundingLadderMap): FundingLadderMap => {
   return out;
 };
 
+const cloneAssetMaturityLadders = (raw: AssetMaturityLadderMap | undefined): AssetMaturityLadderMap => {
+  const out: AssetMaturityLadderMap = {};
+  const entries = Object.entries(raw ?? {}) as Array<[ProductType, Array<{ tenorMonths: number; monthsToMaturity: number; notional: number; rate: number }>] >;
+  entries.forEach(([productType, buckets]) => {
+    out[productType] = (buckets ?? []).map((bucket) => ({ ...bucket }));
+  });
+  return out;
+};
+
 const cloneDate = (raw: unknown): Date => raw instanceof Date ? new Date(raw.getTime()) : new Date(raw as any);
 
 export const cloneBankState = (state: BankState): BankState => ({
@@ -141,5 +151,6 @@ export const cloneBankState = (state: BankState): BankState => ({
   loanPipelines: cloneLoanPipelines(state.loanPipelines),
   workoutPipelines: cloneWorkoutPipelines(state.workoutPipelines),
   fundingLadders: cloneFundingLadders(state.fundingLadders),
+  assetMaturityLadders: cloneAssetMaturityLadders(state.assetMaturityLadders),
   status: { ...state.status },
 });

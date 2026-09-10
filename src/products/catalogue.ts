@@ -4,6 +4,7 @@ export type DepositSegment = 'retail' | 'corporate';
 export type DepositBenchmark = 'retailCurrentAccount' | 'termDeposit' | 'corporateDeposit';
 export type LoanBenchmark = 'mortgage' | 'consumer' | 'corporate';
 export type WholesaleFundingTenorClass = 'short' | 'long';
+export type TreasuryAssetRateSource = 'bankRate' | 'giltCurve';
 
 export type LiquidityRegulatoryClass =
   | 'derivativeAsset'
@@ -60,10 +61,20 @@ export interface WholesaleFundingCapability {
   issuable?: boolean;
 }
 
+/** Contractual/treasury behaviour authored once in the product catalogue. */
+export interface TreasuryAssetCapability {
+  tradable?: boolean;
+  contractualMaturity?: boolean;
+  settlementAsset?: boolean;
+  rateSource?: TreasuryAssetRateSource;
+  permittedTenorMonths?: readonly number[];
+}
+
 export interface ProductCapabilities {
   customerDeposit?: CustomerDepositCapability;
   loan?: LoanCapability;
   wholesaleFunding?: WholesaleFundingCapability;
+  treasuryAsset?: TreasuryAssetCapability;
 }
 
 /**
@@ -130,7 +141,9 @@ export const ASSET_PRODUCTS = defineProducts({
     productType: 'CashReserves',
     label: 'Cash & Reserves',
     side: 'Asset',
-    capabilities: {},
+    capabilities: {
+      treasuryAsset: { settlementAsset: true, rateSource: 'bankRate' },
+    },
     regulatory: {
       liquidity: 'centralBankReserve',
       creditRisk: 'centralBank',
@@ -142,7 +155,14 @@ export const ASSET_PRODUCTS = defineProducts({
     productType: 'Gilts',
     label: 'Gilts / Liquidity Portfolio',
     side: 'Asset',
-    capabilities: {},
+    capabilities: {
+      treasuryAsset: {
+        tradable: true,
+        contractualMaturity: true,
+        rateSource: 'giltCurve',
+        permittedTenorMonths: [24, 60, 120],
+      },
+    },
     regulatory: {
       liquidity: 'level1Sovereign',
       creditRisk: 'sovereign',

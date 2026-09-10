@@ -916,7 +916,7 @@ const buildActionsFromParsed = (
       type:'buySellAsset',
       productType:AssetProductType.Gilts,
       amountDelta:formState.giltTradeDirection==='buy'?values.giltTradeAmount:-values.giltTradeAmount,
-      maturityYears:values.giltDurationYears,
+      tenorMonths:Math.round(values.giltDurationYears * 12),
     });
   }
   if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
