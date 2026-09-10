@@ -4,8 +4,6 @@ path = Path('src/engine/passiveBankCalibration.test.ts')
 text = path.read_text()
 
 replacements = {
-    "import { createSimulationEngineWithTreasuryLifecycle as createSimulationEngine } from './simulationFacade';":
-        "import { createSimulationEngine } from './simulation';",
     "giltBuckets: state.fundingLadders[AssetProductType.Gilts]?.length ?? 0,":
         "giltBuckets: state.assetMaturityLadders?.[AssetProductType.Gilts]?.length ?? 0,",
     "/Gilt principal matured into BoE reserves/":
