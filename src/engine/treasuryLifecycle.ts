@@ -35,19 +35,19 @@ interface GiltTrade {
 }
 
 const explicitGiltTrades = (actions: readonly PlayerAction[]): GiltTrade[] =>
-  actions
-    .filter(
-      (action) =>
-        action.type === 'buySellAsset' &&
-        action.productType === AssetProductType.Gilts &&
-        Number.isFinite(action.amountDelta) &&
-        Math.abs(action.amountDelta) > EPS
-    )
-    .map((action) => ({
+  actions.flatMap((action) => {
+    if (
+      action.type !== 'buySellAsset' ||
+      action.productType !== AssetProductType.Gilts ||
+      !Number.isFinite(action.amountDelta) ||
+      Math.abs(action.amountDelta) <= EPS
+    ) return [];
+    return [{
       side: action.amountDelta > 0 ? 'buy' as const : 'sell' as const,
       amount: Math.abs(action.amountDelta),
       maturityYears: action.maturityYears,
-    }));
+    }];
+  });
 
 const parseGiltTradeEvents = (events: readonly SimulationEvent[]): GiltTrade[] => {
   const trades: GiltTrade[] = [];
