@@ -39,8 +39,6 @@ export const createSimulationEngineWithTreasuryLifecycle = (): SimulationEngine 
     const lifecycle = advancePassiveGiltLifecycle({
       openingState,
       closingState: output.nextState,
-      config: input.config,
-      actions: input.actions,
       events: output.events,
       dtMonths,
     });
