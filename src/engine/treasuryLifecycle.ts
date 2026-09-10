@@ -63,6 +63,28 @@ const parseGiltTradeEvents = (events: readonly SimulationEvent[]): GiltTrade[] =
   return trades.filter((trade) => Number.isFinite(trade.amount) && trade.amount > 0);
 };
 
+const reconcileExecutedTrades = (
+  actions: readonly PlayerAction[],
+  events: readonly SimulationEvent[]
+): GiltTrade[] => {
+  const requested = explicitGiltTrades(actions);
+  const executed = parseGiltTradeEvents(events);
+  if (requested.length === 0) return executed;
+  // The core action handler is authoritative for settlement amount because purchases/sales can be
+  // capped by available reserves or holdings. Pair each settled trade with the matching management
+  // instruction only to recover its chosen maturity.
+  let requestIndex = 0;
+  return executed.map((trade) => {
+    while (requestIndex < requested.length && requested[requestIndex].side !== trade.side) requestIndex += 1;
+    const instruction = requested[requestIndex];
+    if (instruction) requestIndex += 1;
+    return {
+      ...trade,
+      maturityYears: instruction?.maturityYears,
+    };
+  });
+};
+
 const scaleBuckets = (buckets: FundingMaturityBucket[], factor: number): FundingMaturityBucket[] =>
   buckets
     .map((bucket) => ({ ...bucket, notional: Math.max(0, bucket.notional * factor) }))
@@ -98,7 +120,8 @@ const makeLifecycleEvent = (message: string, step: number): SimulationEvent => (
  * Advances contractual gilt vintages after the core monthly close.
  *
  * Important behavioural distinction:
- * - explicit buy/sell actions update the maturity ladder using the maturity chosen by management;
+ * - explicit buy/sell actions supply management's chosen maturity, while settled transaction events
+ *   supply the amount that actually executed;
  * - legacy policy-driven rebalance events remain supported for old saves/tests;
  * - contractual maturity is a passive balance-sheet flow: gilts run off into BoE reserves;
  * - nothing automatically reinvests those proceeds.
@@ -124,17 +147,13 @@ export const advancePassiveGiltLifecycle = (args: {
   }
 
   let buckets = (openingState.fundingLadders?.[AssetProductType.Gilts] ?? []).map((bucket) => ({ ...bucket }));
-  const directTrades = explicitGiltTrades(actions);
-  // setTreasuryPolicy is retained for backwards compatibility. If there is no explicit gilt trade,
-  // infer any legacy rebalance trade from the core engine's transaction event.
-  const trades = directTrades.length > 0 ? directTrades : parseGiltTradeEvents(events);
+  const trades = reconcileExecutedTrades(actions, events);
   const netTrade = trades.reduce(
     (sum, trade) => sum + (trade.side === 'buy' ? trade.amount : -trade.amount),
     0
   );
-  // The core securities valuation happens before player actions, so reversing the net cash trade
-  // from the pre-maturity closing balance is a good estimate of the carrying value available when
-  // the sequence of explicit trades began.
+  // The core securities valuation happens before player actions, so reversing the net settled cash
+  // trade from the pre-maturity closing balance estimates the carrying value when trading began.
   let carryingCursor = Math.max(0, closingGilt.balance - netTrade);
 
   const fallbackMaturityYears = clamp(
