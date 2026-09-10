@@ -20,6 +20,8 @@ export interface BuySellAssetAction {
   productType: AssetProductType;
   amountDelta: number; // positive = buy/increase, negative = sell/decrease
   rate?: number;
+  /** Optional contractual maturity for purchases such as gilts. */
+  maturityYears?: number;
 }
 
 export interface IssueDebtAction {
