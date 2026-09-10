@@ -18,7 +18,8 @@ export type EngineFeatureFlagKey =
   | 'confidenceStateMachine'
   | 'conductRisk'
   | 'recommendations'
-  | 'stepDiagnosticsAttribution';
+  | 'stepDiagnosticsAttribution'
+  | 'threeYearPlan';
 
 export type FeatureFlags = Partial<Record<EngineFeatureFlagKey, boolean>>;
 

@@ -18,6 +18,8 @@ export const DEFAULT_FEATURE_FLAGS: EngineFeatureFlags = {
   conductRisk: true,
   recommendations: true,
   stepDiagnosticsAttribution: true,
+  // Three-Year Plan is opt-in: ordinary Sandbox remains a pure simulation.
+  threeYearPlan: false,
 };
 
 export const resolveFeatureFlags = (config: SimulationConfig): EngineFeatureFlags => {
@@ -39,7 +41,8 @@ export const applyFeatureFlagsToConfig = (
   config: SimulationConfig,
   flags: EngineFeatureFlags
 ): SimulationConfig => {
-  if (Object.values(flags).every(Boolean)) return config;
+  // threeYearPlan currently owns no SimulationConfig transform; its false default is intentionally inert.
+  if (Object.entries(flags).every(([key, enabled]) => key === 'threeYearPlan' || enabled)) return config;
 
   return {
     ...config,
