@@ -46,6 +46,7 @@ import { AttributionLineSelection, StepAttribution } from './domain/attribution'
 import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
+import { createDefaultThreeYearPlan } from './config/threeYearPlan';
 
 const controller = new SimulationController(baseConfig);
 const tabs = [
@@ -160,6 +161,14 @@ const App = () => {
     controller.createSnapshot(initialState),
   ]);
   const [runCounter, setRunCounter] = useState(1);
+  const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);
+  const canConfigureThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;
+  const setThreeYearPlanMode = (enabled: boolean) => {
+    if (!canConfigureThreeYearPlan) return;
+    const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
+    const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
+    controller.setConfig(nextConfig); setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setCurrentSnapshots([controller.createSnapshot(nextState)]);
+  };
 
   const totalEquity = useMemo(
     () =>
@@ -450,7 +459,7 @@ const App = () => {
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
-        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
+        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canConfigureThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
       <nav className="tabs report-navigation" aria-label="Bank reports and tools">
         {tabs.map(tab=><button key={tab} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined} onClick={()=>tab==='Boardroom'?setActiveTab('Boardroom'):openReport(tab)}>{tabLabels[tab]??tab}</button>)}

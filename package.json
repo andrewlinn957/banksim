@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:fast": "vitest run --exclude 'src/engine/{modelRegression,passiveBankCalibration}.test.ts'",
-    "test:regression": "vitest run src/engine/modelRegression.test.ts src/engine/passiveBankCalibration.test.ts",
+    "test:fast": "vitest run --exclude 'src/engine/{modelRegression,passiveBankCalibration,threeYearPlanRegression}.test.ts'",
+    "test:regression": "vitest run src/engine/modelRegression.test.ts src/engine/passiveBankCalibration.test.ts src/engine/threeYearPlanRegression.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },

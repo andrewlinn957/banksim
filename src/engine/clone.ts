@@ -15,6 +15,7 @@ import { IncomeStatement } from '../domain/pnl';
 import { ComplianceStatus, LeverageFrameworkAssessmentState, OsiiAssessmentState, Pillar2AAssessmentState, RiskMetrics } from '../domain/risks';
 import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { ProductType } from '../domain/enums';
+import type { ThreeYearPlanState } from '../domain/threeYearPlan';
 
 const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
   items: bs.items.map((item) => ({
@@ -61,6 +62,8 @@ const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   mortgagePolicy: b.mortgagePolicy ? { ...b.mortgagePolicy } : undefined,
   treasuryPolicy: b.treasuryPolicy ? { ...b.treasuryPolicy } : undefined,
 });
+
+const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlanState | undefined => plan ? ({ ...plan, targets: plan.targets.map(target => ({ ...target, milestones: target.milestones.map(m => ({ ...m })) })), currentEvaluation: plan.currentEvaluation ? { ...plan.currentEvaluation, metrics: plan.currentEvaluation.metrics.map(metric => ({ ...metric })) } : undefined }) : undefined;
 
 const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
 
@@ -144,6 +147,7 @@ export const cloneBankState = (state: BankState): BankState => ({
     leverageFramework: cloneLeverageFramework(state.risk.leverageFramework),
   },
   board: { ...state.board },
+  threeYearPlan: cloneThreeYearPlan(state.threeYearPlan),
   equityMarket: cloneEquityMarket(state.equityMarket),
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),

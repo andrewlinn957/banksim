@@ -8,9 +8,7 @@ export type ThreeYearPlanTargetKind = 'minimum' | 'range';
 
 export interface ThreeYearPlanMilestone {
   month: ThreeYearPlanMilestoneMonth;
-  /** Minimum target, or the lower edge of a target range. */
   lower: number;
-  /** Upper edge for range targets. Omit for minimum targets. */
   upper?: number;
 }
 
@@ -18,11 +16,11 @@ export interface ThreeYearPlanTarget {
   metricId: ThreeYearPlanMetricId;
   weight: number;
   kind: ThreeYearPlanTargetKind;
-  /** Opening actual used to interpolate a coherent quarterly trajectory to FY1. */
   baseline: number;
-  /** Optional opening upper edge for range metrics; defaults to baseline. */
   baselineUpper?: number;
   milestones: readonly ThreeYearPlanMilestone[];
+  /** Absolute miss from the target that maps to a zero metric score. */
+  missTolerance?: number;
 }
 
 export interface ThreeYearPlanMetricResult {
@@ -40,29 +38,36 @@ export interface ThreeYearPlanEvaluation {
   metrics: readonly ThreeYearPlanMetricResult[];
 }
 
-/**
- * Optional management-plan state. Board confidence belongs to the plan state deliberately:
- * nothing outside plan performance is permitted to update it directly.
- */
+/** Immutable record of a formal quarterly board review. */
+export interface ThreeYearPlanReviewRecord {
+  month: number;
+  evaluation: ThreeYearPlanEvaluation;
+  boardConfidenceBefore: number;
+  boardConfidenceAfter: number;
+}
+
+/** Board Confidence is deliberately owned by, and updated only through, the plan state. */
 export interface ThreeYearPlanState {
   enabled: boolean;
   startStep: number;
   horizonMonths: typeof THREE_YEAR_PLAN_HORIZON_MONTHS;
   reviewIntervalMonths: typeof THREE_YEAR_PLAN_REVIEW_INTERVAL_MONTHS;
+  confidenceUpdateWeight: number;
   targets: readonly ThreeYearPlanTarget[];
   currentEvaluation?: ThreeYearPlanEvaluation;
+  /** Formal quarterly reviews. Optional for backwards-compatible saved states. */
+  reviewHistory?: readonly ThreeYearPlanReviewRecord[];
   boardConfidence?: number;
   lastEvaluationStep?: number;
+  completed?: boolean;
 }
 
 export interface ThreeYearPlanSettings {
   enabled: boolean;
   initialBoardConfidence: number;
-  /** Weight placed on the latest plan score at each quarterly review. */
   confidenceUpdateWeight: number;
 }
 
-/** Sandbox default: the plan mechanic is inert unless explicitly enabled. */
 export const DEFAULT_THREE_YEAR_PLAN_SETTINGS: ThreeYearPlanSettings = {
   enabled: false,
   initialBoardConfidence: 70,
@@ -80,7 +85,10 @@ export const createThreeYearPlanState = (args: {
     startStep: args.startStep,
     horizonMonths: THREE_YEAR_PLAN_HORIZON_MONTHS,
     reviewIntervalMonths: THREE_YEAR_PLAN_REVIEW_INTERVAL_MONTHS,
+    confidenceUpdateWeight: settings.confidenceUpdateWeight,
     targets: args.targets,
+    reviewHistory: [],
     boardConfidence: settings.enabled ? settings.initialBoardConfidence : undefined,
+    completed: false,
   };
 };

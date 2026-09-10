@@ -67,6 +67,8 @@ import { StepAttribution } from '../domain/attribution';
 import { createEmptyStepExecutionResult, type AssetTradeExecution, type StepExecutionResult } from '../domain/execution';
 import { applyFeatureFlagsToConfig, resolveFeatureFlags } from './featureFlags';
 import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from './contractualAssetLifecycle';
+import { reviewThreeYearPlan } from './threeYearPlan';
+import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 
 // Tiny "by-reference" wrapper so shocks can compound multipliers in-place.
 type Ref<T> = { value: T };
@@ -3193,6 +3195,12 @@ export const createSimulationEngine = (): SimulationEngine => {
     updateSharePrice(state, activeConfig, dtMonths);
     const statements = buildStatements(inputState, state, activeConfig, cashStart, capitalClose, losses);
     invariants(state, activeConfig, events, statements);
+    if (featureFlags.threeYearPlan && state.threeYearPlan?.enabled) {
+      const review = reviewThreeYearPlan(state, bankThreeYearPlanMetricRegistry);
+      if (review.reviewed && review.evaluation && review.boardConfidence !== undefined) {
+        events.push(createEvent('info', `${review.completed ? 'Final ' : ''}Three-Year Plan review: plan score ${review.evaluation.score.toFixed(0)}/100, Board Confidence ${review.boardConfidence.toFixed(0)}/100`));
+      }
+    }
     advanceUkMarketState(state.market, dtMonths);
     // Expose the newly prevailing Bank Rate without changing the closed period's P&L.
     syncFloatingTreasuryAssetRates(state);
