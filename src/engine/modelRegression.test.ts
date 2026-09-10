@@ -7,7 +7,7 @@ import { PlayerAction } from '../domain/actions';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { evaluateScenarioGoals } from './scoring';
-import { createSimulationEngine } from './simulation';
+import { createSimulationEngineWithTreasuryLifecycle as createSimulationEngine } from './simulationFacade';
 
 const runMonths = (
   months: number,
