@@ -4,7 +4,7 @@ import { initialState } from '../config/initialState';
 import { AssetProductType, BalanceSheetSide, LiabilityProductType, ProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { commitmentLiquidity, prudentialLiquidityLines } from './prudential';
-import { createSimulationEngine } from './simulation';
+import { createSimulationEngineWithTreasuryLifecycle as createSimulationEngine } from './simulationFacade';
 
 const balance = (state: typeof initialState, productType: ProductType): number =>
   state.financial.balanceSheet.items.find((item) => item.productType === productType)?.balance ?? 0;
@@ -72,7 +72,10 @@ const snapshot = (state: typeof initialState) => {
     deposits,
     wholesaleLt: balance(state, LiabilityProductType.WholesaleFundingLT),
     cash,
+    reserveRate: state.financial.balanceSheet.items.find((item) => item.productType === AssetProductType.CashReserves)?.interestRate ?? 0,
+    bankRate: state.market.baseRate,
     gilts,
+    giltBuckets: state.fundingLadders[AssetProductType.Gilts]?.length ?? 0,
     liquidAssetShare: assets > 0 ? (cash + gilts) / assets : 0,
     loanDepositRatio: deposits > 0 ? loans / deposits : 0,
     cet1: state.financial.capital.cet1,
@@ -92,6 +95,7 @@ const snapshot = (state: typeof initialState) => {
     netIncome: state.financial.incomeStatement.netIncome,
     franchise: state.behaviour.depositFranchiseStrength,
     fundingConfidence: state.risk.riskMetrics.fundingConfidenceScore,
+    sharePrice: state.equityMarket.sharePrice,
   };
 };
 
@@ -102,10 +106,12 @@ describe('Passive bank calibration diagnostics', () => {
     const checkpoints = new Set([0, 12, 24, 36, 60, 120]);
     const results = [snapshot(state)];
     let hiddenTreasuryTrades = 0;
+    let giltMaturities = 0;
 
     for (let month = 1; month <= 120; month++) {
       const result = engine.step({ state, config: baseConfig, actions: [], shocks: [] });
       hiddenTreasuryTrades += result.events.filter((event) => /Bought Gilts|Sold Gilts/.test(event.message)).length;
+      giltMaturities += result.events.filter((event) => /Gilt principal matured into BoE reserves/.test(event.message)).length;
       state = result.nextState;
       if (checkpoints.has(month)) results.push(snapshot(state));
       if (state.status.hasFailed) break;
@@ -113,6 +119,9 @@ describe('Passive bank calibration diagnostics', () => {
 
     console.log('PASSIVE_BANK_CALIBRATION=' + JSON.stringify(results));
     console.log('PASSIVE_HIDDEN_TREASURY_TRADES=' + hiddenTreasuryTrades);
+    console.log('PASSIVE_GILT_MATURITY_EVENTS=' + giltMaturities);
+    expect(hiddenTreasuryTrades).toBe(0);
+    expect(giltMaturities).toBeGreaterThan(0);
     expect(state.status.hasFailed).toBe(false);
     expect(state.time.step).toBeGreaterThanOrEqual(120);
   });
