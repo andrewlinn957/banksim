@@ -21,9 +21,10 @@ describe('Internal capital target and payout gating', () => {
     const openingMetrics = calculateRiskMetrics({ state: initialState, config });
     const inclusionRate = config.behaviour.securitiesAccounting.fvociCet1InclusionRate;
     // Build the fixture from the live regulatory requirement rather than taking a percentage of
-    // opening CET1. Phase-1 balance-sheet calibration is free to move opening capital without
-    // accidentally turning this internal-target test into an MDA test.
-    const targetAdjustedCet1 = (openingMetrics.cet1Requirement + 0.006) * openingMetrics.rwa;
+    // opening CET1. The 150bp cushion leaves the benign case above its ordinary internal buffer
+    // after one month's balance-sheet movement, while the stressed case still consumes the much
+    // larger dynamic buffer created by volatility, confidence and conduct signals.
+    const targetAdjustedCet1 = (openingMetrics.cet1Requirement + 0.015) * openingMetrics.rwa;
     const targetCet1 = targetAdjustedCet1 - initialState.financial.capital.accumulatedOCI * inclusionRate;
 
     const benignState = cloneBankState(initialState);
