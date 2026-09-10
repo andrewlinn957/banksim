@@ -1,9 +1,7 @@
-import { PlayerAction } from '../domain/actions';
 import { BankState, FundingMaturityBucket } from '../domain/bankState';
-import { SimulationConfig } from '../domain/config';
 import { AssetProductType } from '../domain/enums';
 import { nelsonSiegelYield } from './ukMarketModel';
-import type { SimulationEvent } from './simulationCore';
+import type { SimulationEvent } from './simulation';
 
 const MONTHS_IN_YEAR = 12;
 const EPS = 1e-9;
@@ -95,8 +93,6 @@ const makeLifecycleEvent = (message: string, step: number): SimulationEvent => (
 export const advancePassiveGiltLifecycle = (args: {
   openingState: BankState;
   closingState: BankState;
-  config: SimulationConfig;
-  actions: readonly PlayerAction[];
   events: SimulationEvent[];
   dtMonths: number;
 }): { maturedNotional: number; maturedCarryingValue: number } => {
