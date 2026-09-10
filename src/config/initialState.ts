@@ -105,10 +105,10 @@ const balanceSheet: BalanceSheet = {
 };
 
 const capital: CapitalState = {
-  // Calibrated toward Metro 2024 year-end mix (higher CET1, lower AT1),
-  // while keeping total opening equity unchanged for balance-sheet consistency.
-  cet1: 0.808e9,
-  at1: 0.136e9,
+  // Keep total opening equity unchanged while shifting the mix toward CET1. The denser loan book
+  // used for liquidity calibration otherwise leaves the opening bank unhelpfully close to MDA.
+  cet1: 0.900e9,
+  at1: 0.044e9,
   tier2: 0,
   accumulatedOCI: 0.017e9,
 };
