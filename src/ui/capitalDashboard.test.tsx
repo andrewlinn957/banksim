@@ -47,12 +47,15 @@ it('renders the redesigned position and requirement composition views', () => {
   expect(html).not.toContain('Requirement breakdown');
 });
 
-it('renders capital-position threshold callouts as unfilled leader lines and labels AT1 in the stack', () => {
+it('renders capital-position threshold callouts as unfilled leader lines and retains AT1 visibility', () => {
   const html = renderToStaticMarkup(<CapitalDashboard state={initialState} config={baseConfig} />);
   expect(html).toContain('data-capital-level-leader=');
   expect(html).toContain('style="fill:none"');
   expect(html).toContain('data-capital-resource="AT1"');
-  expect(html).toContain('capital-resource-label capital-resource-label-compact');
+  // Very small AT1 stacks are intentionally too thin for an in-bar label; the legend must still
+  // identify the resource rather than forcing text to overlap a sub-pixel-height segment.
+  expect(html).toContain('capital-resource-key-at1');
+  expect(html).toContain('AT1 £');
 });
 
 it('shows the 24-month Pillar 2A assessment as a waterfall with drill-down calculation details', () => {
