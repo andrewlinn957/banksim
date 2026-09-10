@@ -139,7 +139,21 @@ const actionHandlers: ActionHandlerMap = {
   issueTier2: (action: IssueTier2Action, ctx) => { applyIssueTier2(ctx.state,ctx.config,action.amount,action.maturityMonths,ctx.events); },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
-  setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => { ctx.state.behaviour.treasuryPolicy={giltShareOfHqla:clamp(action.giltShareOfHqla,0,1),giltDurationYears:clamp(action.giltDurationYears,.25,15)}; applyTreasuryPolicy(ctx.state,ctx.config,ctx.events); },
+  setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => {
+    const nextPolicy = {
+      giltShareOfHqla: clamp(action.giltShareOfHqla, 0, 1),
+      giltDurationYears: clamp(action.giltDurationYears, .25, 15),
+    };
+    const previous = ctx.state.behaviour.treasuryPolicy;
+    const changed =
+      !previous ||
+      Math.abs(previous.giltShareOfHqla - nextPolicy.giltShareOfHqla) > 1e-9 ||
+      Math.abs(previous.giltDurationYears - nextPolicy.giltDurationYears) > 1e-9;
+    ctx.state.behaviour.treasuryPolicy = nextPolicy;
+    // Treasury allocation changes are player actions. A standing policy is not silently
+    // re-applied every month, preserving the consequences of choosing to do nothing.
+    if (changed) applyTreasuryPolicy(ctx.state, ctx.config, ctx.events);
+  },
   setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
   setUnderwriting: (action: SetUnderwritingAction, ctx) => {
     if (!ctx.state.behaviour.underwritingTightness) {
@@ -1359,7 +1373,7 @@ export const stepFundingLadders = (
           )}, paid ${paid.toFixed(2)}, shortfall ${shortfall.toFixed(2)}, confidence stress ${confidenceStress.toFixed(
             2
           )}, state ${confidenceImpact.state}`,
-          ['funding']
+          ['funding', 'capital']
         )
       );
     } else {
@@ -1842,13 +1856,11 @@ export const applyDepositBehaviour = (
       let desiredDelta = rawDesiredDelta;
       if (meta.behaviour.isTermDeposit) {
         // Fixed-term savings are a flow market, not a perpetually compounding stock.
-        // A competitive offer should replenish the monthly slice that matures even if
-        // the contractual stock has temporarily run down. Target the share of retail
-        // savings that customers choose to lock, then acquire toward that target at
-        // no more than roughly one maturity-ladder slice per month.
+        // At a market-rate offer, the neutral lock-up share is aligned to the opening retail mix;
+        // only a deliberate pricing advantage should pull the bank materially toward term funding.
         const instantSavings = Math.max(0, findItem(state.financial.balanceSheet, LiabilityProductType.RetailCurrentAccounts)?.balance ?? 0);
         const rateAdvantage = laggedRate - competitor;
-        const targetTermShare = clamp(0.23 + 5 * rateAdvantage, 0.05, 0.45);
+        const targetTermShare = clamp(0.18 + 5 * rateAdvantage, 0.05, 0.45);
         const targetTermStock = instantSavings * targetTermShare / Math.max(0.05, 1 - targetTermShare);
         const tenor = Math.max(6, state.behaviour.termDepositTenorMonths ?? 12);
         const acquisitionCapacity = targetTermStock / tenor * dtMonths * 1.25;
@@ -3001,7 +3013,8 @@ export const createSimulationEngine = (): SimulationEngine => {
           nonCashAdjustmentsByProduct: {},
         };
     applyActions(state, activeConfig, actions, events);
-    applyTreasuryPolicy(state, activeConfig, events);
+    // Do not automatically re-apply treasury allocation here. If the player takes no treasury
+    // action, cash and gilts retain the consequences of ordinary balance-sheet flows.
     stepCompetitorReaction(state, activeConfig, dtMonths, events);
     if (featureFlags.depositSegmentation) {
       applyDepositBehaviour(state, activeConfig, dtMonths, events);
