@@ -1,3 +1,4 @@
+import { PlayerAction } from '../domain/actions';
 import { BankState, FundingMaturityBucket } from '../domain/bankState';
 import { AssetProductType } from '../domain/enums';
 import { nelsonSiegelYield } from './ukMarketModel';
@@ -30,7 +31,23 @@ const giltYieldForMaturity = (state: BankState, maturityYears: number): number =
 interface GiltTrade {
   side: 'buy' | 'sell';
   amount: number;
+  maturityYears?: number;
 }
+
+const explicitGiltTrades = (actions: readonly PlayerAction[]): GiltTrade[] =>
+  actions
+    .filter(
+      (action) =>
+        action.type === 'buySellAsset' &&
+        action.productType === AssetProductType.Gilts &&
+        Number.isFinite(action.amountDelta) &&
+        Math.abs(action.amountDelta) > EPS
+    )
+    .map((action) => ({
+      side: action.amountDelta > 0 ? 'buy' as const : 'sell' as const,
+      amount: Math.abs(action.amountDelta),
+      maturityYears: action.maturityYears,
+    }));
 
 const parseGiltTradeEvents = (events: readonly SimulationEvent[]): GiltTrade[] => {
   const trades: GiltTrade[] = [];
@@ -81,9 +98,9 @@ const makeLifecycleEvent = (message: string, step: number): SimulationEvent => (
  * Advances contractual gilt vintages after the core monthly close.
  *
  * Important behavioural distinction:
- * - user trades are detected from the core engine's explicit gilt transaction events and update
- *   the maturity ladder;
- * - contractual maturity is then a passive balance-sheet flow: gilts run off into BoE reserves;
+ * - explicit buy/sell actions update the maturity ladder using the maturity chosen by management;
+ * - legacy policy-driven rebalance events remain supported for old saves/tests;
+ * - contractual maturity is a passive balance-sheet flow: gilts run off into BoE reserves;
  * - nothing automatically reinvests those proceeds.
  *
  * The existing aggregate gilt line remains the accounting carrying-value line. Maturity therefore
@@ -93,10 +110,11 @@ const makeLifecycleEvent = (message: string, step: number): SimulationEvent => (
 export const advancePassiveGiltLifecycle = (args: {
   openingState: BankState;
   closingState: BankState;
+  actions: readonly PlayerAction[];
   events: SimulationEvent[];
   dtMonths: number;
 }): { maturedNotional: number; maturedCarryingValue: number } => {
-  const { openingState, closingState, events } = args;
+  const { openingState, closingState, actions, events } = args;
   const dtMonths = Math.max(1, Math.round(args.dtMonths));
   const openingGilt = findAsset(openingState, AssetProductType.Gilts);
   const closingGilt = findAsset(closingState, AssetProductType.Gilts);
@@ -106,7 +124,10 @@ export const advancePassiveGiltLifecycle = (args: {
   }
 
   let buckets = (openingState.fundingLadders?.[AssetProductType.Gilts] ?? []).map((bucket) => ({ ...bucket }));
-  const trades = parseGiltTradeEvents(events);
+  const directTrades = explicitGiltTrades(actions);
+  // setTreasuryPolicy is retained for backwards compatibility. If there is no explicit gilt trade,
+  // infer any legacy rebalance trade from the core engine's transaction event.
+  const trades = directTrades.length > 0 ? directTrades : parseGiltTradeEvents(events);
   const netTrade = trades.reduce(
     (sum, trade) => sum + (trade.side === 'buy' ? trade.amount : -trade.amount),
     0
@@ -116,18 +137,19 @@ export const advancePassiveGiltLifecycle = (args: {
   // the sequence of explicit trades began.
   let carryingCursor = Math.max(0, closingGilt.balance - netTrade);
 
-  const requestedMaturityYears = clamp(
+  const fallbackMaturityYears = clamp(
     closingState.behaviour.treasuryPolicy?.giltDurationYears ??
       openingState.behaviour.treasuryPolicy?.giltDurationYears ??
       5,
     0.25,
     30
   );
-  const purchaseTenorMonths = Math.max(3, Math.round(requestedMaturityYears * MONTHS_IN_YEAR));
-  const purchaseYield = giltYieldForMaturity(openingState, requestedMaturityYears);
 
   for (const trade of trades) {
     if (trade.side === 'buy') {
+      const maturityYears = clamp(trade.maturityYears ?? fallbackMaturityYears, 0.25, 30);
+      const purchaseTenorMonths = Math.max(3, Math.round(maturityYears * MONTHS_IN_YEAR));
+      const purchaseYield = giltYieldForMaturity(openingState, maturityYears);
       buckets.push({
         tenorMonths: purchaseTenorMonths,
         monthsToMaturity: purchaseTenorMonths,
@@ -210,7 +232,7 @@ export const advancePassiveGiltLifecycle = (args: {
     if (closingGilt.security) {
       closingGilt.security.effectiveDurationYears = weightedRemainingYears(
         survivors,
-        closingGilt.security.effectiveDurationYears ?? requestedMaturityYears
+        closingGilt.security.effectiveDurationYears ?? fallbackMaturityYears
       );
     }
   } else if (closingGilt.balance <= EPS) {
