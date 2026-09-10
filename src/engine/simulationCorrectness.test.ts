@@ -103,7 +103,16 @@ describe('Simulation correctness guardrails', () => {
     const stressed = cloneBankState(initialState);
     const cash = stressed.financial.balanceSheet.items.find((line) => line.productType === AssetProductType.CashReserves);
     if (!cash) throw new Error('Missing cash line item');
-    const targetCet1 = initialState.financial.capital.cet1 * 0.95;
+
+    // Keep the fixture inside regulatory buffers but clearly below a conservative internal target,
+    // independently of whatever opening capital level the calibration chooses.
+    const warningConfig = structuredClone(baseConfig);
+    warningConfig.riskLimits.capitalPolicy.internalTargetBaseBuffer = .05;
+    warningConfig.riskLimits.capitalPolicy.internalTargetMaxBuffer = .06;
+    const openingMetrics = calculateRiskMetrics({ state: stressed, config: warningConfig });
+    const inclusionRate = warningConfig.behaviour.securitiesAccounting.fvociCet1InclusionRate;
+    const targetAdjustedCet1 = (openingMetrics.cet1Requirement + 0.006) * openingMetrics.rwa;
+    const targetCet1 = targetAdjustedCet1 - stressed.financial.capital.accumulatedOCI * inclusionRate;
     const cet1Delta = targetCet1 - stressed.financial.capital.cet1;
     stressed.financial.capital.cet1 = targetCet1;
     cash.balance += cet1Delta;
@@ -114,11 +123,6 @@ describe('Simulation correctness guardrails', () => {
     stressed.behaviour.conductRiskScore = 1.4;
     stressed.behaviour.fundingConfidenceState = 'stressed';
 
-    // Keep the fixture inside regulatory buffers but clearly below a conservative
-    // internal target, independently of the career cost calibration.
-    const warningConfig = structuredClone(baseConfig);
-    warningConfig.riskLimits.capitalPolicy.internalTargetBaseBuffer = .05;
-    warningConfig.riskLimits.capitalPolicy.internalTargetMaxBuffer = .06;
     const { events } = engine.step({
       state: stressed,
       config: warningConfig,
