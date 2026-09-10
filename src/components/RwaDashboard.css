@@ -11,11 +11,12 @@
 .rwa-card-heading > strong { font-size: 16px; white-space: nowrap; }
 .rwa-map-layout { display: grid; grid-template-columns: minmax(240px, .9fr) minmax(220px, 1.1fr); gap: 14px; min-height: 420px; }
 .rwa-map-wrap { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.rwa-region-map { display: block; width: 100%; max-height: 370px; }
+.rwa-region-map { display: block; width: 100%; max-height: 390px; overflow: visible; }
 .rwa-region-map path { cursor: pointer; transition: filter .12s ease, stroke-width .12s ease; outline: none; }
 .rwa-region-map path:hover, .rwa-region-map path:focus { filter: brightness(.91) saturate(1.12); }
 .rwa-map-scale { display: grid; grid-template-columns: auto minmax(80px, 1fr) auto; gap: 8px; align-items: center; margin: 4px 18px 0; color: var(--muted); font-size: 10px; }
 .rwa-map-scale i { height: 8px; border-radius: 999px; background: linear-gradient(90deg, hsl(207 72% 92%), hsl(207 72% 44%)); }
+.rwa-map-source { margin: 5px 18px 0; color: var(--muted); font-size: 9px; text-align: center; }
 .rwa-map-detail { display: flex; flex-direction: column; min-width: 0; padding: 10px 0; }
 .rwa-map-detail > span { color: var(--muted); font-size: 11px; }
 .rwa-map-detail > strong { margin-top: 3px; font-size: 25px; }
