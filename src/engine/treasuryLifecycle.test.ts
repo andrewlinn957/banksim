@@ -39,7 +39,7 @@ describe('Passive treasury lifecycle', () => {
     expect(events.some((event) => /^Bought Gilts:|^Sold Gilts:/i.test(event.message))).toBe(false);
   });
 
-  it('records explicit gilt purchases at the selected maturity point on the simulated curve', () => {
+  it('records an explicit gilt purchase at its selected maturity point on the simulated curve', () => {
     const state = cloneBankState(initialState);
     const engine = createSimulationEngineWithTreasuryLifecycle();
     const expectedYield = nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, 2);
@@ -47,7 +47,14 @@ describe('Passive treasury lifecycle', () => {
     const { nextState, events } = engine.step({
       state,
       config: baseConfig,
-      actions: [{ type: 'setTreasuryPolicy', giltShareOfHqla: 0.65, giltDurationYears: 2 }],
+      actions: [
+        {
+          type: 'buySellAsset',
+          productType: AssetProductType.Gilts,
+          amountDelta: 100e6,
+          maturityYears: 2,
+        },
+      ],
       shocks: [],
     });
 
