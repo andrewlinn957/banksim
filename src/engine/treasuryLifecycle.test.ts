@@ -64,4 +64,33 @@ describe('Passive treasury lifecycle', () => {
     expect(purchased).toBeDefined();
     expect(purchased?.rate).toBeCloseTo(expectedYield, 10);
   });
+
+  it('records only the gilt notional that actually settles when a purchase exceeds available reserves', () => {
+    const state = cloneBankState(initialState);
+    const engine = createSimulationEngineWithTreasuryLifecycle();
+
+    const { nextState, events } = engine.step({
+      state,
+      config: baseConfig,
+      actions: [
+        {
+          type: 'buySellAsset',
+          productType: AssetProductType.Gilts,
+          amountDelta: 10e9,
+          maturityYears: 5,
+        },
+      ],
+      shocks: [],
+    });
+
+    const settlement = events.find((event) => /^Bought Gilts:/i.test(event.message));
+    const executed = Number(settlement?.message.match(/^Bought Gilts: \+([0-9.]+)/i)?.[1] ?? 0);
+    const purchased = (nextState.fundingLadders[AssetProductType.Gilts] ?? []).find(
+      (bucket) => bucket.tenorMonths === 60
+    );
+    expect(events.some((event) => event.message.includes('Insufficient cash to buy Gilts'))).toBe(true);
+    expect(executed).toBeGreaterThan(0);
+    expect(executed).toBeLessThan(10e9);
+    expect(purchased?.notional).toBeCloseTo(executed, 2);
+  });
 });
