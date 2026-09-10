@@ -269,7 +269,10 @@ const behaviour: BehaviourParameters = {
       maxAddressableMarketMultiplier: 1.45,
     },
     [AssetProductType.ConsumerLoans]: {
-      baseDemandRateMonthly: 0.035, pricingSensitivity: 18, macroSensitivity: 1.6, baseApprovalRate: 0.62,
+      // A 48-month unsecured book needs materially more gross demand than a mortgage book simply
+      // to replace scheduled amortisation. This is calibrated to keep neutral pricing economically
+      // meaningful without originating automatically on the player's behalf.
+      baseDemandRateMonthly: 0.055, pricingSensitivity: 18, macroSensitivity: 1.6, baseApprovalRate: 0.62,
       underwritingSensitivity: 0.7, drawdownRateMonthly: 0.7, cancellationRateMonthly: 0.08,
       referenceMarketSize: 220e9, referenceBankShare: 0.0032, neutralGdpGrowthMonthly: 0.0015,
       neutralUnemploymentRate: 0.045, neutralBorrowerRate: 0.105, neutralCreditSpread: 0.012,
@@ -277,7 +280,7 @@ const behaviour: BehaviourParameters = {
       creditSpreadMarketSensitivity: 5, minAddressableMarketMultiplier: 0.4, maxAddressableMarketMultiplier: 1.5,
     },
     [AssetProductType.CorporateLoans]: {
-      baseDemandRateMonthly: 0.026,
+      baseDemandRateMonthly: 0.032,
       pricingSensitivity: 65,
       macroSensitivity: 1.8,
       baseApprovalRate: 0.72,
