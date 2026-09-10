@@ -287,7 +287,7 @@ export const simulationTestCases: SimulationTestCase[] = [
     name: 'raising ST wholesale funding and buying mortgages reduces LCR and NSFR',
     run: (ctx) => {
       const baseline = step(ctx, ctx.createState());
-      assertAccountingOk(base, 'baseline');
+      assertAccountingOk(baseline, 'baseline');
 
       const stressed = step(ctx, ctx.createState(), [
         { type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingST, amount: 20e9, rate: 0.055 },
