@@ -3,6 +3,7 @@ import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide } from '../domain/enums';
 import { UK_ITL1_LABELS, UK_ITL1_REGIONS, UkItl1Region } from '../domain/ukItl1';
+import { UK_ITL1_MAP_PATHS, UK_ITL1_MAP_VIEWBOX } from '../domain/ukItl1MapPaths';
 import { assetCreditRwa, loanCreditRwaByRegion } from '../engine/creditRwa';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
@@ -39,6 +40,7 @@ export const rwaDashboardData = (state: BankState, config: SimulationConfig) => 
 
   const creditRwa = assetRows.reduce((sum, row) => sum + row.rwa, 0);
   const loanRwa = UK_ITL1_REGIONS.reduce((sum, region) => sum + regionalRwa[region], 0);
+  const operationalRiskRwa = Math.max(0, config.riskLimits.rwaAddOns?.operationalRisk ?? 0);
   const totalRwa = state.risk.riskMetrics.rwa;
   const addOns = totalRwa - creditRwa;
   const creditExposure = assetRows.reduce((sum, row) => sum + row.exposure, 0);
@@ -47,26 +49,12 @@ export const rwaDashboardData = (state: BankState, config: SimulationConfig) => 
     totalRwa,
     creditRwa,
     loanRwa,
+    operationalRiskRwa,
     addOns,
     effectiveCreditWeight: creditExposure > 0 ? creditRwa / creditExposure : NaN,
     regionalRwa,
     assetRows,
   };
-};
-
-const MAP_PATHS: Record<UkItl1Region, string> = {
-  northernIreland: 'M28 214 L65 200 L90 220 L84 255 L55 274 L28 260 Z',
-  scotland: 'M135 20 L205 28 L228 68 L214 110 L236 140 L205 168 L155 162 L132 125 L110 103 L122 58 Z',
-  northEast: 'M205 168 L236 140 L251 181 L241 217 L216 226 L201 203 Z',
-  northWest: 'M155 162 L205 168 L201 203 L187 232 L147 230 L130 198 Z',
-  yorkshireAndTheHumber: 'M187 232 L201 203 L216 226 L241 217 L246 254 L222 273 L187 267 Z',
-  westMidlands: 'M147 230 L187 232 L187 267 L173 310 L140 300 L125 265 Z',
-  eastMidlands: 'M187 267 L222 273 L231 314 L203 332 L173 310 Z',
-  wales: 'M125 265 L140 300 L132 339 L102 358 L82 334 L91 297 Z',
-  eastOfEngland: 'M222 273 L246 254 L263 298 L260 345 L232 359 L203 332 L231 314 Z',
-  southWest: 'M132 339 L173 310 L203 332 L190 369 L169 405 L130 424 L88 416 L102 385 Z',
-  southEast: 'M203 332 L232 359 L260 345 L276 386 L247 416 L213 402 L190 369 Z',
-  london: 'M220 356 L233 359 L238 372 L225 378 L215 369 Z',
 };
 
 const SummaryCard = ({ label, value, sub }: { label: string; value: string; sub: string }) => (
@@ -92,14 +80,17 @@ function RegionMap({ regionalRwa }: { regionalRwa: Record<UkItl1Region, number> 
   return (
     <div className="rwa-map-layout">
       <div className="rwa-map-wrap">
-        <svg className="rwa-region-map" viewBox="0 0 320 450" role="img" aria-label="UK loan risk-weighted assets by ITL1 region">
+        <svg className="rwa-region-map" viewBox={UK_ITL1_MAP_VIEWBOX} role="img" aria-label="UK loan risk-weighted assets by ITL1 region">
           {UK_ITL1_REGIONS.map(region => (
             <path
               key={region}
-              d={MAP_PATHS[region]}
+              d={UK_ITL1_MAP_PATHS[region]}
               fill={fill(region)}
+              fillRule="evenodd"
+              clipRule="evenodd"
               stroke="var(--panel)"
-              strokeWidth={region === active ? 4 : 2}
+              strokeWidth={region === active ? 2.6 : 1.2}
+              vectorEffect="non-scaling-stroke"
               tabIndex={0}
               data-itl1-region={region}
               aria-label={`${UK_ITL1_LABELS[region]}: ${formatCurrency(regionalRwa[region])} RWA`}
@@ -115,6 +106,7 @@ function RegionMap({ regionalRwa }: { regionalRwa: Record<UkItl1Region, number> 
         <div className="rwa-map-scale" aria-label={`Colour scale from £0 to ${formatCurrency(maxRwa)}`}>
           <span>£0</span><i /><span>{formatCurrency(maxRwa)}</span>
         </div>
+        <small className="rwa-map-source">Source: ONS ITL1 boundaries, January 2025</small>
       </div>
       <div className="rwa-map-detail" aria-live="polite">
         <span>{UK_ITL1_LABELS[selected]}</span>
@@ -150,7 +142,7 @@ export default function RwaDashboard({ state, config, history }: { state: BankSt
       <div className="rwa-summary-grid">
         <SummaryCard label="Total RWA" value={formatCurrency(d.totalRwa)} sub="All risk-weighted assets" />
         <SummaryCard label="Credit RWA" value={formatCurrency(d.creditRwa)} sub={d.totalRwa > 0 ? `${formatPct(d.creditRwa / d.totalRwa)} of total` : 'N/A'} />
-        <SummaryCard label="Loan RWA" value={formatCurrency(d.loanRwa)} sub={d.creditRwa > 0 ? `${formatPct(d.loanRwa / d.creditRwa)} of credit RWA` : 'N/A'} />
+        <SummaryCard label="Operational risk RWA" value={formatCurrency(d.operationalRiskRwa)} sub={d.totalRwa > 0 ? `${formatPct(d.operationalRiskRwa / d.totalRwa)} of total` : 'N/A'} />
         <SummaryCard label="Effective credit RW" value={formatPct(d.effectiveCreditWeight)} sub="RWA / on-balance-sheet assets" />
       </div>
 
