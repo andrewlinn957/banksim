@@ -61,8 +61,16 @@ const snapshot = (state: typeof initialState) => {
   return {
     month: state.time.step,
     assets,
+    mortgages: balance(state, AssetProductType.Mortgages),
+    consumerLoans: balance(state, AssetProductType.ConsumerLoans),
+    corporateLoans: balance(state, AssetProductType.CorporateLoans),
     loans,
+    retailCurrent: balance(state, LiabilityProductType.RetailCurrentAccounts),
+    retailTerm: balance(state, LiabilityProductType.RetailTermDeposits),
+    corporateOperating: balance(state, LiabilityProductType.CorporateOperatingDeposits),
+    corporateNonOperating: balance(state, LiabilityProductType.CorporateNonOperatingDeposits),
     deposits,
+    wholesaleLt: balance(state, LiabilityProductType.WholesaleFundingLT),
     cash,
     gilts,
     liquidAssetShare: assets > 0 ? (cash + gilts) / assets : 0,
@@ -88,19 +96,23 @@ const snapshot = (state: typeof initialState) => {
 };
 
 describe('Passive bank calibration diagnostics', () => {
-  it('reports the unmanaged balance-sheet and liquidity path without hidden management actions', () => {
+  it('reports the unmanaged balance-sheet and liquidity path without player actions', () => {
     const engine = createSimulationEngine();
     let state = cloneBankState(initialState);
     const checkpoints = new Set([0, 12, 24, 36, 60, 120]);
     const results = [snapshot(state)];
+    let hiddenTreasuryTrades = 0;
 
     for (let month = 1; month <= 120; month++) {
-      state = engine.step({ state, config: baseConfig, actions: [], shocks: [] }).nextState;
+      const result = engine.step({ state, config: baseConfig, actions: [], shocks: [] });
+      hiddenTreasuryTrades += result.events.filter((event) => /Bought Gilts|Sold Gilts/.test(event.message)).length;
+      state = result.nextState;
       if (checkpoints.has(month)) results.push(snapshot(state));
       if (state.status.hasFailed) break;
     }
 
     console.log('PASSIVE_BANK_CALIBRATION=' + JSON.stringify(results));
+    console.log('PASSIVE_HIDDEN_TREASURY_TRADES=' + hiddenTreasuryTrades);
     expect(state.status.hasFailed).toBe(false);
     expect(state.time.step).toBeGreaterThanOrEqual(120);
   });
