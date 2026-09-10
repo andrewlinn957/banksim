@@ -1,4 +1,3 @@
-import { AssetProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import {
   computeMetrics,
@@ -6,7 +5,7 @@ import {
   type SimulationEngine,
   type SimulationStepInput,
   type SimulationStepOutput,
-} from './simulation';
+} from './simulationCore';
 import { advancePassiveGiltLifecycle, syncReserveRemuneration } from './treasuryLifecycle';
 
 const lcrShockMultiplier = (input: SimulationStepInput): number =>
@@ -32,7 +31,7 @@ export const createSimulationEngineWithTreasuryLifecycle = (): SimulationEngine 
 
   const step = (input: SimulationStepInput): SimulationStepOutput => {
     const openingState = cloneBankState(input.state);
-    // Current-period reserve income should use the Bank Rate prevailing at the start of the period.
+    // Current-period reserve income uses the Bank Rate prevailing at the start of the period.
     syncReserveRemuneration(openingState);
 
     const output = core.step({ ...input, state: openingState });
@@ -60,13 +59,8 @@ export const createSimulationEngineWithTreasuryLifecycle = (): SimulationEngine 
     }
 
     // The market model advances at the end of the core step. Store the new Bank Rate on the reserve
-    // line so the displayed position and next period both reflect the floating-rate nature of cash.
+    // line so the displayed position and the next period both reflect the floating-rate asset.
     syncReserveRemuneration(output.nextState);
-
-    const reserves = output.nextState.financial.balanceSheet.items.find(
-      (item) => item.productType === AssetProductType.CashReserves
-    );
-    if (reserves) reserves.interestRate = Math.max(0, output.nextState.market.baseRate);
 
     return output;
   };
