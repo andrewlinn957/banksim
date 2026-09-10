@@ -41,31 +41,31 @@ const balanceSheet: BalanceSheet = {
   items: [
     createPosition(baseConfig, {
       productType: AssetProductType.CashReserves,
-      balance: 1.5e9,
+      balance: 1.2e9,
       interestRate: 0.031,
       maturityBucket: MaturityBucket.Overnight,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.Gilts,
-      balance: 2.5e9,
+      balance: 1.2e9,
       interestRate: 0.041,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.Mortgages,
-      balance: 7.0e9,
+      balance: 7.2e9,
       interestRate: 0.050,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.ConsumerLoans,
-      balance: 0.7e9,
+      balance: 1.0e9,
       interestRate: 0.105,
       maturityBucket: MaturityBucket.ThreeToFiveY,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.CorporateLoans,
-      balance: 2.261e9,
+      balance: 2.961e9,
       interestRate: 0.068,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
@@ -90,12 +90,14 @@ const balanceSheet: BalanceSheet = {
     createPosition(baseConfig, {
       productType: LiabilityProductType.CorporateNonOperatingDeposits,
       balance: 0.3e9,
-      interestRate: 0.030,
+      // Keep the opening non-operating offer close to the corporate market. The prior 3% rate
+      // versus a 2.1% market rate mechanically attracted unstable balances in a no-action run.
+      interestRate: 0.021,
       maturityBucket: MaturityBucket.LessThan1Y,
     }),
     createPosition(baseConfig, {
       productType: LiabilityProductType.WholesaleFundingLT,
-      balance: 1.2e9,
+      balance: 0.8e9,
       interestRate: 0.053,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
@@ -255,7 +257,7 @@ const behaviour: BehaviouralState = {
     [LiabilityProductType.RetailCurrentAccounts]: 0.017,
     [LiabilityProductType.RetailTermDeposits]: 0.038,
     [LiabilityProductType.CorporateOperatingDeposits]: 0.0205,
-    [LiabilityProductType.CorporateNonOperatingDeposits]: 0.03,
+    [LiabilityProductType.CorporateNonOperatingDeposits]: 0.021,
   },
   depositUnderpricingMonths: {
     [LiabilityProductType.RetailCurrentAccounts]: 0,
@@ -275,7 +277,9 @@ const behaviour: BehaviouralState = {
     [AssetProductType.CorporateLoans]: 0.25,
   },
   mortgagePolicy: { maxLtv: 0.85, fixedPeriodMonths: 24 },
-  treasuryPolicy: { giltShareOfHqla: 0.625, giltDurationYears: 5 },
+  // No default treasury allocation rule. Cash and securities move only through actual balance-sheet
+  // flows or a treasury action chosen by the player; the passive bank is intentionally unmanaged.
+  treasuryPolicy: undefined,
   termDepositTenorMonths: 12,
   insuredRetailDepositShare: 0.9,
   largeDepositorShare: 0.04,
@@ -374,9 +378,9 @@ const seedState: BankState = {
   fundingLadders: {
     [LiabilityProductType.RetailTermDeposits]: Array.from({ length: 12 }, (_, i) => ({ tenorMonths: 12, monthsToMaturity: i + 1, notional: 125e6, rate: 0.038 })),
     [LiabilityProductType.WholesaleFundingLT]: [
-      { tenorMonths: 24, monthsToMaturity: 24, notional: 400e6, rate: 0.053 },
-      { tenorMonths: 36, monthsToMaturity: 36, notional: 400e6, rate: 0.053 },
-      { tenorMonths: 60, monthsToMaturity: 60, notional: 400e6, rate: 0.053 },
+      { tenorMonths: 24, monthsToMaturity: 24, notional: 0.8e9 / 3, rate: 0.053 },
+      { tenorMonths: 36, monthsToMaturity: 36, notional: 0.8e9 / 3, rate: 0.053 },
+      { tenorMonths: 60, monthsToMaturity: 60, notional: 0.8e9 / 3, rate: 0.053 },
     ],
     [LiabilityProductType.BankOfEnglandFunding]: [],
     [LiabilityProductType.Tier2Debt]: [],
