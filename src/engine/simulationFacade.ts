@@ -5,7 +5,7 @@ import {
   type SimulationEngine,
   type SimulationStepInput,
   type SimulationStepOutput,
-} from './simulationCore';
+} from './simulation';
 import { advancePassiveGiltLifecycle, syncReserveRemuneration } from './treasuryLifecycle';
 
 const lcrShockMultiplier = (input: SimulationStepInput): number =>
