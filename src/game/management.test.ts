@@ -22,7 +22,13 @@ describe('Long-view management', () => {
   expect(clockAfterStep(Infinity,initialState,baseConfig,false).remaining).toBe(Infinity);
  });
  it('interrupts auto on actual risk even before the period ends, and always stops on failure', () => {
-  const s=cloneBankState(initialState);s.risk.riskMetrics.lcr=1.09;
+  const s=cloneBankState(initialState);
+  // Isolate the liquidity condition: the opening bank can legitimately move closer to its capital
+  // target as calibration changes, which should not change what this test is exercising.
+  s.risk.riskMetrics.cet1Ratio=s.risk.riskMetrics.cet1Requirement+0.02;
+  s.risk.riskMetrics.internalCet1Headroom=0.02;
+  s.risk.riskMetrics.praBufferBreached=false;
+  s.risk.riskMetrics.lcr=1.09;
   expect(clockAfterStep(12,s,baseConfig,true).remaining).toBeNull();expect(clockAfterStep(12,s,baseConfig,true).reason).toContain('Liquidity');
   expect(clockAfterStep(12,s,baseConfig,false).remaining).toBe(11);
   s.status.hasFailed=true;expect(clockAfterStep(Infinity,s,baseConfig,false).remaining).toBeNull();
