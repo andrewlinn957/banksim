@@ -3,6 +3,7 @@ import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
+import { calculateRiskMetrics } from './metrics';
 import { createSimulationEngine } from './simulation';
 
 const findBalance = (state: typeof initialState, productType: AssetProductType | LiabilityProductType) =>
@@ -17,10 +18,18 @@ describe('Internal capital target and payout gating', () => {
     config.riskLimits.capitalPolicy.internalTargetVolatilitySensitivity = .02;
     config.riskLimits.capitalPolicy.internalTargetMaxBuffer = .05;
 
+    const openingMetrics = calculateRiskMetrics({ state: initialState, config });
+    const inclusionRate = config.behaviour.securitiesAccounting.fvociCet1InclusionRate;
+    // Build the fixture from the live regulatory requirement rather than taking a percentage of
+    // opening CET1. The 150bp cushion leaves the benign case above its ordinary internal buffer
+    // after one month's balance-sheet movement, while the stressed case still consumes the much
+    // larger dynamic buffer created by volatility, confidence and conduct signals.
+    const targetAdjustedCet1 = (openingMetrics.cet1Requirement + 0.015) * openingMetrics.rwa;
+    const targetCet1 = targetAdjustedCet1 - initialState.financial.capital.accumulatedOCI * inclusionRate;
+
     const benignState = cloneBankState(initialState);
     const benignCash = findBalance(benignState, AssetProductType.CashReserves);
     if (!benignCash) throw new Error('Missing cash line for benign internal target test');
-    const targetCet1 = initialState.financial.capital.cet1 * 0.95;
     const benignCet1Delta = targetCet1 - benignState.financial.capital.cet1;
     benignState.financial.capital.cet1 = targetCet1;
     benignCash.balance += benignCet1Delta;

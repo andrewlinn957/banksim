@@ -17,14 +17,17 @@ export interface LoanPipelineState {
 export type LoanPipelineMap = Partial<Record<ProductType, LoanPipelineState>>;
 export type LoanWorkoutPipelineMap = Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 
-export interface FundingMaturityBucket {
+export interface ContractualMaturityBucket {
   tenorMonths: number;
   monthsToMaturity: number;
   notional: number;
   rate: number;
 }
 
-export type FundingLadderMap = Partial<Record<ProductType, FundingMaturityBucket[]>>;
+/** @deprecated Compatibility name for liability funding code and existing saves. */
+export type FundingMaturityBucket = ContractualMaturityBucket;
+export type FundingLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
+export type AssetMaturityLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
 
 export interface ProvisionStock {
   stage1: number;
@@ -56,9 +59,9 @@ export interface MortgagePolicyState {
 }
 
 export interface TreasuryPolicyState {
-  /** Target fraction of reserves + gilts held in gilts. */
+  /** @deprecated Legacy descriptive target retained for save/replay compatibility. */
   giltShareOfHqla: number;
-  /** Target effective duration of the gilt portfolio. */
+  /** @deprecated Legacy/default duration retained for old treasury-policy actions. */
   giltDurationYears: number;
 }
 
@@ -150,5 +153,7 @@ export interface BankState {
   loanPipelines: LoanPipelineMap;
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;
+  /** Contractual maturity ladders for assets; separated from liability funding ladders. */
+  assetMaturityLadders?: AssetMaturityLadderMap;
   status: SimulationStatus;
 }

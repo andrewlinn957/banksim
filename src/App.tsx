@@ -121,7 +121,8 @@ const App = () => {
       baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
     ).toString(),
     at1CouponMode: bankState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
-    giltShareOfHqla: String(bankState.behaviour.treasuryPolicy?.giltShareOfHqla ?? .625),
+    giltTradeDirection: 'none',
+    giltTradeAmount: '',
     giltDurationYears: String(bankState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
     boeFacility: 'none',
     boeFundingAmount: '',
@@ -267,6 +268,8 @@ const App = () => {
     setPendingRiskAppetite(undefined);
     setActionForm(prev => ({
       ...prev,
+      giltTradeDirection: 'none',
+      giltTradeAmount: '',
       issueLTDebtAmount: '',
       issueEquityAmount: '',
       issueTier2Amount: '',
@@ -425,7 +428,8 @@ const App = () => {
         scenarioConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
       ).toString(),
       at1CouponMode: scenarioState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
-      giltShareOfHqla: String(scenarioState.behaviour.treasuryPolicy?.giltShareOfHqla ?? .625),
+      giltTradeDirection: 'none',
+      giltTradeAmount: '',
       giltDurationYears: String(scenarioState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
       boeFacility: 'none',
       boeFundingAmount: '',
@@ -584,13 +588,11 @@ const App = () => {
                   <div className="muted" style={{ marginTop: 4 }}>{scenarioDebrief.summary}</div>
                   {scenarioDebrief.topDrivers.length > 0 && (
                     <div className="muted" style={{ marginTop: 6 }}>
-                      <strong>Top drivers:</strong> {scenarioDebrief.topDrivers.join(' | ')}
-                    </div>
+                      <strong>Top drivers:</strong> {scenarioDebrief.topDrivers.join(' | ')}</div>
                   )}
                   {scenarioDebrief.recommendedLevers.length > 0 && (
                     <div className="muted" style={{ marginTop: 6 }}>
-                      <strong>Try next:</strong> {scenarioDebrief.recommendedLevers.join(' | ')}
-                    </div>
+                      <strong>Try next:</strong> {scenarioDebrief.recommendedLevers.join(' | ')}</div>
                   )}
                 </div>
               )}
@@ -796,7 +798,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     }
   });
 
-  const amountFields: Array<keyof ActionFormState> = ['issueLTDebtAmount','issueEquityAmount','issueTier2Amount','boeFundingAmount','hedgeNotional'];
+  const amountFields: Array<keyof ActionFormState> = ['issueLTDebtAmount','issueEquityAmount','issueTier2Amount','giltTradeAmount','boeFundingAmount','hedgeNotional'];
   amountFields.forEach((field) => {
     const parsed = parseMoneyInput(state[field]);
     if (parsed.error) {
@@ -808,8 +810,9 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     }
   });
 
-  for (const field of ['mortgageMaxLtv','giltShareOfHqla'] as Array<keyof ActionFormState>) { const parsed=parseRateInput(state[field]); if(parsed.error) errors[field]=parsed.error; else if(parsed.value!==undefined){ if(parsed.value<0||parsed.value>1) errors[field]='Must be between 0 and 1'; else values[field]=parsed.value; } }
+  for (const field of ['mortgageMaxLtv'] as Array<keyof ActionFormState>) { const parsed=parseRateInput(state[field]); if(parsed.error) errors[field]=parsed.error; else if(parsed.value!==undefined){ if(parsed.value<0||parsed.value>1) errors[field]='Must be between 0 and 1'; else values[field]=parsed.value; } }
   for (const field of ['mortgageFixedPeriodMonths','termDepositTenorMonths','giltDurationYears'] as Array<keyof ActionFormState>) { const raw=Number(state[field]); if(!Number.isFinite(raw)||raw<=0) errors[field]='Must be a positive number'; else values[field]=raw; }
+  if(state.giltTradeDirection!=='none' && (values.giltTradeAmount??0)<=0) errors.giltTradeAmount='Enter an amount for the selected gilt transaction';
   if(state.boeFacility!=='none' && (values.boeFundingAmount??0)<=0) errors.boeFundingAmount='Enter an amount for the selected Bank of England facility';
 
   const payoutParsed = parseRateInput(state.dividendPayoutRatio);
@@ -908,7 +911,14 @@ const buildActionsFromParsed = (
     });
   }
   if (values.mortgageMaxLtv!==undefined && values.mortgageFixedPeriodMonths!==undefined) actions.push({type:'setMortgagePolicy',maxLtv:values.mortgageMaxLtv,fixedPeriodMonths:values.mortgageFixedPeriodMonths});
-  if (values.giltShareOfHqla!==undefined && values.giltDurationYears!==undefined) actions.push({type:'setTreasuryPolicy',giltShareOfHqla:values.giltShareOfHqla,giltDurationYears:values.giltDurationYears});
+  if (formState.giltTradeDirection!=='none' && values.giltTradeAmount!==undefined && values.giltTradeAmount>0) {
+    actions.push({
+      type:'buySellAsset',
+      productType:AssetProductType.Gilts,
+      amountDelta:formState.giltTradeDirection==='buy'?values.giltTradeAmount:-values.giltTradeAmount,
+      tenorMonths:Math.round(values.giltDurationYears * 12),
+    });
+  }
   if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
   if (values.issueTier2Amount!==undefined && values.issueTier2Amount>0) actions.push({type:'issueTier2',amount:values.issueTier2Amount,maturityMonths:60});
   if (values.issueLTDebtAmount !== undefined && values.issueLTDebtAmount > 0) {

@@ -37,35 +37,39 @@ const unemploymentToLatent = (u: number, uMin: number, uMax: number): number => 
   return logit(safeP);
 };
 
+const OPENING_BANK_RATE = 0.0475;
+
 const balanceSheet: BalanceSheet = {
   items: [
     createPosition(baseConfig, {
       productType: AssetProductType.CashReserves,
-      balance: 1.5e9,
-      interestRate: 0.031,
+      balance: 1.2e9,
+      // Uninvested sterling liquidity sits in the Bank of England reserve account.
+      // The opening remuneration rate is therefore Bank Rate, not a treasury spread assumption.
+      interestRate: OPENING_BANK_RATE,
       maturityBucket: MaturityBucket.Overnight,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.Gilts,
-      balance: 2.5e9,
+      balance: 1.2e9,
       interestRate: 0.041,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.Mortgages,
-      balance: 7.0e9,
+      balance: 7.2e9,
       interestRate: 0.050,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.ConsumerLoans,
-      balance: 0.7e9,
+      balance: 1.0e9,
       interestRate: 0.105,
       maturityBucket: MaturityBucket.ThreeToFiveY,
     }),
     createPosition(baseConfig, {
       productType: AssetProductType.CorporateLoans,
-      balance: 2.261e9,
+      balance: 2.961e9,
       interestRate: 0.068,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
@@ -90,12 +94,14 @@ const balanceSheet: BalanceSheet = {
     createPosition(baseConfig, {
       productType: LiabilityProductType.CorporateNonOperatingDeposits,
       balance: 0.3e9,
-      interestRate: 0.030,
+      // Keep the opening non-operating offer close to the corporate market. The prior 3% rate
+      // versus a 2.1% market rate mechanically attracted unstable balances in a no-action run.
+      interestRate: 0.021,
       maturityBucket: MaturityBucket.LessThan1Y,
     }),
     createPosition(baseConfig, {
       productType: LiabilityProductType.WholesaleFundingLT,
-      balance: 1.2e9,
+      balance: 0.8e9,
       interestRate: 0.053,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
@@ -103,10 +109,10 @@ const balanceSheet: BalanceSheet = {
 };
 
 const capital: CapitalState = {
-  // Calibrated toward Metro 2024 year-end mix (higher CET1, lower AT1),
-  // while keeping total opening equity unchanged for balance-sheet consistency.
-  cet1: 0.808e9,
-  at1: 0.136e9,
+  // Keep total opening equity unchanged while shifting the mix toward CET1. The denser loan book
+  // used for liquidity calibration otherwise leaves the opening bank unhelpfully close to MDA.
+  cet1: 0.920e9,
+  at1: 0.024e9,
   tier2: 0,
   accumulatedOCI: 0.017e9,
 };
@@ -213,7 +219,7 @@ const nsFactors = fitNelsonSiegelFrom3Points(NS_LAMBDA, [
 ]);
 
 const market: MarketState = {
-  baseRate: 0.0475,
+  baseRate: OPENING_BANK_RATE,
   riskFreeShort: giltYields.y1,
   riskFreeLong: giltYields.y30,
   mortgageSpread: 0.013,
@@ -255,7 +261,7 @@ const behaviour: BehaviouralState = {
     [LiabilityProductType.RetailCurrentAccounts]: 0.017,
     [LiabilityProductType.RetailTermDeposits]: 0.038,
     [LiabilityProductType.CorporateOperatingDeposits]: 0.0205,
-    [LiabilityProductType.CorporateNonOperatingDeposits]: 0.03,
+    [LiabilityProductType.CorporateNonOperatingDeposits]: 0.021,
   },
   depositUnderpricingMonths: {
     [LiabilityProductType.RetailCurrentAccounts]: 0,
@@ -275,7 +281,9 @@ const behaviour: BehaviouralState = {
     [AssetProductType.CorporateLoans]: 0.25,
   },
   mortgagePolicy: { maxLtv: 0.85, fixedPeriodMonths: 24 },
-  treasuryPolicy: { giltShareOfHqla: 0.625, giltDurationYears: 5 },
+  // This is descriptive legacy UI state, not an instruction to rebalance every month. It matches
+  // the physical opening 50/50 reserves/gilt mix so the first no-change UI step does not trade.
+  treasuryPolicy: { giltShareOfHqla: 0.5, giltDurationYears: 5 },
   termDepositTenorMonths: 12,
   insuredRetailDepositShare: 0.9,
   largeDepositorShare: 0.04,
@@ -371,12 +379,20 @@ const seedState: BankState = {
     [AssetProductType.ConsumerLoans]: [],
     [AssetProductType.CorporateLoans]: [],
   },
+  assetMaturityLadders: {
+    [AssetProductType.Gilts]: Array.from({ length: 120 }, (_, i) => ({
+      tenorMonths: 120,
+      monthsToMaturity: i + 1,
+      notional: 10e6,
+      rate: 0.041,
+    })),
+  },
   fundingLadders: {
     [LiabilityProductType.RetailTermDeposits]: Array.from({ length: 12 }, (_, i) => ({ tenorMonths: 12, monthsToMaturity: i + 1, notional: 125e6, rate: 0.038 })),
     [LiabilityProductType.WholesaleFundingLT]: [
-      { tenorMonths: 24, monthsToMaturity: 24, notional: 400e6, rate: 0.053 },
-      { tenorMonths: 36, monthsToMaturity: 36, notional: 400e6, rate: 0.053 },
-      { tenorMonths: 60, monthsToMaturity: 60, notional: 400e6, rate: 0.053 },
+      { tenorMonths: 24, monthsToMaturity: 24, notional: 0.8e9 / 3, rate: 0.053 },
+      { tenorMonths: 36, monthsToMaturity: 36, notional: 0.8e9 / 3, rate: 0.053 },
+      { tenorMonths: 60, monthsToMaturity: 60, notional: 0.8e9 / 3, rate: 0.053 },
     ],
     [LiabilityProductType.BankOfEnglandFunding]: [],
     [LiabilityProductType.Tier2Debt]: [],
@@ -421,7 +437,8 @@ seedLoanCohorts(AssetProductType.CorporateLoans);
 
 seedState.financial.balanceSheet.items.forEach((item) => {
   if (!item.security) return;
-  item.security.valuationReferenceYield = seedState.market.riskFreeLong;
+  item.security.valuationReferenceYield =
+    item.productType === AssetProductType.Gilts ? giltYields.y5 : seedState.market.riskFreeLong;
   item.security.amortisedCost = item.balance;
   item.security.lossAllowance = securityEcl(item, baseConfig);
   if (item.security.classification === 'FVOCI') {

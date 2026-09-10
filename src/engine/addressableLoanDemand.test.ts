@@ -11,7 +11,9 @@ const item = (state: typeof initialState, product: AssetProductType) =>
 describe('Addressable loan demand', () => {
   it('pins the calibrated neutral corporate replacement rate and pricing capture', () => {
     const corporate = baseConfig.behaviour.loanPipelineByProduct?.[AssetProductType.CorporateLoans];
-    expect(corporate?.baseDemandRateMonthly).toBe(0.026);
+    // Phase-1 passive-bank calibration raises the neutral opportunity enough to replace a
+    // realistic share of amortising corporate balances without any management intervention.
+    expect(corporate?.baseDemandRateMonthly).toBe(0.032);
     expect(corporate?.pricingSensitivity).toBe(65);
   });
 
