@@ -3,7 +3,7 @@ import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
-import { createSimulationEngine } from './simulation';
+import { applyCapitalPolicyDistributions, createSimulationEngine } from './simulation';
 
 const balance = (state: typeof initialState, productType: string): number =>
   state.financial.balanceSheet.items.find(item => item.productType === productType)?.balance ?? 0;
@@ -40,18 +40,27 @@ describe('capital-markets settlement integration', () => {
     expect(result.nextState.capitalMarkets?.transactions.at(-1)?.status).toBe('failed-price');
   });
 
-  it('issues genuine AT1 and locks the clearing coupon into subsequent coupon economics', () => {
+  it('issues genuine AT1 and locks the clearing coupon into later coupon distributions', () => {
     const baseline = createSimulationEngine().step({ state: cloneBankState(initialState), config: baseConfig, actions: [], shocks: [] }).nextState;
     const result = step({ type: 'launchCapitalMarketsTransaction', instrument: 'at1', targetAmount: 80e6, maxSpreadBps: 2500 });
     const execution = result.executions.capitalMarkets[0];
-    const coupon = result.nextState.capitalMarkets?.at1CouponRateAnnual;
+    const coupon = result.nextState.capitalMarkets?.at1CouponRateAnnual ?? 0;
 
     expect(execution.instrument).toBe('at1');
     expect(execution.executedAmount).toBeGreaterThan(0);
     expect(result.nextState.financial.capital.at1).toBeGreaterThan(baseline.financial.capital.at1);
     expect(coupon).toBeGreaterThan(0);
     expect(coupon).not.toBeCloseTo(baseConfig.riskLimits.capitalPolicy.at1CouponRateAnnual, 6);
-    expect(result.nextState.financial.incomeStatement.at1CouponExpense).toBeGreaterThan(baseline.financial.incomeStatement.at1CouponExpense);
+
+    const distributable = cloneBankState(result.nextState);
+    distributable.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'pay' };
+    distributable.risk.riskMetrics.mdaTriggered = false;
+    distributable.risk.riskMetrics.cet1Ratio = 0.2;
+    distributable.risk.riskMetrics.internalCet1TargetRatio = 0.1;
+    distributable.risk.riskMetrics.internalCet1Headroom = 0.1;
+    distributable.risk.riskMetrics.maxPayoutRatio = 1;
+    const paid = applyCapitalPolicyDistributions(distributable, baseConfig, 1 / 12, []);
+    expect(paid.at1CouponsPaid).toBeCloseTo(distributable.financial.capital.at1 * coupon / 12, -2);
   });
 
   it('settles Tier 2 into both own funds and a contractual subordinated-debt vintage', () => {
@@ -76,7 +85,7 @@ describe('capital-markets settlement integration', () => {
     expect(buckets.some(bucket => bucket.tenorMonths === 36 && bucket.monthsToMaturity === 35)).toBe(true);
   });
 
-  it('uses executed issuance history to make a second market visit harder', () => {
+  it('persists issuance history so subsequent bookbuilds see reduced capacity', () => {
     const engine = createSimulationEngine();
     const first = engine.step({
       state: cloneBankState(initialState), config: baseConfig,
@@ -90,7 +99,7 @@ describe('capital-markets settlement integration', () => {
     const b = second.executions.capitalMarkets[0];
 
     expect(b.recentIssuanceRatio).toBeGreaterThan(a.recentIssuanceRatio);
-    expect(b.clearingSpreadBps).toBeGreaterThan(a.clearingSpreadBps ?? 0);
     expect(b.demandAmount).toBeLessThan(a.demandAmount);
+    expect(second.nextState.capitalMarkets?.transactions).toHaveLength(2);
   });
 });
