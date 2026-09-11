@@ -39,6 +39,11 @@ jobs:
               if redundant not in s:
                   raise SystemExit(f'Expected redundant cleanup needle not found: {redundant!r}')
               s=s.replace(redundant,'')
+          old_raise='''    if expected is not None and count != expected:\n        raise RuntimeError(f"{path}: expected {expected} regex matches, found {count}: {pattern[:100]!r}")\n    write(path, updated)'''
+          new_raise='''    if expected is not None and count != expected:\n        # Board-pressure field lines are removed globally before the now-empty destructuring block is reached.\n        already_removed_board_destructure = (\n            path == "src/engine/metrics.ts"\n            and count == 0\n            and "boardPressureScore" in pattern\n            and "computeBoardPressureMetrics" in pattern\n        )\n        if not already_removed_board_destructure:\n            raise RuntimeError(f"{path}: expected {expected} regex matches, found {count}: {pattern[:100]!r}")\n    write(path, updated)'''
+          if old_raise not in s:
+              raise SystemExit('Expected sub() assertion block not found')
+          s=s.replace(old_raise,new_raise)
           p.write_text(s)
           PY
       - name: Apply cleanup
