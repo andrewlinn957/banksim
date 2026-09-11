@@ -71,6 +71,6 @@ describe('Three-Year Plan engine integration',()=>{
     expect(result.nextState.threeYearPlan?.reviewHistory).toHaveLength(0);
     expect(result.events.some(event=>event.message.includes('Cycle 2 agreed'))).toBe(true);
     expect(state.threeYearPlan?.cycleNumber).toBe(1);
-    expect(state.threeYearPlan?.priorCycles).toBeUndefined();
+    expect(state.threeYearPlan?.priorCycles).toHaveLength(0);
   });
 });
