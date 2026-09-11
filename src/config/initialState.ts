@@ -101,7 +101,7 @@ const balanceSheet: BalanceSheet = {
     }),
     createPosition(baseConfig, {
       productType: LiabilityProductType.WholesaleFundingLT,
-      balance: 0.8e9,
+      balance: 0.72e9,
       interestRate: 0.053,
       maturityBucket: MaturityBucket.GreaterThan5Y,
     }),
@@ -109,9 +109,9 @@ const balanceSheet: BalanceSheet = {
 };
 
 const capital: CapitalState = {
-  // Keep total opening equity unchanged while shifting the mix toward CET1. The denser loan book
-  // used for liquidity calibration otherwise leaves the opening bank unhelpfully close to MDA.
-  cet1: 0.920e9,
+  // Start with a modest management cushion above the automatic internal CET1 target. The extra
+  // CET1 replaces long-term wholesale funding rather than increasing the opening balance sheet.
+  cet1: 1.000e9,
   at1: 0.024e9,
   tier2: 0,
   accumulatedOCI: 0.017e9,
@@ -390,9 +390,9 @@ const seedState: BankState = {
   fundingLadders: {
     [LiabilityProductType.RetailTermDeposits]: Array.from({ length: 12 }, (_, i) => ({ tenorMonths: 12, monthsToMaturity: i + 1, notional: 125e6, rate: 0.038 })),
     [LiabilityProductType.WholesaleFundingLT]: [
-      { tenorMonths: 24, monthsToMaturity: 24, notional: 0.8e9 / 3, rate: 0.053 },
-      { tenorMonths: 36, monthsToMaturity: 36, notional: 0.8e9 / 3, rate: 0.053 },
-      { tenorMonths: 60, monthsToMaturity: 60, notional: 0.8e9 / 3, rate: 0.053 },
+      { tenorMonths: 24, monthsToMaturity: 24, notional: 0.72e9 / 3, rate: 0.053 },
+      { tenorMonths: 36, monthsToMaturity: 36, notional: 0.72e9 / 3, rate: 0.053 },
+      { tenorMonths: 60, monthsToMaturity: 60, notional: 0.72e9 / 3, rate: 0.053 },
     ],
     [LiabilityProductType.BankOfEnglandFunding]: [],
     [LiabilityProductType.Tier2Debt]: [],
