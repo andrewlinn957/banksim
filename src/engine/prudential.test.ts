@@ -79,12 +79,21 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     expect(l.asfContributions.map(c=>c.factor)).toEqual([0,1]);
     expect(l.asfContributions.every(c=>c.corep==='C81 2.1.3')).toBe(true);
   });
-  it('excludes defaulted loan inflows and uses qualifying mortgage maturity RSF', () => {
+  it('splits performing mortgage principal across the C80 exposure-maturity columns', () => {
     const s=cloneBankState(initialState), c=s.loanCohorts[A.Mortgages]![0];
     s.loanCohorts[A.Mortgages]=[{...c,outstandingPrincipal:100,annualInterestRate:0,termMonths:12,ageMonths:0,stage:'stage1'}];s.workoutPipelines[A.Mortgages]=[];line(s,A.Mortgages).balance=100;
     let l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===A.Mortgages)!;
-    expect(l.inflow).toBeCloseTo(100/12*.5);expect(l.rsf).toBeCloseTo(100 * (11 / 12 * .5 + 1 / 12 * .65));
-    expect(l.rsfContributions.map(c=>c.category)).toEqual(['mortgageShort','mortgageLong']);
+    expect(l.inflow).toBeCloseTo(100/12*.5);
+    expect(l.rsf).toBeCloseTo(100 * (11 / 12 * .5 + 1 / 12 * .65));
+    expect(l.rsfContributions.map(c=>c.category)).toEqual(['mortgage','mortgage','mortgage']);
+    expect(l.rsfContributions.map(c=>c.corep)).toEqual(['C80 1.4.5.1','C80 1.4.5.1','C80 1.4.5.1']);
+    expect(l.rsfContributions.map(c=>c.maturityBand)).toEqual(['under6m','sixTo12m','oneYearPlus']);
+    expect(l.rsfContributions.map(c=>c.factor)).toEqual([0.5,0.5,0.65]);
+    expect(l.rsfContributions.map(c=>c.amount)).toEqual([
+      expect.closeTo(100 * 5 / 12),
+      expect.closeTo(100 * 6 / 12),
+      expect.closeTo(100 * 1 / 12),
+    ]);
     s.loanCohorts[A.Mortgages]![0].stage='stage3';l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===A.Mortgages)!;
     expect(l.inflow).toBe(0);expect(l.rsf).toBe(100);
     expect(l.rsfContributions).toHaveLength(1);
