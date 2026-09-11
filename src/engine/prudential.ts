@@ -1,15 +1,79 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { BalanceSheetSide, ProductType } from '../domain/enums';
+import { BalanceSheetSide, MaturityBucket, ProductType } from '../domain/enums';
 import { hasCapability } from '../products/capabilities';
 import {
   getLiquidityRule,
   liquidityTagForProduct,
 } from '../products/regulatory';
+import {
+  getNsfrProductRule,
+  NSFR_ASF_CATEGORIES,
+  NSFR_RSF_CATEGORIES,
+  NsfrAsfCategory,
+  NsfrMaturityBand,
+  NsfrRsfCategory,
+  nsfrAsfFactor,
+  nsfrMaturityBand,
+  nsfrRsfFactor,
+} from '../products/nsfr';
 
 // 2026 UK standardised portfolio assumptions: docs/model-basis.md.
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+export interface NsfrContribution {
+  side: 'ASF' | 'RSF';
+  category: NsfrAsfCategory | NsfrRsfCategory | 'cet1Capital' | 'at1Capital';
+  corep: string;
+  label: string;
+  group: string;
+  sourceLabel: string;
+  amount: number;
+  factor: number;
+  weighted: number;
+  maturityBand: NsfrMaturityBand;
+}
+
+const fallbackMonthsForBucket = (bucket: MaturityBucket): number | null => {
+  switch (bucket) {
+    case MaturityBucket.Overnight: return 0;
+    case MaturityBucket.LessThan1Y: return 0;
+    case MaturityBucket.OneToThreeY: return 12;
+    case MaturityBucket.ThreeToFiveY: return 36;
+    case MaturityBucket.GreaterThan5Y: return 60;
+    case MaturityBucket.Perpetual: return 120;
+    default: return null;
+  }
+};
+
+const asfContribution = (
+  category: NsfrAsfCategory,
+  amount: number,
+  sourceLabel: string,
+  monthsToMaturity?: number | null
+): NsfrContribution => {
+  const definition = NSFR_ASF_CATEGORIES[category];
+  const factor = nsfrAsfFactor(category, monthsToMaturity);
+  return {
+    side: 'ASF', category, corep: definition.corep, label: definition.label, group: definition.group,
+    sourceLabel, amount, factor, weighted: amount * factor, maturityBand: nsfrMaturityBand(monthsToMaturity),
+  };
+};
+
+const rsfContribution = (
+  category: NsfrRsfCategory,
+  amount: number,
+  sourceLabel: string,
+  factor = nsfrRsfFactor(category),
+  maturityBand: NsfrMaturityBand = 'none'
+): NsfrContribution => {
+  const definition = NSFR_RSF_CATEGORIES[category];
+  return {
+    side: 'RSF', category, corep: definition.corep, label: definition.label, group: definition.group,
+    sourceLabel, amount, factor, weighted: amount * factor, maturityBand,
+  };
+};
 
 export const retailCurrentAccountRegulatoryFactors = (s: BankState) => {
   const stableShare = clamp01(s.behaviour.insuredRetailDepositShare ?? 0);
@@ -20,6 +84,19 @@ export const retailCurrentAccountRegulatoryFactors = (s: BankState) => {
     lcrOutflowFactor: stableShare * 0.05 + otherShare * 0.10,
     nsfrAsfFactor: stableShare * 0.95 + otherShare * 0.90,
   };
+};
+
+const retailAsfContributions = (
+  s: BankState,
+  amount: number,
+  sourceLabel: string,
+  monthsToMaturity?: number | null
+): NsfrContribution[] => {
+  const { stableShare, otherShare } = retailCurrentAccountRegulatoryFactors(s);
+  return [
+    asfContribution('stableRetail', amount * stableShare, sourceLabel, monthsToMaturity),
+    asfContribution('otherRetail', amount * otherShare, sourceLabel, monthsToMaturity),
+  ].filter(c => c.amount > 0);
 };
 
 export const committedExposure = (s: BankState, product?: ProductType): number =>
@@ -41,6 +118,9 @@ export const commitmentLiquidity = (s: BankState) =>
     },
     { outflow: 0, rsf: 0 }
   );
+
+export const commitmentNsfrContribution = (s: BankState): NsfrContribution =>
+  rsfContribution('undrawnCommitment', committedExposure(s), 'Undrawn commitments');
 
 export const eligibleCet1 = (s: BankState, c: SimulationConfig) =>
   s.financial.capital.cet1 +
@@ -111,27 +191,54 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
     const b = Math.max(0, i.balance);
     const tag = liquidityTagForProduct(p);
     const rule = getLiquidityRule(p);
+    const nsfrRule = getNsfrProductRule(p);
     const asset = i.side === BalanceSheetSide.Asset;
 
     let outflow = asset ? 0 : b * Math.min(1, Math.max(0, tag.lcrOutflowRate ?? 0));
     let inflow = asset ? b * Math.min(1, Math.max(0, tag.lcrInflowRate ?? 0)) : 0;
-    let asf = asset ? 0 : b * (tag.nsfrAsfFactor ?? 0);
-    let rsf = asset ? b * (tag.nsfrRsfFactor ?? 0) : 0;
+    let asfContributions: NsfrContribution[] = [];
+    let rsfContributions: NsfrContribution[] = [];
+
+    if (!asset && nsfrRule.asf) {
+      if (nsfrRule.asf === 'retail') {
+        const buckets = s.fundingLadders?.[p];
+        if (rule.fundingMaturityTreatment === 'retailTerm' && buckets?.length) {
+          asfContributions = buckets.flatMap(f =>
+            retailAsfContributions(s, Math.max(0, f.notional), i.label, f.monthsToMaturity)
+          );
+        } else {
+          asfContributions = retailAsfContributions(s, b, i.label, null);
+        }
+      } else {
+        const category = nsfrRule.asf;
+        const buckets = s.fundingLadders?.[p];
+        if (rule.fundingMaturityTreatment && buckets?.length) {
+          asfContributions = buckets.map(f =>
+            asfContribution(category, Math.max(0, f.notional), i.label, f.monthsToMaturity)
+          );
+        } else {
+          asfContributions = [asfContribution(category, b, i.label, fallbackMonthsForBucket(i.maturityBucket))];
+        }
+      }
+    }
 
     if (rule.dynamicRetailSight) {
       const retail = retailCurrentAccountRegulatoryFactors(s);
       outflow = b * retail.lcrOutflowFactor;
-      asf = b * retail.nsfrAsfFactor;
     }
 
     if (rule.derivativeTreatment) {
       inflow = rule.derivativeTreatment === 'asset' ? derivatives.receipts : 0;
       outflow = rule.derivativeTreatment === 'liability' ? derivatives.payments : 0;
-      asf = 0;
-      rsf =
-        rule.derivativeTreatment === 'asset'
-          ? Math.max(0, derivatives.derivativeAssets - derivatives.derivativeLiabilities)
-          : derivatives.derivativeLiabilities * 0.05;
+      if (rule.derivativeTreatment === 'asset') {
+        rsfContributions = [rsfContribution('derivativeAsset', Math.max(0, derivatives.derivativeAssets - derivatives.derivativeLiabilities), i.label)];
+      } else {
+        rsfContributions = [rsfContribution('derivativeLiability', derivatives.derivativeLiabilities, i.label)];
+      }
+    } else if (asset && nsfrRule.rsf === 'centralBankReserve') {
+      rsfContributions = [rsfContribution('centralBankReserve', b, i.label)];
+    } else if (asset && nsfrRule.rsf === 'level1Sovereign') {
+      rsfContributions = [rsfContribution('level1Sovereign', b, i.label)];
     }
 
     if (rule.fundingMaturityTreatment) {
@@ -143,23 +250,11 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
               f.monthsToMaturity <= 1 ? sum + Math.max(0, f.notional) * 0.10 : sum,
             0
           );
-          asf = buckets.reduce(
-            (sum, f) =>
-              sum + Math.max(0, f.notional) * (f.monthsToMaturity >= 12 ? 1 : 0.90),
-            0
-          );
         } else {
           outflow = buckets.reduce((sum, f) => {
             if (f.monthsToMaturity > 1) return sum;
             return sum + Math.max(0, f.notional) * (1 + Math.max(0, f.rate) / 12);
           }, 0);
-          asf = buckets.reduce(
-            (sum, f) =>
-              sum +
-              Math.max(0, f.notional) *
-                (f.monthsToMaturity >= 12 ? 1 : f.monthsToMaturity >= 6 ? 0.5 : 0),
-            0
-          );
         }
       }
     }
@@ -183,34 +278,58 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
       const gross =
         cohorts.reduce((sum, l) => sum + l.outstandingPrincipal, 0) +
         workouts.reduce((sum, w) => sum + w.defaultedPrincipal, 0);
-      const longFactor = Math.max(0, rule.loanLongRsfFactor ?? tag.nsfrRsfFactor ?? 1);
-      const weighted =
-        cohorts.reduce((sum, l) => {
-          if (l.stage === 'stage3') return sum + l.outstandingPrincipal;
-          const term = Math.max(1, l.termMonths - l.ageMonths);
-          const payment = contractualLoanPayment(l.outstandingPrincipal, l.annualInterestRate, term);
-          let remaining = l.outstandingPrincipal;
-          // Article 428q(4): contractual amortisation due before one year receives its shorter tenor.
-          for (let month = 1; month <= Math.min(11, term); month++) {
-            remaining = Math.max(
-              0,
-              remaining -
-                Math.max(0, payment - (remaining * Math.max(0, l.annualInterestRate)) / 12)
-            );
-          }
-          return sum + (l.outstandingPrincipal - remaining) * 0.5 + remaining * longFactor;
-        }, 0) + workouts.reduce((sum, w) => sum + w.defaultedPrincipal, 0);
-      rsf = gross > 0 ? (b * weighted) / gross : 0;
+      const scale = gross > 0 ? b / gross : 1;
+      const shortCategory: NsfrRsfCategory = nsfrRule.rsf === 'mortgage' ? 'mortgageShort' : 'otherLoanShort';
+      const longCategory: NsfrRsfCategory = nsfrRule.rsf === 'mortgage' ? 'mortgageLong' : 'otherLoanLong';
+      const loanContributions: NsfrContribution[] = [];
+      cohorts.forEach(l => {
+        if (l.stage === 'stage3') {
+          loanContributions.push(rsfContribution('nonPerforming', l.outstandingPrincipal * scale, i.label));
+          return;
+        }
+        const term = Math.max(1, l.termMonths - l.ageMonths);
+        const payment = contractualLoanPayment(l.outstandingPrincipal, l.annualInterestRate, term);
+        let remaining = l.outstandingPrincipal;
+        // Article 428q(4): contractual amortisation due before one year receives its shorter tenor.
+        for (let month = 1; month <= Math.min(11, term); month++) {
+          remaining = Math.max(
+            0,
+            remaining -
+              Math.max(0, payment - (remaining * Math.max(0, l.annualInterestRate)) / 12)
+          );
+        }
+        const shortAmount = (l.outstandingPrincipal - remaining) * scale;
+        const longAmount = remaining * scale;
+        if (shortAmount > 0) loanContributions.push(rsfContribution(shortCategory, shortAmount, i.label, undefined, 'sixTo12m'));
+        if (longAmount > 0) loanContributions.push(rsfContribution(longCategory, longAmount, i.label, undefined, 'oneYearPlus'));
+      });
+      workouts.forEach(w => {
+        if (w.defaultedPrincipal > 0) loanContributions.push(rsfContribution('nonPerforming', w.defaultedPrincipal * scale, i.label));
+      });
+      if (loanContributions.length === 0 && b > 0) {
+        loanContributions.push(rsfContribution(longCategory, b, i.label, undefined, 'oneYearPlus'));
+      }
+      rsfContributions = loanContributions;
     }
+
+    let asf = asfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
+    let rsf = rsfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
 
     if (asset) {
       const enc = Math.min(b, Math.max(0, i.encumbrance?.encumberedAmount ?? 0));
       const months = i.encumbrance?.remainingMonths ?? 12;
       const base = b > 0 ? rsf / b : 0;
-      rsf += enc * ((months >= 12 ? 1 : months >= 6 ? Math.max(0.5, base) : base) - base);
+      const target = months >= 12 ? 1 : months >= 6 ? Math.max(0.5, base) : base;
+      const uplift = Math.max(0, enc * (target - base));
+      if (uplift > 0) {
+        const category: NsfrRsfCategory = months >= 12 ? 'encumberedOneYearPlus' : 'encumberedSixTo12m';
+        const contribution = rsfContribution(category, enc, i.label, target - base, months >= 12 ? 'oneYearPlus' : 'sixTo12m');
+        rsfContributions.push(contribution);
+        rsf += contribution.weighted;
+      }
     }
 
-    return { productType: p, label: i.label, balance: b, asset, outflow, inflow, asf, rsf };
+    return { productType: p, label: i.label, balance: b, asset, outflow, inflow, asf, rsf, asfContributions, rsfContributions };
   });
 };
 
