@@ -1,4 +1,5 @@
 import type { AssetProductType } from './enums';
+import type { CapitalMarketsBookbuildResult } from './capitalMarkets';
 
 export interface AssetTradeExecution {
   kind: 'assetTrade';
@@ -10,8 +11,13 @@ export interface AssetTradeExecution {
   executionRate?: number;
 }
 
-export interface StepExecutionResult {
-  assetTrades: AssetTradeExecution[];
+export interface CapitalMarketsExecution extends CapitalMarketsBookbuildResult {
+  kind: 'capitalMarkets';
 }
 
-export const createEmptyStepExecutionResult = (): StepExecutionResult => ({ assetTrades: [] });
+export interface StepExecutionResult {
+  assetTrades: AssetTradeExecution[];
+  capitalMarkets: CapitalMarketsExecution[];
+}
+
+export const createEmptyStepExecutionResult = (): StepExecutionResult => ({ assetTrades: [], capitalMarkets: [] });
