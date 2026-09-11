@@ -48,6 +48,7 @@ import HelpCenterPanel from './components/HelpCenterPanel';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
 import { createDefaultThreeYearPlan } from './config/threeYearPlan';
 import { buildCapitalMarketsBook } from './engine/capitalMarkets';
+import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
 const controller = new SimulationController(baseConfig);
 const tabs = [
@@ -222,12 +223,13 @@ const App = () => {
     const instrument=actionForm.capitalMarketsInstrument;
     const target=parsedActionForm.values.capitalMarketsTargetAmount;
     if(instrument==='none'||parsedActionForm.hasErrors||target===undefined||target<=0) return undefined;
+    const definition=getCapitalMarketsInstrument(instrument);
     return buildCapitalMarketsBook(bankState,simConfig,{
       instrument,
       targetAmount:target,
-      maxDiscount:instrument==='cet1'?parsedActionForm.values.capitalMarketsMaxDiscount:undefined,
-      maxSpreadBps:instrument==='cet1'?undefined:parsedActionForm.values.capitalMarketsMaxSpreadBps,
-      tenorMonths:instrument==='tier2'||instrument==='senior'?parsedActionForm.values.capitalMarketsTenorMonths:undefined,
+      maxDiscount:definition.pricingKind==='discount'?parsedActionForm.values.capitalMarketsMaxDiscount:undefined,
+      maxSpreadBps:definition.pricingKind==='spread'?parsedActionForm.values.capitalMarketsMaxSpreadBps:undefined,
+      tenorMonths:definition.permittedTenorMonths?.length?parsedActionForm.values.capitalMarketsTenorMonths:undefined,
     });
   },[actionForm.capitalMarketsInstrument,bankState,parsedActionForm,simConfig]);
 
@@ -853,7 +855,8 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
   if(state.boeFacility!=='none' && (values.boeFundingAmount??0)<=0) errors.boeFundingAmount='Enter an amount for the selected Bank of England facility';
   if(state.capitalMarketsInstrument!=='none') {
     if((values.capitalMarketsTargetAmount??0)<=0) errors.capitalMarketsTargetAmount='Enter a positive target size for the transaction';
-    if(state.capitalMarketsInstrument==='cet1') {
+    const definition=getCapitalMarketsInstrument(state.capitalMarketsInstrument);
+    if(definition.pricingKind==='discount') {
       const parsed=parseRateInput(state.capitalMarketsMaxDiscount);
       if(parsed.error) errors.capitalMarketsMaxDiscount=parsed.error;
       else if(parsed.value===undefined||parsed.value<0||parsed.value>0.5) errors.capitalMarketsMaxDiscount='Maximum discount must be between 0% and 50%';
@@ -863,10 +866,10 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
       if(!Number.isFinite(spread)||spread<=0||spread>5000) errors.capitalMarketsMaxSpreadBps='Maximum spread must be between 1 and 5,000 bp';
       else values.capitalMarketsMaxSpreadBps=spread;
     }
-    if(state.capitalMarketsInstrument==='tier2'||state.capitalMarketsInstrument==='senior') {
-      const tenor=Number(state.capitalMarketsTenorMonths);
-      if(!Number.isFinite(tenor)||tenor<=0) errors.capitalMarketsTenorMonths='Select a positive debt tenor';
-      else values.capitalMarketsTenorMonths=Math.round(tenor);
+    if(definition.permittedTenorMonths?.length) {
+      const tenor=Math.round(Number(state.capitalMarketsTenorMonths));
+      if(!Number.isFinite(tenor)||!definition.permittedTenorMonths.includes(tenor)) errors.capitalMarketsTenorMonths='Select a permitted debt tenor';
+      else values.capitalMarketsTenorMonths=tenor;
     }
   }
 
@@ -976,13 +979,14 @@ const buildActionsFromParsed = (
   }
   if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
   if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
+    const definition=getCapitalMarketsInstrument(formState.capitalMarketsInstrument);
     actions.push({
       type: 'launchCapitalMarketsTransaction',
       instrument: formState.capitalMarketsInstrument,
       targetAmount: values.capitalMarketsTargetAmount,
-      maxDiscount: formState.capitalMarketsInstrument === 'cet1' ? values.capitalMarketsMaxDiscount : undefined,
-      maxSpreadBps: formState.capitalMarketsInstrument === 'cet1' ? undefined : values.capitalMarketsMaxSpreadBps,
-      tenorMonths: formState.capitalMarketsInstrument === 'tier2' || formState.capitalMarketsInstrument === 'senior' ? values.capitalMarketsTenorMonths : undefined,
+      maxDiscount: definition.pricingKind === 'discount' ? values.capitalMarketsMaxDiscount : undefined,
+      maxSpreadBps: definition.pricingKind === 'spread' ? values.capitalMarketsMaxSpreadBps : undefined,
+      tenorMonths: definition.permittedTenorMonths?.length ? values.capitalMarketsTenorMonths : undefined,
     });
   }
   const fallbackPayout =

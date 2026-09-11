@@ -1,5 +1,6 @@
 import { Department } from '../game/departments';
-import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
+import type { CapitalMarketsBookbuildResult, CapitalMarketsInstrument } from '../domain/capitalMarkets';
+import { CAPITAL_MARKETS_INSTRUMENT_ORDER, getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 import { formatCurrency, formatPct } from '../utils/formatters';
 export type { Department } from '../game/departments';
 
@@ -16,7 +17,7 @@ export interface ActionFormState {
   corporateUnderwritingTightness: string;
   mortgageMaxLtv: string;
   mortgageFixedPeriodMonths: string;
-  capitalMarketsInstrument: 'none' | 'cet1' | 'at1' | 'tier2' | 'senior';
+  capitalMarketsInstrument: 'none' | CapitalMarketsInstrument;
   capitalMarketsTargetAmount: string;
   capitalMarketsMaxDiscount: string;
   capitalMarketsMaxSpreadBps: string;
@@ -83,29 +84,35 @@ const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
   giltTradeAmount:'Gilt trade amount',
 };
 
-const instrumentLabel = (instrument: ActionFormState['capitalMarketsInstrument']) => instrument==='cet1'?'CET1 equity':instrument==='at1'?'AT1':instrument==='tier2'?'Tier 2':instrument==='senior'?'Senior unsecured':'No transaction';
+const tenorLabel = (months: number): string =>
+  months % 12 === 0 ? `${months / 12} years` : `${months} months`;
 
 const CapitalMarketsTicket = ({state,update,disabled,errors,quote,planImpact}:{state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact}) => {
-  const instrument=state.capitalMarketsInstrument;
-  const isEquity=instrument==='cet1';
-  const needsTenor=instrument==='tier2'||instrument==='senior';
-  const allInYield=quote?.marketReferenceRate!==undefined&&quote.clearingSpreadBps!==undefined?quote.marketReferenceRate+quote.clearingSpreadBps/10000:undefined;
+  const instrument = state.capitalMarketsInstrument;
+  const definition = instrument === 'none' ? undefined : getCapitalMarketsInstrument(instrument);
+  const isDiscountPriced = definition?.pricingKind === 'discount';
+  const tenors = definition?.permittedTenorMonths ?? [];
+  const allInYield = quote?.marketReferenceRate !== undefined && quote.clearingSpreadBps !== undefined
+    ? quote.marketReferenceRate + quote.clearingSpreadBps / 10000
+    : undefined;
   return <section className="policy-disclosure capital-markets-ticket" aria-label="Capital markets">
     <div className="policy-section-title"><h3>Capital markets</h3><small>One transaction ticket. Market demand and clearing terms determine what actually settles.</small></div>
     <div className="policy-fields policy-fields-primary">
-      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled} onChange={e=>update('capitalMarketsInstrument',e.target.value)}><option value="none">No transaction queued</option><option value="cet1">CET1 equity</option><option value="at1">AT1</option><option value="tier2">Tier 2</option><option value="senior">Senior unsecured</option></select><small>Choose the claim you want investors to buy.</small></label>
-      <Field field="capitalMarketsTargetAmount" label="Target size (£)" hint="The book can be partially filled if investor demand is smaller than your target." state={state} update={update} disabled={disabled||instrument==='none'} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
-      {isEquity?<Field field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="The deal fails rather than price below this limit." state={state} update={update} disabled={disabled} error={errors?.capitalMarketsMaxDiscount} placeholder="e.g. 12%"/>:<Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="The deal fails if the clearing spread is wider than this limit." state={state} update={update} disabled={disabled||instrument==='none'} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
-      {needsTenor&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{instrument==='tier2'?<><option value="60">5 years</option><option value="84">7 years</option><option value="120">10 years</option></>:<><option value="24">2 years</option><option value="36">3 years</option><option value="60">5 years</option></>}</select><small>Longer debt locks in the clearing cost for longer.</small></label>}
+      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled} onChange={e=>update('capitalMarketsInstrument',e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select><small>Choose the claim you want investors to buy.</small></label>
+      <Field field="capitalMarketsTargetAmount" label="Target size (£)" hint="The book can be partially filled if investor demand is smaller than your target." state={state} update={update} disabled={disabled||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
+      {isDiscountPriced
+        ? <Field field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="The deal fails rather than price below this limit." state={state} update={update} disabled={disabled} error={errors?.capitalMarketsMaxDiscount} placeholder="e.g. 12%"/>
+        : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="The deal fails if the clearing spread is wider than this limit." state={state} update={update} disabled={disabled||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
+      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select><small>Longer debt locks in the clearing cost for longer.</small></label>}
     </div>
-    {instrument!=='none'&&quote&&<div className={`alert ${quote.status.startsWith('failed')?'warning':'info'} capital-markets-book`}>
-      <strong>Indicative book · {instrumentLabel(instrument)}</strong>
+    {definition&&quote&&<div className={`alert ${quote.status.startsWith('failed')?'warning':'info'} capital-markets-book`}>
+      <strong>Indicative book · {definition.label}</strong>
       <div className="muted">Demand {formatCurrency(quote.demandAmount)} · coverage {quote.coverageRatio.toFixed(2)}× · executable {formatCurrency(quote.executedAmount)} of {formatCurrency(quote.targetAmount)}</div>
-      <div className="muted">{isEquity?`Clearing discount ${formatPct(quote.clearingDiscount??0)} · issue price £${(quote.issuePrice??0).toFixed(3)}`:`Clearing spread ${(quote.clearingSpreadBps??0).toFixed(0)}bp${allInYield!==undefined?` · all-in yield ${formatPct(allInYield)}`:''}`} · {quote.status.replace('-', ' ')}</div>
+      <div className="muted">{isDiscountPriced?`Clearing discount ${formatPct(quote.clearingDiscount??0)} · issue price £${(quote.issuePrice??0).toFixed(3)}`:`Clearing spread ${(quote.clearingSpreadBps??0).toFixed(0)}bp${allInYield!==undefined?` · all-in yield ${formatPct(allInYield)}`:''}`} · {quote.status.replace('-', ' ')}</div>
       {quote.fees>0&&<div className="muted">Fees {formatCurrency(quote.fees)} · net proceeds {formatCurrency(quote.netProceeds)}</div>}
       {quote.recentIssuanceRatio>0&&<div className="muted">Recent issuance is reducing market capacity and worsening clearing terms.</div>}
     </div>}
-    {instrument!=='none'&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">One-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div><div className="muted">There is no direct Board Confidence effect: the transaction matters only through the plan metrics it changes.</div></div>}
+    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">One-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div><div className="muted">There is no direct Board Confidence effect: the transaction matters only through the plan metrics it changes.</div></div>}
     <p className="muted">Bookbuild terms are indicative until the monthly close. A failed price limit records the attempt but settles no capital or funding.</p>
   </section>;
 };
