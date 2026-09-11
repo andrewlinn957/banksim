@@ -200,6 +200,40 @@ jobs:
                   raise SystemExit(f'obsolete simulation symbol remains: {symbol}')
 
           path.write_text(text)
+
+          recommendations = Path('src/engine/recommendations.ts')
+          rec = recommendations.read_text()
+          rec = rec.replace("import { AssetProductType, LiabilityProductType } from '../domain/enums';", "import { AssetProductType } from '../domain/enums';")
+          old_equity = "actions: [{ type: 'issueEquity', amount: 2e9 }],"
+          new_equity = "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 2e9 }],"
+          if old_equity not in rec:
+              raise SystemExit('missing legacy equity recommendation')
+          rec = rec.replace(old_equity, new_equity, 1)
+          old_debt = """        {
+                    type: 'issueDebt',
+                    productType: LiabilityProductType.WholesaleFundingLT,
+                    amount: 5e9,
+                    maturityMonths: 36,
+                  },"""
+          new_debt = """        {
+                    type: 'launchCapitalMarketsTransaction',
+                    instrument: 'senior',
+                    targetAmount: 5e9,
+                    tenorMonths: 36,
+                  },"""
+          if old_debt not in rec:
+              raise SystemExit('missing legacy debt recommendation')
+          rec = rec.replace(old_debt, new_debt, 1)
+          recommendations.write_text(rec)
+
+          suite_path = Path('src/engine/simulationTestSuite.ts')
+          suite = suite_path.read_text()
+          old_suite = "{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingST, amount: 20e9, rate: 0.055 },"
+          new_suite = "{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 20e9, tenorMonths: 12 },"
+          if old_suite not in suite:
+              raise SystemExit('missing legacy debt simulation suite action')
+          suite = suite.replace(old_suite, new_suite, 1)
+          suite_path.write_text(suite)
           PY
 
           rm .github/workflows/cleanup-legacy-compat.yml
