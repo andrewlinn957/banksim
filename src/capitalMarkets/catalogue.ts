@@ -7,7 +7,6 @@ import {
 } from '../products/capabilities';
 
 export type CapitalMarketsReferenceSize = 'marketCap' | 'cet1OrMarketCap' | 'ownFunds' | 'totalAssets';
-export type CapitalMarketsConfidenceChannel = 'equity' | 'debt';
 export type CapitalMarketsBenchmark = 'riskFreeLong' | 'giltCurve';
 
 export type CapitalMarketsSettlement =
@@ -15,14 +14,23 @@ export type CapitalMarketsSettlement =
   | { kind: 'at1' }
   | { kind: 'fundingProduct'; productType: CapitalMarketsFundingProductType };
 
+export interface FundingMarketInstrumentCalibration {
+  /** Minimum new-issue concession paid even for an ordinary-sized transaction. */
+  newIssueConcessionBps: number;
+  /** Additional spread required for each extra multiple of fair-spread market capacity. */
+  demandSlopeBps: number;
+  /** Hard ceiling relative to the amount investors absorb at fair spread. */
+  hardCapacityMultiple: number;
+  /** Additional spread per year beyond the instrument's default tenor. */
+  tenorSpreadBpsPerYear: number;
+}
+
 export interface CapitalMarketsInstrumentDefinition {
   instrument: CapitalMarketsInstrument;
   label: string;
   pricingKind: CapitalMarketsPricingKind;
   settlement: CapitalMarketsSettlement;
   referenceSize: CapitalMarketsReferenceSize;
-  confidenceChannel: CapitalMarketsConfidenceChannel;
-  applyCapitalCondition: boolean;
   benchmark?: CapitalMarketsBenchmark;
   spreadSensitivity?: number;
   defaultTenorMonths?: number;
@@ -31,6 +39,7 @@ export interface CapitalMarketsInstrumentDefinition {
   basePremiumBps?: number;
   baseDiscount?: number;
   baseFeeRate: number;
+  fundingMarket?: FundingMarketInstrumentCalibration;
 }
 
 const CET1_DEFINITION: CapitalMarketsInstrumentDefinition = {
@@ -39,8 +48,6 @@ const CET1_DEFINITION: CapitalMarketsInstrumentDefinition = {
   pricingKind: 'discount',
   settlement: { kind: 'cet1' },
   referenceSize: 'marketCap',
-  confidenceChannel: 'equity',
-  applyCapitalCondition: false,
   baseCapacityMultiple: 0.35,
   baseDiscount: 0.03,
   baseFeeRate: 0.01,
@@ -52,13 +59,17 @@ const AT1_DEFINITION: CapitalMarketsInstrumentDefinition = {
   pricingKind: 'spread',
   settlement: { kind: 'at1' },
   referenceSize: 'cet1OrMarketCap',
-  confidenceChannel: 'debt',
-  applyCapitalCondition: true,
   benchmark: 'riskFreeLong',
   spreadSensitivity: 1.45,
   baseCapacityMultiple: 0.22,
   basePremiumBps: 350,
   baseFeeRate: 0,
+  fundingMarket: {
+    newIssueConcessionBps: 30,
+    demandSlopeBps: 175,
+    hardCapacityMultiple: 1.5,
+    tenorSpreadBpsPerYear: 0,
+  },
 };
 
 interface FundingMarketCalibration {
@@ -66,6 +77,7 @@ interface FundingMarketCalibration {
   baseCapacityMultiple: number;
   basePremiumBps: number;
   spreadSensitivity: number;
+  fundingMarket: FundingMarketInstrumentCalibration;
 }
 
 const FUNDING_MARKET_CALIBRATION: Record<CapitalMarketsFundingInstrument, FundingMarketCalibration> = {
@@ -74,12 +86,24 @@ const FUNDING_MARKET_CALIBRATION: Record<CapitalMarketsFundingInstrument, Fundin
     baseCapacityMultiple: 0.35,
     basePremiumBps: 175,
     spreadSensitivity: 1.2,
+    fundingMarket: {
+      newIssueConcessionBps: 20,
+      demandSlopeBps: 120,
+      hardCapacityMultiple: 1.8,
+      tenorSpreadBpsPerYear: 6,
+    },
   },
   senior: {
     referenceSize: 'totalAssets',
     baseCapacityMultiple: 0.08,
     basePremiumBps: 0,
     spreadSensitivity: 1,
+    fundingMarket: {
+      newIssueConcessionBps: 10,
+      demandSlopeBps: 75,
+      hardCapacityMultiple: 2.5,
+      tenorSpreadBpsPerYear: 4,
+    },
   },
 };
 
@@ -97,8 +121,6 @@ const fundingDefinitions = Object.fromEntries(
         productType: product.productType as CapitalMarketsFundingProductType,
       },
       referenceSize: calibration.referenceSize,
-      confidenceChannel: 'debt',
-      applyCapitalCondition: true,
       benchmark: 'giltCurve',
       spreadSensitivity: calibration.spreadSensitivity,
       defaultTenorMonths: capability.defaultTenorMonths,
@@ -106,6 +128,7 @@ const fundingDefinitions = Object.fromEntries(
       baseCapacityMultiple: calibration.baseCapacityMultiple,
       basePremiumBps: calibration.basePremiumBps,
       baseFeeRate: 0,
+      fundingMarket: calibration.fundingMarket,
     };
     return [capability.instrument, definition];
   })
