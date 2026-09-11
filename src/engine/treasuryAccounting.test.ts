@@ -67,7 +67,7 @@ it('funds net derivative assets plus 5% negative fair values and nets due LCR co
   applyActions(s,baseConfig,[{type:'enterHedge',direction:'payFixedReceiveFloat',notional:1e8,fixedRate:0,maturityMonths:12},{type:'enterHedge',direction:'receiveFixedPayFloat',notional:1e8,fixedRate:0,maturityMonths:12}],[]);
   const rows=prudentialLiquidityLines(s,baseConfig),a=rows.find(i=>i.productType===A.DerivativeAssets)!,l=rows.find(i=>i.productType===L.DerivativeLiabilities)!;
   expect(a.rsf).toBeCloseTo(0,6);expect(l.rsf).toBeCloseTo(l.balance*.05,6);
-  expect(a.inflow).toBeCloseTo(0,6);expect(l.outflow).toBeGreaterThan(0);
+  expect(a.inflow).toBeCloseTo(0,6);expect(l.outflow).toBeCloseTo(0,6);
 });
 
 import { hedgeExposures } from './hedgeValuation';
