@@ -1,7 +1,7 @@
+import type { LcrHqlaLevel, LcrInflowCapClass } from '../domain/lcr';
 import { AssetProductType as A, LiabilityProductType as L, ProductType } from './catalogue';
 
-export type LcrInflowCapClass = '75' | '90' | 'exempt';
-export type LcrHqlaLevel = 'level1' | 'level2a' | 'level2b';
+export type { LcrHqlaLevel, LcrInflowCapClass } from '../domain/lcr';
 
 export type LcrHqlaCategory = 'withdrawableCentralBankReserve' | 'centralGovernmentLevel1';
 export type LcrOutflowCategory =
