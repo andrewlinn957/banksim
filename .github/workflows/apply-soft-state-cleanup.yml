@@ -47,7 +47,7 @@ jobs:
           marker='\n# --- Final source-level guard'
           if marker not in s:
               raise SystemExit('Final guard marker not found')
-          addition='''\n# Remove residual Board Pressure plumbing after its individual fields are stripped.\nsub(\n    "src/config/scenarios.ts",\n    r"  if \\(override\\?\\.board\\) \\{.*?\\n  \\}\\n",\n)\nsub(\n    "src/engine/metrics.ts",\n    r"  const \\{\\n  \\} = computeBoardPressureMetrics\\(state, config\\.riskLimits, config, cet1Headroom, maxPayoutRatio\\);\\n",\n)\n'''
+          addition='''\n# Remove residual Board Pressure plumbing after its individual fields are stripped.\nsub(\n    "src/config/scenarios.ts",\n    r"  if \\(override\\?\\.board\\) \\{.*?\\n  \\}\\n",\n)\nsub(\n    "src/engine/metrics.ts",\n    r"  const \\{\\n  \\} = computeBoardPressureMetrics\\(state, config\\.riskLimits, config, cet1Headroom, maxPayoutRatio\\);\\n",\n)\nremove_lines(\n    "src/engine/clone.ts",\n    ["  board: { ...state.board },"],\n)\n'''
           s=s.replace(marker,addition+marker)
           p.write_text(s)
           PY
