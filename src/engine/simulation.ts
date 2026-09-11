@@ -76,6 +76,7 @@ import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from
 import { reviewThreeYearPlan } from './threeYearPlan';
 import { renewThreeYearPlanState } from '../domain/threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
+import { validateThreeYearPlanAgreement } from '../config/threeYearPlan';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 
@@ -170,17 +171,9 @@ const actionHandlers: ActionHandlerMap = {
       ctx.events.push(createEvent('warning', 'Three-Year Plan renewal requires a completed active plan.'));
       return;
     }
-    const weightTotal = action.targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0);
-    const milestonesValid = action.targets.every(target =>
-      target.milestones.length === 3 &&
-      target.milestones.map(milestone => milestone.month).join(',') === '12,24,36' &&
-      target.milestones.every(milestone => Number.isFinite(milestone.lower) && (milestone.upper === undefined || Number.isFinite(milestone.upper)))
-    );
-    const metricsValid = action.targets.length > 0 && action.targets.every(target =>
-      bankThreeYearPlanMetricRegistry.has(target.metricId) && Number.isFinite(target.weight) && target.weight >= 0
-    );
-    if (!(weightTotal > 0) || !milestonesValid || !metricsValid) {
-      ctx.events.push(createEvent('warning', 'Three-Year Plan renewal rejected: targets and weights are invalid.'));
+    const agreementIssues = validateThreeYearPlanAgreement(ctx.state, action.targets);
+    if (agreementIssues.length > 0) {
+      ctx.events.push(createEvent('warning', `Three-Year Plan renewal rejected: ${agreementIssues[0]}`));
       return;
     }
     ctx.state.threeYearPlan = renewThreeYearPlanState({

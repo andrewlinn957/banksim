@@ -19,6 +19,7 @@ interface Props {
  onPlanTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
  canRenewPlan?: boolean;
  planRenewalDraft?: readonly ThreeYearPlanTarget[] | null;
+ planAgreementIssues?: readonly string[];
  onBeginPlanRenewal?: () => void;
  onPlanRenewalTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
  onCancelPlanRenewal?: () => void;
@@ -26,7 +27,7 @@ interface Props {
 }
 const departments: Department[] = ['Customers','Lending','Capital','Treasury'];
 const jobs: Record<Department,string> = {Customers:'Set deposit offers',Lending:'Price loans & set standards',Capital:'Retain profit & raise equity',Treasury:'Fund the bank & manage hedges'};
-export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,onDecision,selectedDecisions=[],canEditPlan=false,onPlanTargetsChange,canRenewPlan=false,planRenewalDraft=null,onBeginPlanRenewal,onPlanRenewalTargetsChange,onCancelPlanRenewal,children}:Props) {
+export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,onDecision,selectedDecisions=[],canEditPlan=false,onPlanTargetsChange,canRenewPlan=false,planRenewalDraft=null,planAgreementIssues=[],onBeginPlanRenewal,onPlanRenewalTargetsChange,onCancelPlanRenewal,children}:Props) {
  const quarter=periodHistory(history,3).at(-1);
  const panel=useRef<HTMLElement|null>(null);
  const departmentButtons=useRef<Partial<Record<Department,HTMLButtonElement>>>({});
@@ -63,6 +64,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
     onTargetsChange={onPlanTargetsChange}
     canRenew={canRenewPlan}
     renewalDraft={planRenewalDraft}
+    agreementIssues={planAgreementIssues}
     onBeginRenewal={onBeginPlanRenewal}
     onRenewalTargetsChange={onPlanRenewalTargetsChange}
     onCancelRenewal={onCancelPlanRenewal}
