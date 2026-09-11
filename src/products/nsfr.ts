@@ -23,11 +23,17 @@ export interface NsfrCategoryDefinition {
 }
 
 export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition> = {
+  derivativeLiability: {
+    corep: 'C81 2.7',
+    label: 'Net derivative liabilities',
+    group: 'Derivatives',
+    factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
+  },
   otherLiabilities: {
-    corep: 'C81 2.8',
+    corep: 'C81 2.9.4',
     label: 'Other liabilities',
     group: 'Other funding',
-    factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
+    factors: { under6m: 0, sixTo12m: 0.50, oneYearPlus: 1, none: 0 },
   },
   stableRetail: {
     corep: 'C81 2.2.1',
@@ -43,19 +49,19 @@ export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition
   },
   nonFinancialCorporate: {
     corep: 'C81 2.3.5',
-    label: 'Non-financial corporate funding',
+    label: 'Liabilities provided by non-financial corporate customers',
     group: 'Non-financial corporate funding',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 1, none: 0.50 },
   },
   centralBank: {
     corep: 'C81 2.5.1',
-    label: 'Funding from central banks',
+    label: 'Liabilities provided by the Bank of England / central bank',
     group: 'Central bank funding',
     factors: { under6m: 0, sixTo12m: 0.50, oneYearPlus: 1, none: 0 },
   },
   counterpartyUnknown: {
     corep: 'C81 2.6',
-    label: 'Funding where counterparty cannot be determined',
+    label: 'Liabilities where the counterparty cannot be determined',
     group: 'Wholesale funding',
     factors: { under6m: 0, sixTo12m: 0.50, oneYearPlus: 1, none: 0 },
   },
@@ -69,38 +75,38 @@ export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition
 
 export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrCategoryDefinition> = {
   centralBankReserve: {
-    corep: 'C80 1.1.1',
-    label: 'Cash and central bank reserves',
+    corep: 'C80 1.1.1.1',
+    label: 'Cash, reserves and HQLA central bank exposures: unencumbered / <6m encumbrance',
     group: 'Cash & central bank',
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
   },
   level1Sovereign: {
-    corep: 'C80 1.2.1',
-    label: 'Level 1 assets subject to a 0% LCR haircut',
+    corep: 'C80 1.2.1.1',
+    label: 'Level 1 assets eligible for 0% LCR haircut: unencumbered / <6m encumbrance',
     group: 'Level 1 securities',
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
   },
   mortgageShort: {
-    corep: 'C80 1.4.5',
-    label: 'Residential mortgage principal due within one year',
+    corep: 'C80 1.4.5.1',
+    label: 'Low-risk non-financial customer loans: <1y contractual amount',
     group: 'Residential mortgages',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
   },
   mortgageLong: {
-    corep: 'C80 1.4.5',
-    label: 'Qualifying residential mortgages with residual maturity of at least one year',
+    corep: 'C80 1.4.5.1',
+    label: 'Low-risk non-financial customer loans: ≥1y contractual amount',
     group: 'Residential mortgages',
     factors: { under6m: 0.65, sixTo12m: 0.65, oneYearPlus: 0.65, none: 0.65 },
   },
   otherLoanShort: {
-    corep: 'C80 1.4.6',
-    label: 'Other loans to non-financial customers due within one year',
+    corep: 'C80 1.4.6.1',
+    label: 'Other loans to non-financial customers: <1y contractual amount',
     group: 'Other customer loans',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
   },
   otherLoanLong: {
-    corep: 'C80 1.4.6',
-    label: 'Other performing loans to non-financial customers with residual maturity of at least one year',
+    corep: 'C80 1.4.6.1',
+    label: 'Other performing loans to non-financial customers: ≥1y contractual amount',
     group: 'Other customer loans',
     factors: { under6m: 0.85, sixTo12m: 0.85, oneYearPlus: 0.85, none: 0.85 },
   },
@@ -118,25 +124,25 @@ export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrCategoryDefinition
   },
   derivativeLiability: {
     corep: 'C80 1.7.1',
-    label: 'RSF contribution from derivative liabilities',
+    label: 'Required stable funding for derivative liabilities',
     group: 'Derivatives',
     factors: { under6m: 0.05, sixTo12m: 0.05, oneYearPlus: 0.05, none: 0.05 },
   },
   undrawnCommitment: {
     corep: 'C80 1.10.2',
-    label: 'Undrawn committed credit and liquidity facilities',
+    label: 'Committed facilities',
     group: 'Undrawn commitments',
     factors: { under6m: 0.05, sixTo12m: 0.05, oneYearPlus: 0.05, none: 0.05 },
   },
   encumberedSixTo12m: {
-    corep: 'C80 encumbrance 6-12m',
-    label: 'Assets encumbered for six months to less than one year',
+    corep: 'C80 applicable *.2 encumbrance row',
+    label: 'Encumbrance uplift for assets encumbered 6–12 months',
     group: 'Encumbrance uplift',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
   },
   encumberedOneYearPlus: {
-    corep: 'C80 encumbrance >=1y',
-    label: 'Assets encumbered for at least one year',
+    corep: 'C80 applicable *.3 / ≥1y encumbrance row',
+    label: 'Encumbrance uplift for assets encumbered at least one year',
     group: 'Encumbrance uplift',
     factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
   },
