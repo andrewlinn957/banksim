@@ -58,6 +58,12 @@ export interface MortgagePolicyState {
   fixedPeriodMonths: number;
 }
 
+/** Current UI defaults for explicit gilt trades. This is not a standing rebalance instruction. */
+export interface TreasuryPolicyState {
+  giltShareOfHqla: number;
+  giltDurationYears: number;
+}
+
 export interface BoardPressureState {
   score: number;
   earningsVolatility: number;
@@ -94,6 +100,7 @@ export interface BehaviouralState {
   underwritingTightness?: Partial<Record<ProductType, number>>;
   capitalPolicy?: CapitalPolicyState;
   mortgagePolicy?: MortgagePolicyState;
+  treasuryPolicy?: TreasuryPolicyState;
   termDepositTenorMonths?: number;
   /** Approximate share of retail deposits protected by FSCS limits. */
   insuredRetailDepositShare?: number;
@@ -149,6 +156,6 @@ export interface BankState {
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;
   /** Contractual maturity ladders for assets; separated from liability funding ladders. */
-  assetMaturityLadders: AssetMaturityLadderMap;
+  assetMaturityLadders?: AssetMaturityLadderMap;
   status: SimulationStatus;
 }
