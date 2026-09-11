@@ -24,44 +24,43 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('src/App.tsx')
-          s=p.read_text()
-          s=s.replace(
-            "import { BankState } from './domain/bankState';",
-            "import { BankState } from './domain/bankState';\nimport type { ThreeYearPlanTarget } from './domain/threeYearPlan';",
-            1,
+          p = Path('src/App.tsx')
+          s = p.read_text()
+          s = s.replace(
+              "import { BankState } from './domain/bankState';",
+              "import { BankState } from './domain/bankState';\nimport type { ThreeYearPlanTarget } from './domain/threeYearPlan';",
+              1,
           )
-          anchor="""  const totalEquity = useMemo(
-"""
-          handler="""  const updateThreeYearPlanTargets = (targets: readonly ThreeYearPlanTarget[]) => {
-    if (!canConfigureThreeYearPlan || !bankState.threeYearPlan?.enabled) return;
-    const nextTargets = targets.map(target => ({
-      ...target,
-      milestones: target.milestones.map(milestone => ({ ...milestone })),
-    }));
-    const nextState: BankState = {
-      ...bankState,
-      threeYearPlan: {
-        ...bankState.threeYearPlan,
-        targets: nextTargets,
-        currentEvaluation: undefined,
-        reviewHistory: [],
-        lastEvaluationStep: undefined,
-        completed: false,
-      },
-    };
-    setBankState(nextState);
-    setStateHistory([nextState]);
-    setCurrentSnapshots([controller.createSnapshot(nextState)]);
-  };
-
-"""
+          anchor = "  const totalEquity = useMemo(\n"
+          handler = (
+              "  const updateThreeYearPlanTargets = (targets: readonly ThreeYearPlanTarget[]) => {\n"
+              "    if (!canConfigureThreeYearPlan || !bankState.threeYearPlan?.enabled) return;\n"
+              "    const nextTargets = targets.map(target => ({\n"
+              "      ...target,\n"
+              "      milestones: target.milestones.map(milestone => ({ ...milestone })),\n"
+              "    }));\n"
+              "    const nextState: BankState = {\n"
+              "      ...bankState,\n"
+              "      threeYearPlan: {\n"
+              "        ...bankState.threeYearPlan,\n"
+              "        targets: nextTargets,\n"
+              "        currentEvaluation: undefined,\n"
+              "        reviewHistory: [],\n"
+              "        lastEvaluationStep: undefined,\n"
+              "        completed: false,\n"
+              "      },\n"
+              "    };\n"
+              "    setBankState(nextState);\n"
+              "    setStateHistory([nextState]);\n"
+              "    setCurrentSnapshots([controller.createSnapshot(nextState)]);\n"
+              "  };\n\n"
+          )
           assert anchor in s, 'Three-Year Plan handler insertion point changed unexpectedly'
-          s=s.replace(anchor,handler+anchor,1)
-          old="<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions}>"
-          new="<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canConfigureThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets}>"
+          s = s.replace(anchor, handler + anchor, 1)
+          old = "<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions}>"
+          new = "<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canConfigureThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets}>"
           assert old in s, 'Boardroom plan-editor wiring point changed unexpectedly'
-          p.write_text(s.replace(old,new,1))
+          p.write_text(s.replace(old, new, 1))
           PY
       - run: npm ci
       - run: npx vitest run src/game/boardroom.test.tsx --reporter=verbose
