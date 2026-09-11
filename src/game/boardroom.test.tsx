@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { initialState } from '../config/initialState';
 import { createDefaultThreeYearPlan } from '../config/threeYearPlan';
-import { boardDecisions } from './boardroom';
+import { boardDecisions, monthlyBrief } from './boardroom';
 import { parseRateInput } from '../utils/parsers';
 import Boardroom from '../components/Boardroom';
 
@@ -17,16 +17,17 @@ describe('board management', () => {
     }
   });
 
-  it('renders the management surface with invalid-plan guidance and no forced monthly action', () => {
+  it('renders an optional board agenda with no forced monthly action', () => {
     const noop = () => {};
     const markup = renderToStaticMarkup(
-      <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onClose={noop} />
+      <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onClose={noop} onDecision={noop} />
     );
     expect(markup).toContain('invalid policy input');
     expect(markup).toContain('Manage a department');
     expect(markup.match(/class="department-building/g)).toHaveLength(4);
-    expect(markup).not.toContain('Adopt proposal');
-    expect(markup).not.toContain('history-card');
+    expect(markup).toContain('Board agenda');
+    expect(markup).toContain('Back proposal');
+    expect(markup).toContain('Nothing executes until you run the next month');
     expect(markup).not.toContain('Three-Year Plan');
   });
 
@@ -44,6 +45,31 @@ describe('board management', () => {
     expect(markup).toContain('Next annual milestone · FY1');
     expect(markup).toContain('Annual plan milestones');
     expect(markup).toContain('70/100');
+    expect(markup).not.toContain('Set opening board plan');
+  });
+
+  it('shows editable FY1-FY3 targets and weights only while the opening plan is configurable', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    const markup = renderToStaticMarkup(
+      <Boardroom
+        state={planned}
+        history={[planned]}
+        department={null}
+        hasErrors={false}
+        onDepartment={noop}
+        onClose={noop}
+        canEditPlan
+        onPlanTargetsChange={noop}
+      />
+    );
+    expect(markup).toContain('Set opening board plan');
+    expect(markup).toContain('locked after the first month');
+    expect(markup).toContain('Weight total 100.0%');
+    expect(markup).toContain('EPS FY1 target');
+    expect(markup).toContain('Customer deposits FY3 target');
+    expect(markup).toContain('CET1 ratio weight');
   });
 
   it('explains the latest Board Confidence movement using reviewed plan metrics', () => {
@@ -69,6 +95,28 @@ describe('board management', () => {
     expect(markup).toContain('fell 2.0 points');
     expect(markup).toContain('Largest plan-score drag');
     expect(markup).toContain('EPS (80.0 pts)');
+  });
+
+  it('prioritises an existing management proposal when it addresses the largest plan miss', () => {
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    planned.time.step = 6;
+    planned.risk.riskMetrics.internalCet1Headroom = .02;
+    planned.risk.riskMetrics.praBufferBreached = false;
+    planned.risk.riskMetrics.lcr = Math.max(1.3, planned.risk.riskMetrics.lcr);
+    planned.risk.riskMetrics.nsfr = Math.max(1.2, planned.risk.riskMetrics.nsfr);
+    planned.threeYearPlan.targets = planned.threeYearPlan.targets.map(target =>
+      target.metricId === 'customerDeposits'
+        ? {
+            ...target,
+            weight: 60,
+            milestones: target.milestones.map(milestone => ({ ...milestone, lower: target.baseline * 1.5 })),
+          }
+        : { ...target, weight: 1 }
+    );
+    expect(boardDecisions(planned)[0].id).toBe('savers');
+    expect(monthlyBrief(planned).focus).toBe('Three-Year Plan');
+    expect(monthlyBrief(planned).title).toContain('Customer deposits');
   });
 
   it('offers real equity recovery when internal capital headroom is negative', () => {

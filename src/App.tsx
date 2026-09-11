@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
 import { BankState } from './domain/bankState';
+import type { ThreeYearPlanTarget } from './domain/threeYearPlan';
 import { PlayerAction } from './domain/actions';
 import {
   AssetProductType,
@@ -172,6 +173,28 @@ const App = () => {
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
     const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
     controller.setConfig(nextConfig); setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setCurrentSnapshots([controller.createSnapshot(nextState)]);
+  };
+
+  const updateThreeYearPlanTargets = (targets: readonly ThreeYearPlanTarget[]) => {
+    if (!canConfigureThreeYearPlan || !bankState.threeYearPlan?.enabled) return;
+    const nextTargets = targets.map(target => ({
+      ...target,
+      milestones: target.milestones.map(milestone => ({ ...milestone })),
+    }));
+    const nextState: BankState = {
+      ...bankState,
+      threeYearPlan: {
+        ...bankState.threeYearPlan,
+        targets: nextTargets,
+        currentEvaluation: undefined,
+        reviewHistory: [],
+        lastEvaluationStep: undefined,
+        completed: false,
+      },
+    };
+    setBankState(nextState);
+    setStateHistory([nextState]);
+    setCurrentSnapshots([controller.createSnapshot(nextState)]);
   };
 
   const totalEquity = useMemo(
@@ -523,7 +546,7 @@ const App = () => {
       {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
 
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canConfigureThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets}>
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}

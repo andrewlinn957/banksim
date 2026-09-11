@@ -1,17 +1,33 @@
 import { ReactNode, useEffect, useRef } from 'react';
 import { BankState } from '../domain/bankState';
+import type { ThreeYearPlanTarget } from '../domain/threeYearPlan';
 import { Department, departmentSummary } from '../game/departments';
+import { boardDecisions, monthlyBrief, type BoardDecision } from '../game/boardroom';
 import { periodHistory } from '../game/management';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import ThreeYearPlanPanel from './ThreeYearPlanPanel';
-interface Props { state: BankState; history: BankState[]; department: Department | null; hasErrors: boolean; onDepartment: (department: Department) => void; onClose: () => void; children?: ReactNode; }
+interface Props {
+ state: BankState;
+ history: BankState[];
+ department: Department | null;
+ hasErrors: boolean;
+ onDepartment: (department: Department) => void;
+ onClose: () => void;
+ onDecision?: (decision: BoardDecision) => void;
+ selectedDecisions?: string[];
+ canEditPlan?: boolean;
+ onPlanTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
+ children?: ReactNode;
+}
 const departments: Department[] = ['Customers','Lending','Capital','Treasury'];
 const jobs: Record<Department,string> = {Customers:'Set deposit offers',Lending:'Price loans & set standards',Capital:'Retain profit & raise equity',Treasury:'Fund the bank & manage hedges'};
-export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,children}:Props) {
+export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,onDecision,selectedDecisions=[],canEditPlan=false,onPlanTargetsChange,children}:Props) {
  const quarter=periodHistory(history,3).at(-1);
  const panel=useRef<HTMLElement|null>(null);
  const departmentButtons=useRef<Partial<Record<Department,HTMLButtonElement>>>({});
  const priorDepartment=useRef<Department|null>(null);
+ const brief=monthlyBrief(state);
+ const decisions=boardDecisions(state);
  useEffect(()=>{ if(department){ panel.current?.focus({preventScroll:true}); if(window.matchMedia('(max-width:1150px)').matches) panel.current?.scrollIntoView({block:'start'}); } else if(priorDepartment.current) departmentButtons.current[priorDepartment.current]?.focus(); priorDepartment.current=department; },[department]);
  return <main className={`bank-workspace ${department?'with-department':''}`}>
   <section className="bank-map" aria-label="Bank and departments">
@@ -19,7 +35,24 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    <nav className="bank-departments" aria-label="Manage a department">{departments.map(d=>{const summary=departmentSummary(d,state,history);return <button ref={el=>{departmentButtons.current[d]=el;}} key={d} className={`department-building ${department===d?'selected':''}`} aria-pressed={department===d} aria-controls={department?"department-workspace":undefined} onClick={()=>onDepartment(d)}><span className="department-name">{d}<span aria-hidden="true">↗</span></span><strong>{summary.metrics[0].value}</strong><small>{summary.metrics[0].label}</small><span className="department-job">{jobs[d]}</span><span className="department-status">{summary.status}</span></button>;})}</nav>
    <div className="bank-bottom-line" aria-label="Bank position"><span>{quarter?`${quarter.label} profit (${quarter.months}/3 months)`:'Opening profit'} <strong>{formatCurrency(quarter?.profit??0)}</strong></span><span>CET1 <strong>{formatPct(state.risk.riskMetrics.cet1Ratio)}</strong></span><span>LCR <strong>{formatPct(state.risk.riskMetrics.lcr)}</strong></span></div>
   </section>
-  <ThreeYearPlanPanel state={state}/>
+
+  <section className="card stack" aria-label="Board agenda">
+   <div className="section-heading"><div><div className="eyebrow">Board agenda · {brief.focus}</div><h2>{brief.title}</h2></div></div>
+   <p className="muted">{brief.detail}</p>
+   <div className="grid-two">
+    {decisions.map(decision=>{const selected=selectedDecisions.includes(decision.id);return <article className="policy-disclosure" key={decision.id}>
+     <div className="eyebrow">{decision.voice}</div>
+     <h3>{decision.title}</h3>
+     <p>{decision.pitch}</p>
+     <div className="muted"><strong>Benefit:</strong> {decision.benefit}</div>
+     <div className="muted"><strong>Trade-off:</strong> {decision.tradeoff}</div>
+     {onDecision&&<button className={`button ${selected?'primary':''}`} disabled={selected||state.status.hasFailed} onClick={()=>onDecision(decision)}>{selected?'Backed':'Back proposal'}</button>}
+    </article>;})}
+   </div>
+   <div className="muted">Backing a proposal only pre-fills the relevant management controls. Nothing executes until you run the next month.</div>
+  </section>
+
+  <ThreeYearPlanPanel state={state} canEdit={canEditPlan} onTargetsChange={onPlanTargetsChange}/>
   {hasErrors&&!department&&<div className="alert danger" role="alert">A department has an invalid policy input. Open it to correct the plan before advancing time.</div>}
   {department&&<section ref={panel} tabIndex={-1} id="department-workspace" className="department-workspace" aria-label={`${department} management`}><div className="department-heading"><div><div className="eyebrow">Department</div><h2>{department}</h2></div><button className="button ghost" onClick={onClose} aria-label="Close department">✕</button></div>{children}</section>}
  </main>;

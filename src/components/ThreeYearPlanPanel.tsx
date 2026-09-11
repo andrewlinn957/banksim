@@ -1,8 +1,9 @@
 import type { BankState } from '../domain/bankState';
-import type { ThreeYearPlanEvaluation } from '../domain/threeYearPlan';
+import type { ThreeYearPlanEvaluation, ThreeYearPlanTarget } from '../domain/threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from '../engine/threeYearPlanMetrics';
 import { evaluateThreeYearPlan } from '../engine/threeYearPlan';
 import { formatCurrency, formatPct } from '../utils/formatters';
+import ThreeYearPlanEditor from './ThreeYearPlanEditor';
 
 const formatValue = (value:number, format:'money'|'moneyPerShare'|'ratio') => format==='money'?formatCurrency(value):format==='ratio'?formatPct(value):`${(value*100).toFixed(1)}p`;
 const formatTarget=(lower:number,upper:number|undefined,format:'money'|'moneyPerShare'|'ratio')=>upper===undefined?formatValue(lower,format):`${formatValue(lower,format)}–${formatValue(upper,format)}`;
@@ -17,7 +18,13 @@ const planDrivers=(evaluation:ThreeYearPlanEvaluation)=>{
     .slice(0,3);
 };
 
-export default function ThreeYearPlanPanel({state}:{state:BankState}) {
+interface Props {
+  state: BankState;
+  canEdit?: boolean;
+  onTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
+}
+
+export default function ThreeYearPlanPanel({state,canEdit=false,onTargetsChange}:Props) {
   const plan=state.threeYearPlan; if(!plan?.enabled) return null;
   const month=Math.min(plan.horizonMonths,Math.max(0,state.time.step-plan.startStep));
   const live=plan.completed&&plan.currentEvaluation?plan.currentEvaluation:evaluateThreeYearPlan({state,month,targets:plan.targets,registry:bankThreeYearPlanMetricRegistry});
@@ -29,6 +36,8 @@ export default function ThreeYearPlanPanel({state}:{state:BankState}) {
 
   return <section className="card stack three-year-plan" aria-label="Three-Year Plan">
     <div className="section-heading"><div><div className="eyebrow">Three-Year Plan</div><h2>Board mandate</h2></div><div><strong>{confidence.toFixed(0)}/100</strong><div className="muted">Board Confidence · {confidenceLabel(confidence)}</div></div></div>
+
+    {canEdit&&onTargetsChange&&<ThreeYearPlanEditor state={state} onChange={onTargetsChange}/>} 
 
     <div className="grid-two">
       <div><strong>{plan.completed?'Final plan result':'Live trajectory'} · {live.score.toFixed(0)}/100</strong><div className="muted">Month {month} of 36{plan.completed?' · plan complete':` · indicative until formal review month ${nextReview}`}</div></div>

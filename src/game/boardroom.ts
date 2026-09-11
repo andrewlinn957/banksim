@@ -1,5 +1,7 @@
 import { BankState } from '../domain/bankState';
 import { ActionFormState } from '../components/ActionsPanel';
+import { evaluateThreeYearPlan } from '../engine/threeYearPlan';
+import { bankThreeYearPlanMetricRegistry, THREE_YEAR_PLAN_METRICS } from '../engine/threeYearPlanMetrics';
 
 export interface BoardDecision {
   id: string;
@@ -12,6 +14,57 @@ export interface BoardDecision {
 }
 
 const rate = (r: number) => `${(Math.max(0, r) * 100).toFixed(2)}%`;
+
+interface PlanFocus {
+  score: number;
+  metricId: string;
+  metricLabel: string;
+  drag: number;
+  proposalId?: string;
+}
+
+const planFocus = (state: BankState): PlanFocus | null => {
+  const plan = state.threeYearPlan;
+  if (!plan?.enabled || plan.completed) return null;
+  const month = Math.min(plan.horizonMonths, Math.max(0, state.time.step - plan.startStep));
+  const evaluation = evaluateThreeYearPlan({
+    state,
+    month,
+    targets: plan.targets,
+    registry: bankThreeYearPlanMetricRegistry,
+  });
+  const totalWeight = evaluation.metrics.reduce((sum, metric) => sum + Math.max(0, metric.weight), 0);
+  const ranked = evaluation.metrics
+    .map((metric) => ({
+      metric,
+      drag: totalWeight > 0 ? (100 - metric.score) * Math.max(0, metric.weight) / totalWeight : 0,
+    }))
+    .sort((a, b) => b.drag - a.drag);
+  const top = ranked[0];
+  if (!top || top.drag <= 0.05) return null;
+  const proposalId =
+    top.metric.metricId === THREE_YEAR_PLAN_METRICS.customerDeposits
+      ? 'savers'
+      : top.metric.metricId === THREE_YEAR_PLAN_METRICS.customerLending
+        ? 'growth'
+        : top.metric.metricId === THREE_YEAR_PLAN_METRICS.lcr || top.metric.metricId === THREE_YEAR_PLAN_METRICS.nsfr
+          ? 'funding'
+          : undefined;
+  return {
+    score: evaluation.score,
+    metricId: top.metric.metricId,
+    metricLabel: bankThreeYearPlanMetricRegistry.get(top.metric.metricId).label,
+    drag: top.drag,
+    proposalId,
+  };
+};
+
+const prioritiseForPlan = (state: BankState, proposals: BoardDecision[]): BoardDecision[] => {
+  const focus = planFocus(state);
+  if (!focus?.proposalId) return proposals;
+  const priority = proposals.find((proposal) => proposal.id === focus.proposalId);
+  return priority ? [priority, ...proposals.filter((proposal) => proposal.id !== priority.id)] : proposals;
+};
 
 export const boardDecisions = (s: BankState): BoardDecision[] => {
   const m = s.market;
@@ -123,7 +176,7 @@ export const boardDecisions = (s: BankState): BoardDecision[] => {
       },
     };
   }
-  return proposals;
+  return prioritiseForPlan(s, proposals);
 };
 
 export const monthlyBrief = (s: BankState) => {
@@ -139,6 +192,14 @@ export const monthlyBrief = (s: BankState) => {
       title: 'The supervisor wants a recovery plan.',
       detail: 'Your PRA buffer is being used. Rebuild headroom through earnings, less risk or new equity. Buffer use alone does not end the game.',
       focus: 'Capital recovery',
+    };
+  }
+  const plan = planFocus(s);
+  if (plan) {
+    return {
+      title: `${plan.metricLabel} is furthest behind plan.`,
+      detail: `Live plan score ${plan.score.toFixed(0)}/100. This measure is the largest weighted drag (${plan.drag.toFixed(1)} points). Board Confidence changes only at the next formal quarterly review.`,
+      focus: 'Three-Year Plan',
     };
   }
   if (s.time.step === 0) {
