@@ -60,6 +60,7 @@ const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   underwritingTightness: { ...(b.underwritingTightness ?? {}) },
   capitalPolicy: b.capitalPolicy ? { ...b.capitalPolicy } : undefined,
   mortgagePolicy: b.mortgagePolicy ? { ...b.mortgagePolicy } : undefined,
+  treasuryPolicy: b.treasuryPolicy ? { ...b.treasuryPolicy } : undefined,
 });
 
 const clonePlanTarget = (target: ThreeYearPlanTarget): ThreeYearPlanTarget => ({
@@ -132,9 +133,9 @@ const cloneFundingLadders = (raw: FundingLadderMap): FundingLadderMap => {
   return out;
 };
 
-const cloneAssetMaturityLadders = (raw: AssetMaturityLadderMap): AssetMaturityLadderMap => {
+const cloneAssetMaturityLadders = (raw: AssetMaturityLadderMap | undefined): AssetMaturityLadderMap => {
   const out: AssetMaturityLadderMap = {};
-  const entries = Object.entries(raw) as Array<[ProductType, Array<{ tenorMonths: number; monthsToMaturity: number; notional: number; rate: number }>] >;
+  const entries = Object.entries(raw ?? {}) as Array<[ProductType, Array<{ tenorMonths: number; monthsToMaturity: number; notional: number; rate: number }>] >;
   entries.forEach(([productType, buckets]) => {
     out[productType] = buckets.map((bucket) => ({ ...bucket }));
   });
