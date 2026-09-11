@@ -45,6 +45,31 @@ describe('board management', () => {
     expect(markup).toContain('Next annual milestone · FY1');
     expect(markup).toContain('Annual plan milestones');
     expect(markup).toContain('70/100');
+    expect(markup).not.toContain('Set opening board plan');
+  });
+
+  it('shows editable FY1-FY3 targets and weights only while the opening plan is configurable', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    const markup = renderToStaticMarkup(
+      <Boardroom
+        state={planned}
+        history={[planned]}
+        department={null}
+        hasErrors={false}
+        onDepartment={noop}
+        onClose={noop}
+        canEditPlan
+        onPlanTargetsChange={noop}
+      />
+    );
+    expect(markup).toContain('Set opening board plan');
+    expect(markup).toContain('locked after the first month');
+    expect(markup).toContain('Weight total 100.0%');
+    expect(markup).toContain('EPS FY1 target');
+    expect(markup).toContain('Customer deposits FY3 target');
+    expect(markup).toContain('CET1 ratio weight');
   });
 
   it('explains the latest Board Confidence movement using reviewed plan metrics', () => {
