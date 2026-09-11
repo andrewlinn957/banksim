@@ -34,6 +34,7 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     const lines = prudentialLiquidityLines(initialState, baseConfig);
     const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;
     expect(retail.outflow / retail.balance).toBeCloseTo(0.055);
+    expect(retail.lcrOutflowContributions.map(c => c.corep)).toEqual(['C73 1.1.1.4','C73 1.1.1.7']);
     expect(retail.asf / retail.balance).toBeCloseTo(0.945);
     expect(retail.asfContributions.map(c => c.category)).toEqual(['stableRetail', 'otherRetail']);
     expect(retail.asfContributions.map(c => c.corep)).toEqual(['C81 2.2.1', 'C81 2.2.2']);
@@ -45,7 +46,7 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);
     expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);
   });
-  it('uses stable/other retail factors and maturity-based NSFR treatment for fixed-term savings', () => {
+  it('uses COR011 retail runoff and stable/other NSFR factors for fixed-term savings', () => {
     const s = cloneBankState(initialState);
     s.fundingLadders[L.RetailTermDeposits] = [
       { monthsToMaturity: 1, tenorMonths: 12, notional: 100, rate: .04 },
@@ -53,7 +54,8 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     ];
     line(s,L.RetailTermDeposits).balance=200;
     const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.RetailTermDeposits)!;
-    expect(l.outflow).toBeCloseTo(10);
+    expect(l.outflow).toBeCloseTo(5.5);
+    expect(l.lcrOutflowContributions.map(c=>c.corep)).toEqual(['C73 1.1.1.4','C73 1.1.1.7']);
     expect(l.asf).toBeCloseTo(194.5);
     expect(l.asfContributions.reduce((sum,c)=>sum+c.weighted,0)).toBeCloseTo(l.asf);
     expect(l.asfContributions.filter(c=>c.maturityBand==='under6m').map(c=>c.factor).sort()).toEqual([0.9,0.95]);
@@ -72,7 +74,7 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     s.financial.balanceSheet.items.push({ ...line(s,L.WholesaleFundingLT), productType:L.Tier2Debt, label:'Tier 2 subordinated debt', balance:200 });
     s.fundingLadders[L.Tier2Debt]=[
       { monthsToMaturity:11, tenorMonths:60, notional:100, rate:.06 },
-      { monthsToMaturity:12, tenorMonths:60, notional:100, rate:.06 },
+      { monthsToMaturity:12,tenorMonths:60,notional:100,rate:.06 },
     ];
     const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.Tier2Debt)!;
     expect(l.asf).toBe(100);
