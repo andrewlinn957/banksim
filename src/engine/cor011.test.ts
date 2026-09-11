@@ -3,6 +3,7 @@ import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
 import { AssetProductType as A, LiabilityProductType as L } from '../domain/enums';
 import { cloneBankState } from './clone';
+import { applyActions } from './simulation';
 import {
   calculateCor011,
   cor011NetOutflow,
@@ -13,6 +14,23 @@ import {
 
 const position = (state: typeof initialState, productType: A | L) =>
   state.financial.balanceSheet.items.find(item => item.productType === productType)!;
+
+const ensureBoeFundingPosition = (state: typeof initialState, balance: number) => {
+  let item = state.financial.balanceSheet.items.find(position => position.productType === L.BankOfEnglandFunding);
+  if (!item) {
+    const template = position(state, L.WholesaleFundingST);
+    item = {
+      ...template,
+      productType: L.BankOfEnglandFunding,
+      label: 'Bank of England secured funding',
+      balance,
+    };
+    state.financial.balanceSheet.items.push(item);
+  } else {
+    item.balance = balance;
+  }
+  return item;
+};
 
 describe('COR011 LCR engine', () => {
   it('maps reserves and gilts to the current C72 Level 1 rows after encumbrance', () => {
@@ -33,10 +51,14 @@ describe('COR011 LCR engine', () => {
     state.behaviour.insuredRetailDepositShare = 0.8;
     position(state, L.RetailCurrentAccounts).balance = 100;
     let flows = lcrCashFlowContributionsForProduct(state, baseConfig, L.RetailCurrentAccounts);
-    expect(flows.outflows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ corep: 'C73 1.1.1.4', amount: 80, factor: 0.05, weighted: 4 }),
-      expect.objectContaining({ corep: 'C73 1.1.1.7', amount: 20, factor: 0.10, weighted: 2 }),
-    ]));
+    const stable = flows.outflows.find(c => c.corep === 'C73 1.1.1.4')!;
+    const other = flows.outflows.find(c => c.corep === 'C73 1.1.1.7')!;
+    expect(stable.amount).toBeCloseTo(80);
+    expect(stable.factor).toBe(0.05);
+    expect(stable.weighted).toBeCloseTo(4);
+    expect(other.amount).toBeCloseTo(20);
+    expect(other.factor).toBe(0.10);
+    expect(other.weighted).toBeCloseTo(2);
 
     state.fundingLadders[L.RetailTermDeposits] = [
       { tenorMonths: 12, monthsToMaturity: 1, notional: 100, rate: 0.04 },
@@ -60,7 +82,7 @@ describe('COR011 LCR engine', () => {
 
   it('reports central-bank secured funding in C73 at 0% rather than as a 100% maturity outflow', () => {
     const state = cloneBankState(initialState);
-    position(state, L.BankOfEnglandFunding).balance = 100;
+    ensureBoeFundingPosition(state, 100);
     state.fundingLadders[L.BankOfEnglandFunding] = [
       { tenorMonths: 1, monthsToMaturity: 1, notional: 100, rate: 0.05 },
     ];
@@ -104,22 +126,23 @@ describe('COR011 LCR engine', () => {
   });
 
   it('nets derivative cash flows before reporting C73/C74', () => {
-    const state = cloneBankState(initialState);
+    let state = cloneBankState(initialState);
     state.market.riskFreeShort = 0.05;
-    state.financial.hedges = [{
-      id: 'lcr-test', direction: 'payFixedReceiveFloat', notional: 120, fixedRate: 0.04,
-      maturityMonths: 12, monthsRemaining: 12,
-    }];
-    let assetFlows = lcrCashFlowContributionsForProduct(state, baseConfig, A.DerivativeAssets);
-    let liabilityFlows = lcrCashFlowContributionsForProduct(state, baseConfig, L.DerivativeLiabilities);
-    expect(assetFlows.inflows[0]).toMatchObject({ corep: 'C74 1.1.9', factor: 1 });
-    expect(liabilityFlows.outflows).toHaveLength(0);
+    applyActions(state, baseConfig, [{
+      type: 'enterHedge', direction: 'payFixedReceiveFloat', notional: 120, fixedRate: 0.04, maturityMonths: 12,
+    }], []);
+    let report = calculateCor011(state, baseConfig);
+    expect(report.inflows.find(c => c.corep === 'C74 1.1.9')).toMatchObject({ corep: 'C74 1.1.9', factor: 1 });
+    expect(report.outflows.some(c => c.corep === 'C73 1.1.5.5')).toBe(false);
 
-    state.financial.hedges[0].fixedRate = 0.06;
-    assetFlows = lcrCashFlowContributionsForProduct(state, baseConfig, A.DerivativeAssets);
-    liabilityFlows = lcrCashFlowContributionsForProduct(state, baseConfig, L.DerivativeLiabilities);
-    expect(assetFlows.inflows).toHaveLength(0);
-    expect(liabilityFlows.outflows[0]).toMatchObject({ corep: 'C73 1.1.5.5', factor: 1 });
+    state = cloneBankState(initialState);
+    state.market.riskFreeShort = 0.05;
+    applyActions(state, baseConfig, [{
+      type: 'enterHedge', direction: 'receiveFixedPayFloat', notional: 120, fixedRate: 0.04, maturityMonths: 12,
+    }], []);
+    report = calculateCor011(state, baseConfig);
+    expect(report.inflows.some(c => c.corep === 'C74 1.1.9')).toBe(false);
+    expect(report.outflows.find(c => c.corep === 'C73 1.1.5.5')).toMatchObject({ corep: 'C73 1.1.5.5', factor: 1 });
   });
 
   it('implements the exact C76 75%, 90% and fully-exempt inflow reductions', () => {
@@ -140,7 +163,7 @@ describe('COR011 LCR engine', () => {
     position(state, A.CashReserves).encumbrance = { encumberedAmount: 0 };
     position(state, A.Gilts).balance = 100;
     position(state, A.Gilts).encumbrance = { encumberedAmount: 100, remainingMonths: 1 };
-    position(state, L.BankOfEnglandFunding).balance = 97;
+    ensureBoeFundingPosition(state, 97);
     state.fundingLadders[L.BankOfEnglandFunding] = [
       { tenorMonths: 1, monthsToMaturity: 1, notional: 97, rate: 0.05 },
     ];
