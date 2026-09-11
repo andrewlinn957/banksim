@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Patch cleanup script for current config ordering
+      - name: Patch cleanup script for current source layout
         shell: bash
         run: |
           python3 - <<'PY'
@@ -30,7 +30,16 @@ jobs:
           new='''    r"  conductRisk: \\{.*?\\n  \\},\\n  boeFunding:",\n    "  boeFunding:",'''
           if old not in s:
               raise SystemExit('Expected conduct-risk cleanup pattern not found')
-          p.write_text(s.replace(old,new))
+          s=s.replace(old,new)
+          for redundant in [
+              '        "    conductEventCooldownMonths: 0,",\n',
+              '        "    conductEventCount: 0,",\n',
+              '        "    cumulativeConductCosts: 0,",\n',
+          ]:
+              if redundant not in s:
+                  raise SystemExit(f'Expected redundant cleanup needle not found: {redundant!r}')
+              s=s.replace(redundant,'')
+          p.write_text(s)
           PY
       - name: Apply cleanup
         run: python3 scripts/remove_low_value_soft_state.py
