@@ -5,6 +5,7 @@ export type DepositBenchmark = 'retailCurrentAccount' | 'termDeposit' | 'corpora
 export type LoanBenchmark = 'mortgage' | 'consumer' | 'corporate';
 export type WholesaleFundingTenorClass = 'short' | 'long';
 export type TreasuryAssetRateSource = 'bankRate' | 'giltCurve';
+export type CapitalMarketsFundingInstrument = 'tier2' | 'senior';
 
 export type LiquidityRegulatoryClass =
   | 'derivativeAsset'
@@ -61,6 +62,13 @@ export interface WholesaleFundingCapability {
   issuable?: boolean;
 }
 
+/** Capital-market issuance metadata for funding products. Product identity and tenor eligibility live here. */
+export interface CapitalMarketsFundingCapability {
+  instrument: CapitalMarketsFundingInstrument;
+  defaultTenorMonths: number;
+  permittedTenorMonths: readonly number[];
+}
+
 /** Contractual/treasury behaviour authored once in the product catalogue. */
 export interface TreasuryAssetCapability {
   tradable?: boolean;
@@ -74,6 +82,7 @@ export interface ProductCapabilities {
   customerDeposit?: CustomerDepositCapability;
   loan?: LoanCapability;
   wholesaleFunding?: WholesaleFundingCapability;
+  capitalMarketsFunding?: CapitalMarketsFundingCapability;
   treasuryAsset?: TreasuryAssetCapability;
 }
 
@@ -126,261 +135,88 @@ const defineProducts = <const T extends Record<string, ProductDefinitionInput>>(
 
 export const ASSET_PRODUCTS = defineProducts({
   DerivativeAssets: {
-    productType: 'DerivativeAssets',
-    label: 'Derivative assets',
-    side: 'Asset',
-    capabilities: {},
-    regulatory: {
-      liquidity: 'derivativeAsset',
-      creditRisk: 'derivativeCounterparty',
-      capital: 'none',
-      leverage: 'derivativeAssetReplacement',
-    },
+    productType: 'DerivativeAssets', label: 'Derivative assets', side: 'Asset', capabilities: {},
+    regulatory: { liquidity: 'derivativeAsset', creditRisk: 'derivativeCounterparty', capital: 'none', leverage: 'derivativeAssetReplacement' },
   },
   CashReserves: {
-    productType: 'CashReserves',
-    label: 'Cash & Reserves',
-    side: 'Asset',
-    capabilities: {
-      treasuryAsset: { settlementAsset: true, rateSource: 'bankRate' },
-    },
-    regulatory: {
-      liquidity: 'centralBankReserve',
-      creditRisk: 'centralBank',
-      capital: 'none',
-      leverage: 'centralBankReserve',
-    },
+    productType: 'CashReserves', label: 'Cash & Reserves', side: 'Asset',
+    capabilities: { treasuryAsset: { settlementAsset: true, rateSource: 'bankRate' } },
+    regulatory: { liquidity: 'centralBankReserve', creditRisk: 'centralBank', capital: 'none', leverage: 'centralBankReserve' },
   },
   Gilts: {
-    productType: 'Gilts',
-    label: 'Gilts / Liquidity Portfolio',
-    side: 'Asset',
-    capabilities: {
-      treasuryAsset: {
-        tradable: true,
-        contractualMaturity: true,
-        rateSource: 'giltCurve',
-        permittedTenorMonths: [24, 60, 120],
-      },
-    },
-    regulatory: {
-      liquidity: 'level1Sovereign',
-      creditRisk: 'sovereign',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'Gilts', label: 'Gilts / Liquidity Portfolio', side: 'Asset',
+    capabilities: { treasuryAsset: { tradable: true, contractualMaturity: true, rateSource: 'giltCurve', permittedTenorMonths: [24, 60, 120] } },
+    regulatory: { liquidity: 'level1Sovereign', creditRisk: 'sovereign', capital: 'none', leverage: 'standard' },
   },
   Mortgages: {
-    productType: 'Mortgages',
-    label: 'Residential Mortgages',
-    side: 'Asset',
-    capabilities: {
-      loan: {
-        benchmark: 'mortgage',
-        behaviouralFlow: true,
-        underwritingEditable: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'residentialMortgage',
-      creditRisk: 'residentialMortgage',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'Mortgages', label: 'Residential Mortgages', side: 'Asset',
+    capabilities: { loan: { benchmark: 'mortgage', behaviouralFlow: true, underwritingEditable: true } },
+    regulatory: { liquidity: 'residentialMortgage', creditRisk: 'residentialMortgage', capital: 'none', leverage: 'standard' },
   },
   ConsumerLoans: {
-    productType: 'ConsumerLoans',
-    label: 'Personal Loans & Revolving Credit',
-    side: 'Asset',
-    capabilities: {
-      loan: {
-        benchmark: 'consumer',
-        behaviouralFlow: true,
-        underwritingEditable: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'consumerLoan',
-      creditRisk: 'retailUnsecured',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'ConsumerLoans', label: 'Personal Loans & Revolving Credit', side: 'Asset',
+    capabilities: { loan: { benchmark: 'consumer', behaviouralFlow: true, underwritingEditable: true } },
+    regulatory: { liquidity: 'consumerLoan', creditRisk: 'retailUnsecured', capital: 'none', leverage: 'standard' },
   },
   CorporateLoans: {
-    productType: 'CorporateLoans',
-    label: 'SME & Business Lending',
-    side: 'Asset',
-    capabilities: {
-      loan: {
-        benchmark: 'corporate',
-        behaviouralFlow: true,
-        underwritingEditable: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'corporateLoan',
-      creditRisk: 'corporate',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'CorporateLoans', label: 'SME & Business Lending', side: 'Asset',
+    capabilities: { loan: { benchmark: 'corporate', behaviouralFlow: true, underwritingEditable: true } },
+    regulatory: { liquidity: 'corporateLoan', creditRisk: 'corporate', capital: 'none', leverage: 'standard' },
   },
 });
 
 export const LIABILITY_PRODUCTS = defineProducts({
   DerivativeLiabilities: {
-    productType: 'DerivativeLiabilities',
-    label: 'Derivative liabilities',
-    side: 'Liability',
-    capabilities: {},
-    regulatory: {
-      liquidity: 'derivativeLiability',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'DerivativeLiabilities', label: 'Derivative liabilities', side: 'Liability', capabilities: {},
+    regulatory: { liquidity: 'derivativeLiability', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   CreditProvisions: {
-    productType: 'CreditProvisions',
-    label: 'Undrawn credit provisions',
-    side: 'Liability',
-    capabilities: {},
-    regulatory: {
-      liquidity: 'creditProvision',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'CreditProvisions', label: 'Undrawn credit provisions', side: 'Liability', capabilities: {},
+    regulatory: { liquidity: 'creditProvision', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   RetailCurrentAccounts: {
-    productType: 'RetailCurrentAccounts',
-    label: 'Retail current accounts',
-    side: 'Liability',
-    capabilities: {
-      customerDeposit: {
-        segment: 'retail',
-        benchmark: 'retailCurrentAccount',
-        behaviouralFlow: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'retailSightDeposit',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'RetailCurrentAccounts', label: 'Retail current accounts', side: 'Liability',
+    capabilities: { customerDeposit: { segment: 'retail', benchmark: 'retailCurrentAccount', behaviouralFlow: true } },
+    regulatory: { liquidity: 'retailSightDeposit', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   RetailTermDeposits: {
-    productType: 'RetailTermDeposits',
-    label: 'Fixed-Term Savings',
-    side: 'Liability',
-    capabilities: {
-      customerDeposit: {
-        segment: 'retail',
-        benchmark: 'termDeposit',
-        behaviouralFlow: true,
-        termFunding: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'retailTermDeposit',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'RetailTermDeposits', label: 'Fixed-Term Savings', side: 'Liability',
+    capabilities: { customerDeposit: { segment: 'retail', benchmark: 'termDeposit', behaviouralFlow: true, termFunding: true } },
+    regulatory: { liquidity: 'retailTermDeposit', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   CorporateOperatingDeposits: {
-    productType: 'CorporateOperatingDeposits',
-    label: 'SME / Business Operating Deposits',
-    side: 'Liability',
-    capabilities: {
-      customerDeposit: {
-        segment: 'corporate',
-        benchmark: 'corporateDeposit',
-        behaviouralFlow: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'corporateOperatingDeposit',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'CorporateOperatingDeposits', label: 'SME / Business Operating Deposits', side: 'Liability',
+    capabilities: { customerDeposit: { segment: 'corporate', benchmark: 'corporateDeposit', behaviouralFlow: true } },
+    regulatory: { liquidity: 'corporateOperatingDeposit', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   CorporateNonOperatingDeposits: {
-    productType: 'CorporateNonOperatingDeposits',
-    label: 'Other Business Deposits',
-    side: 'Liability',
-    capabilities: {
-      customerDeposit: {
-        segment: 'corporate',
-        benchmark: 'corporateDeposit',
-        behaviouralFlow: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'corporateNonOperatingDeposit',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'CorporateNonOperatingDeposits', label: 'Other Business Deposits', side: 'Liability',
+    capabilities: { customerDeposit: { segment: 'corporate', benchmark: 'corporateDeposit', behaviouralFlow: true } },
+    regulatory: { liquidity: 'corporateNonOperatingDeposit', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   WholesaleFundingST: {
-    productType: 'WholesaleFundingST',
-    label: 'Short-term wholesale funding',
-    side: 'Liability',
-    capabilities: {
-      wholesaleFunding: {
-        tenorClass: 'short',
-        issuable: true,
-      },
-    },
-    regulatory: {
-      liquidity: 'wholesaleFundingShort',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'WholesaleFundingST', label: 'Short-term wholesale funding', side: 'Liability',
+    capabilities: { wholesaleFunding: { tenorClass: 'short', issuable: true } },
+    regulatory: { liquidity: 'wholesaleFundingShort', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   WholesaleFundingLT: {
-    productType: 'WholesaleFundingLT',
-    label: 'Long-Term Debt',
-    side: 'Liability',
+    productType: 'WholesaleFundingLT', label: 'Long-Term Debt', side: 'Liability',
     capabilities: {
-      wholesaleFunding: {
-        tenorClass: 'long',
-        issuable: true,
-      },
+      wholesaleFunding: { tenorClass: 'long', issuable: true },
+      capitalMarketsFunding: { instrument: 'senior', defaultTenorMonths: 36, permittedTenorMonths: [24, 36, 60] },
     },
-    regulatory: {
-      liquidity: 'wholesaleFundingLong',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    regulatory: { liquidity: 'wholesaleFundingLong', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   BankOfEnglandFunding: {
-    productType: 'BankOfEnglandFunding',
-    label: 'Bank of England secured funding',
-    side: 'Liability',
-    capabilities: {},
-    regulatory: {
-      liquidity: 'centralBankSecuredFunding',
-      creditRisk: 'none',
-      capital: 'none',
-      leverage: 'standard',
-    },
+    productType: 'BankOfEnglandFunding', label: 'Bank of England secured funding', side: 'Liability', capabilities: {},
+    regulatory: { liquidity: 'centralBankSecuredFunding', creditRisk: 'none', capital: 'none', leverage: 'standard' },
   },
   Tier2Debt: {
-    productType: 'Tier2Debt',
-    label: 'Tier 2 subordinated debt',
-    side: 'Liability',
-    capabilities: {},
-    regulatory: {
-      liquidity: 'tier2Funding',
-      creditRisk: 'none',
-      capital: 'tier2OwnFunds',
-      leverage: 'standard',
+    productType: 'Tier2Debt', label: 'Tier 2 subordinated debt', side: 'Liability',
+    capabilities: {
+      capitalMarketsFunding: { instrument: 'tier2', defaultTenorMonths: 60, permittedTenorMonths: [60, 84, 120] },
     },
+    regulatory: { liquidity: 'tier2Funding', creditRisk: 'none', capital: 'tier2OwnFunds', leverage: 'standard' },
   },
 });
 
