@@ -7,21 +7,29 @@ import { createSimulationEngine } from './simulation';
 import { calculateRiskMetrics } from './metrics';
 
 describe('Simulation correctness guardrails', () => {
-  it('uses confidence-adjusted market pricing for senior issuance', () => {
+  it('uses observable issuer fundamentals and market conditions for senior issuance', () => {
     const engine = createSimulationEngine();
-    const strongState = cloneBankState(initialState);
-    strongState.behaviour.fundingConfidenceState = 'strong';
+    const healthyState = cloneBankState(initialState);
     const stressedState = cloneBankState(initialState);
-    stressedState.behaviour.fundingConfidenceState = 'stressed';
+    stressedState.risk.riskMetrics.cet1Headroom = -0.01;
+    stressedState.risk.riskMetrics.leverageRatio = baseConfig.riskLimits.minLeverageRatio - 0.005;
+    stressedState.risk.riskMetrics.lcr = 0.85;
+    stressedState.risk.riskMetrics.nsfr = 0.90;
+    stressedState.behaviour.depositFranchiseStrength = 0.35;
+    stressedState.market.seniorDebtSpread += 0.015;
+    Object.values(stressedState.loanCohorts).flatMap(cohorts => cohorts ?? []).forEach((cohort, index) => {
+      cohort.stage = index % 3 === 0 ? 'stage3' : 'stage2';
+    });
 
     const action = { type: 'launchCapitalMarketsTransaction' as const, instrument: 'senior' as const, targetAmount: 500e6, maxSpreadBps: 5000, tenorMonths: 36 };
-    const strong = engine.step({ state: strongState, config: baseConfig, actions: [action], shocks: [] });
+    const healthy = engine.step({ state: healthyState, config: baseConfig, actions: [action], shocks: [] });
     const stressed = engine.step({ state: stressedState, config: baseConfig, actions: [action], shocks: [] });
-    const strongExecution = strong.executions.capitalMarkets[0];
+    const healthyExecution = healthy.executions.capitalMarkets[0];
     const stressedExecution = stressed.executions.capitalMarkets[0];
 
-    expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
-    expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
+    expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(healthyExecution.clearingSpreadBps ?? 0);
+    expect(stressedExecution.demandAmount).toBeLessThan(healthyExecution.demandAmount);
+    expect(stressedExecution.fundingMarketAssessment?.drivers.some(driver => driver.key === 'capital' && driver.spreadBps > 0)).toBe(true);
   });
 
   it('respects the management maximum spread when issuing senior debt', () => {
