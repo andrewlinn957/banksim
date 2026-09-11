@@ -409,12 +409,6 @@ const App = () => {
     const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
     scenarioState.risk.riskMetrics = metrics;
     scenarioState.risk.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
-    scenarioState.board = {
-      score: metrics.boardPressureScore,
-      earningsVolatility: metrics.boardPressureVolatility,
-      franchiseGap: metrics.boardPressureFranchiseGap,
-      riskGap: metrics.boardPressureRiskGap,
-    };
     controller.setConfig(scenarioConfig);
     setSimConfig(scenarioConfig);
     setPendingRiskAppetite(undefined);

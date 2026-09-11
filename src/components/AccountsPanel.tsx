@@ -149,7 +149,6 @@ const buildIncomeRows = (state: BankState, history: BankState[]): StatementRow[]
     { id: 'servicingCosts', label: 'Servicing costs', selector: (s) => s.financial.incomeStatement.servicingCosts },
     { id: 'originationCosts', label: 'Origination costs', selector: (s) => s.financial.incomeStatement.originationCosts },
     { id: 'workoutCosts', label: 'Workout costs', selector: (s) => s.financial.incomeStatement.workoutCosts },
-    { id: 'conductCosts', label: 'Conduct costs', selector: (s) => s.financial.incomeStatement.conductCosts },
     { id: 'at1CouponExpense', label: 'AT1 coupon paid', selector: (s) => s.financial.incomeStatement.at1CouponExpense },
     { id: 'dividendsPaid', label: 'Dividends paid', selector: (s) => s.financial.incomeStatement.dividendsPaid },
     { id: 'operatingExpenses', label: 'Operating expenses', selector: (s) => s.financial.incomeStatement.operatingExpenses },

@@ -15,7 +15,6 @@ export interface IncomeStatement {
   servicingCosts: number;
   originationCosts: number;
   workoutCosts: number;
-  conductCosts: number;
   at1CouponExpense: number;
   dividendsPaid: number;
   preTaxProfit: number;

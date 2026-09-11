@@ -10,12 +10,13 @@ const findBalance = (state: typeof initialState, productType: AssetProductType |
   state.financial.balanceSheet.items.find((item) => item.productType === productType);
 
 describe('Internal capital target and payout gating', () => {
-  it('clips distributions earlier when volatility/stress are high, before MDA breach', () => {
+  it('clips distributions earlier when funding stress and confidence are weak, before MDA breach', () => {
     const engine = createSimulationEngine();
     // Explicit stress-sensitive policy places the stressed bank below its internal
     // target while leaving both banks above the regulatory distribution threshold.
     const config = structuredClone(baseConfig);
-    config.riskLimits.capitalPolicy.internalTargetVolatilitySensitivity = .02;
+    config.riskLimits.capitalPolicy.internalTargetStressSensitivity = .02;
+    config.riskLimits.capitalPolicy.internalTargetConfidenceSensitivity = .015;
     config.riskLimits.capitalPolicy.internalTargetMaxBuffer = .05;
 
     const openingMetrics = calculateRiskMetrics({ state: initialState, config });
@@ -23,7 +24,7 @@ describe('Internal capital target and payout gating', () => {
     // Build the fixture from the live regulatory requirement rather than taking a percentage of
     // opening CET1. The 150bp cushion leaves the benign case above its ordinary internal buffer
     // after one month's balance-sheet movement, while the stressed case still consumes the much
-    // larger dynamic buffer created by volatility, confidence and conduct signals.
+    // larger dynamic buffer created by funding stress and confidence signals.
     const targetAdjustedCet1 = (openingMetrics.cet1Requirement + 0.015) * openingMetrics.rwa;
     const targetCet1 = targetAdjustedCet1 - initialState.financial.capital.accumulatedOCI * inclusionRate;
 
@@ -34,10 +35,7 @@ describe('Internal capital target and payout gating', () => {
     benignState.financial.capital.cet1 = targetCet1;
     benignCash.balance += benignCet1Delta;
     benignState.behaviour.capitalPolicy = { dividendPayoutRatio: 0.9, at1CouponMode: 'auto' };
-    benignState.behaviour.earningsVolatility = 0.05e9;
     benignState.behaviour.depositFranchiseStrength = 0.9;
-    benignState.behaviour.reputation = 0.9;
-    benignState.behaviour.conductRiskScore = 0;
     benignState.behaviour.fundingConfidenceState = 'strong';
 
     const stressedState = cloneBankState(initialState);
@@ -47,10 +45,7 @@ describe('Internal capital target and payout gating', () => {
     stressedState.financial.capital.cet1 = targetCet1;
     stressedCash.balance += stressedCet1Delta;
     stressedState.behaviour.capitalPolicy = { dividendPayoutRatio: 0.9, at1CouponMode: 'auto' };
-    stressedState.behaviour.earningsVolatility = 0.8e9;
     stressedState.behaviour.depositFranchiseStrength = 0.42;
-    stressedState.behaviour.reputation = 0.45;
-    stressedState.behaviour.conductRiskScore = 1.6;
     stressedState.behaviour.fundingConfidenceState = 'stressed';
 
     const benignStep = engine.step({ state: benignState, config, actions: [], shocks: [] });
@@ -65,7 +60,6 @@ describe('Internal capital target and payout gating', () => {
     expect(stressed.risk.riskMetrics.payoutBlockedByInternalTarget).toBe(true);
     expect(stressed.risk.riskMetrics.maxPayoutRatio).toBeLessThan(benign.risk.riskMetrics.maxPayoutRatio);
     expect(stressed.risk.riskMetrics.internalCet1Headroom).toBeLessThan(benign.risk.riskMetrics.internalCet1Headroom);
-    expect(stressed.board.score).toBeGreaterThan(benign.board.score);
     expect(stressedStep.events.some((event) => event.message.toLowerCase().includes('internal target'))).toBe(true);
   });
 });

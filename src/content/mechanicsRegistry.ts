@@ -81,9 +81,9 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     whyItMatters:
       'A higher rate can grow deposits and improve funding. A higher rate also increases interest expense. A low rate can cause customers to leave.',
     driverSummary: [
-      'Retail current accounts balances respond to the price gap, franchise strength, and reputation.',
+      'Retail current accounts balances respond to the price gap and franchise strength.',
       'A negative price gap increases churn if it stays in place for several months.',
-      'Weak franchise strength and weak reputation can increase deposit runoff in stress.',
+      'Weak franchise strength and poor deposit quality can increase deposit runoff in stress.',
       'A high insured retail share and a low large-depositor share improve deposit quality.',
     ],
     formula: 'Deposit price gap = your deposit rate - competitor deposit rate',
@@ -341,36 +341,20 @@ export const buildMechanicsRegistry = (ctx: MechanicsDisplayContext): MechanicEn
     relatedMetrics: [metric('Funding confidence'), metric('Funding stress index'), metric('Deposit quality')],
   },
   {
-    id: 'board-pressure',
+    id: 'risk-appetite',
     category: 'Risk Measures',
-    title: 'Board pressure and risk appetite',
+    title: 'Risk appetite',
     plainDescription:
-      'Board pressure is an early-warning score. Risk appetite sets internal targets for CET1, leverage, LCR, and NSFR.',
+      'Risk appetite sets internal targets for CET1, leverage, LCR, and NSFR.',
     whyItMatters:
-      'An internal target is not the same as a regulatory minimum. A high target gives more safety but can restrict payout or growth sooner.',
+      'An internal target is not the same as a regulatory minimum. A higher target gives more safety but can restrict payout or growth sooner.',
     driverSummary: [
-      'High earnings volatility increases board pressure.',
-      'Weak deposit franchise increases board pressure.',
-      'Low CET1 headroom against the chosen appetite increases board pressure.',
+      "Management chooses the bank's internal prudential targets.",
+      'The game still enforces the regulatory floors underneath those targets.',
+      'Internal CET1 headroom can restrict distributions before MDA is triggered.',
       'Risk appetite changes the point at which the game treats a position as too close to the limit.',
     ],
-    relatedMetrics: [metric('Board pressure'), metric('Internal CET1 headroom'), metric('Risk appetite')],
-  },
-  {
-    id: 'conduct-risk',
-    category: 'Risk Measures',
-    title: 'Conduct risk',
-    plainDescription:
-      'The game builds conduct risk when pricing or underwriting becomes too aggressive. High conduct risk can cause a costly event.',
-    whyItMatters:
-      'A conduct event can reduce profit, franchise strength, and reputation at the same time.',
-    driverSummary: [
-      'Very low deposit rates can increase conduct pressure.',
-      'Very high lending rates can increase conduct pressure.',
-      'Very loose underwriting can increase conduct pressure.',
-      'Events can add fines and remediation costs.',
-    ],
-    relatedMetrics: [metric('Conduct risk score'), metric('Net income'), metric('Deposit franchise')],
+    relatedMetrics: [metric('Internal CET1 headroom'), metric('Risk appetite')],
   },
 
   {

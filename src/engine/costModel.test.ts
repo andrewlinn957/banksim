@@ -60,7 +60,6 @@ const runClose = (
     { fvtplValuationImpact: 0, fvociOciMovement: 0, nonCashAdjustmentsByProduct: {} },
     originations,
     defaultedPrincipal,
-    0,
     []
   );
 

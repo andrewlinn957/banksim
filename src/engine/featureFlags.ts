@@ -13,9 +13,7 @@ export const DEFAULT_FEATURE_FLAGS: EngineFeatureFlags = {
   securitiesAccounting: true,
   capitalPolicy: true,
   concentrationRisk: true,
-  boardPressure: true,
   confidenceStateMachine: true,
-  conductRisk: true,
   recommendations: true,
   stepDiagnosticsAttribution: true,
   // Three-Year Plan is opt-in: ordinary Sandbox remains a pure simulation.
@@ -53,16 +51,7 @@ export const applyFeatureFlagsToConfig = (
       irrbb: flags.irrbbHedges ? config.behaviour.irrbb : undefined,
       securitiesAccounting: flags.securitiesAccounting ? config.behaviour.securitiesAccounting : undefined,
       concentration: flags.concentrationRisk ? config.behaviour.concentration : undefined,
-      boardPressure: flags.boardPressure
-        ? config.behaviour.boardPressure
-        : {
-            earningsVolatilitySmoothing: 0.75,
-            volatilityWeight: 0,
-            franchiseWeight: 0,
-            riskWeight: 0,
-          },
       confidenceStateMachine: flags.confidenceStateMachine ? config.behaviour.confidenceStateMachine : undefined,
-      conductRisk: flags.conductRisk ? config.behaviour.conductRisk : undefined,
     },
     riskLimits: {
       ...config.riskLimits,
@@ -71,13 +60,6 @@ export const applyFeatureFlagsToConfig = (
         : {
             maxSingleSectorShare: 1,
             maxSingleGeographyShare: 1,
-          },
-      boardPressure: flags.boardPressure
-        ? config.riskLimits.boardPressure
-        : {
-            earningsVolatilityTolerance: 1e12,
-            franchiseTarget: 0,
-            riskAppetiteCet1Headroom: 0,
           },
     },
   };

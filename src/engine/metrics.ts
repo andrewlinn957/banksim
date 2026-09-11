@@ -107,12 +107,10 @@ const computeLiquidityDynamicsFactors = (
 
   const recession = isRecessionRegime(state);
   const franchisePenalty = Math.max(0, 1 - clamp(state.behaviour.depositFranchiseStrength, 0, 1));
-  const reputationPenalty = Math.max(0, 1 - clamp(state.behaviour.reputation, 0, 1));
   const qualityPenalty = Math.max(0, 1 - clamp(depositQualityIndex, 0, 1.1));
   const behaviouralRunoff =
     1 +
     franchisePenalty * (p.franchiseRunoffSensitivity ?? 0) +
-    reputationPenalty * (p.reputationRunoffSensitivity ?? 0) +
     qualityPenalty * (p.depositQualityRunoffSensitivity ?? 0);
   const recessionRunoff = recession ? p.recessionDepositOutflowMultiplier ?? 1 : 1;
 
@@ -304,23 +302,14 @@ const computeInternalCapitalTarget = (args: {
   fundingConfidenceState: FundingConfidenceState;
 }): { internalCet1TargetRatio: number; internalCet1Headroom: number } => {
   const limits = args.config.riskLimits.capitalPolicy;
-  const boardLimits = args.config.riskLimits.boardPressure;
 
   const baseBuffer = Math.max(0, limits.internalTargetBaseBuffer ?? 0);
-  const volatilitySignal = clamp(
-    (args.state.behaviour.earningsVolatility ?? 0) / Math.max(1, boardLimits.earningsVolatilityTolerance),
-    0,
-    3
-  );
   const stressSignal = clamp(args.fundingStressIndex, 0, 2);
   const confidenceSignal = confidenceStateStressSignal(args.fundingConfidenceState);
-  const conductSignal = clamp(args.state.behaviour.conductRiskScore ?? 0, 0, 2);
 
   const incrementalBuffer =
-    volatilitySignal * Math.max(0, limits.internalTargetVolatilitySensitivity ?? 0) +
     stressSignal * Math.max(0, limits.internalTargetStressSensitivity ?? 0) +
-    confidenceSignal * Math.max(0, limits.internalTargetConfidenceSensitivity ?? 0) +
-    conductSignal * Math.max(0, limits.internalTargetConductSensitivity ?? 0);
+    confidenceSignal * Math.max(0, limits.internalTargetConfidenceSensitivity ?? 0);
 
   const maxBuffer = Math.max(baseBuffer, limits.internalTargetMaxBuffer ?? baseBuffer);
   const dynamicBuffer = clamp(baseBuffer + incrementalBuffer, baseBuffer, maxBuffer);
@@ -333,61 +322,6 @@ const computeInternalCapitalTarget = (args: {
   return {
     internalCet1TargetRatio,
     internalCet1Headroom,
-  };
-};
-
-const computeBoardPressureMetrics = (
-  state: BankState,
-  limits: RiskLimits,
-  config: SimulationConfig,
-  cet1Headroom: number,
-  maxPayoutRatio: number
-): {
-  boardPressureScore: number;
-  boardPressureVolatility: number;
-  boardPressureFranchiseGap: number;
-  boardPressureRiskGap: number;
-  boardPressurePayoutRestraint: number;
-} => {
-  const boardLimits = limits.boardPressure;
-  const volatility = Math.max(0, state.behaviour.earningsVolatility ?? 0);
-  const volatilityTolerance = Math.max(1, boardLimits.earningsVolatilityTolerance);
-  const boardPressureVolatility = clamp(volatility / volatilityTolerance, 0, 3);
-
-  const franchiseGap = Math.max(0, boardLimits.franchiseTarget - state.behaviour.depositFranchiseStrength);
-  const boardPressureFranchiseGap = clamp(franchiseGap / 0.25, 0, 3);
-
-  const riskGap = Math.max(0, boardLimits.riskAppetiteCet1Headroom - cet1Headroom);
-  const boardPressureRiskGap = clamp(riskGap / Math.max(1e-4, boardLimits.riskAppetiteCet1Headroom), 0, 3);
-  const boardPressurePayoutRestraint = clamp((1 - clamp(maxPayoutRatio, 0, 1)) * 3, 0, 3);
-
-  const weights = config.behaviour.boardPressure ?? {
-    volatilityWeight: 0.4,
-    franchiseWeight: 0.3,
-    riskWeight: 0.3,
-    payoutRestraintWeight: 0.15,
-  };
-  const weightDenom = Math.max(
-    1e-9,
-    Math.abs(weights.volatilityWeight) +
-      Math.abs(weights.franchiseWeight) +
-      Math.abs(weights.riskWeight) +
-      Math.abs(weights.payoutRestraintWeight ?? 0)
-  );
-  const weighted =
-    (weights.volatilityWeight * boardPressureVolatility +
-      weights.franchiseWeight * boardPressureFranchiseGap +
-      weights.riskWeight * boardPressureRiskGap +
-      (weights.payoutRestraintWeight ?? 0) * boardPressurePayoutRestraint) /
-    weightDenom;
-  const boardPressureScore = clamp((weighted / 3) * 100, 0, 100);
-
-  return {
-    boardPressureScore,
-    boardPressureVolatility,
-    boardPressureFranchiseGap,
-    boardPressureRiskGap,
-    boardPressurePayoutRestraint,
   };
 };
 
@@ -542,7 +476,6 @@ export const calculateRiskMetrics = ({
     config,
   });
   const fundingConfidenceState = state.behaviour.fundingConfidenceState ?? inferredConfidenceState;
-  const conductRiskScore = clamp(state.behaviour.conductRiskScore ?? 0, 0, 2);
   const capPolicy = config.riskLimits.capitalPolicy;
   const { internalCet1TargetRatio, internalCet1Headroom } = computeInternalCapitalTarget({
     state,
@@ -564,13 +497,6 @@ export const calculateRiskMetrics = ({
   const maxPayoutRatio = Math.min(regulatoryMaxPayoutRatio, internalMaxPayoutRatio);
   const payoutBlockedByInternalTarget =
     internalMaxPayoutRatio + 1e-9 < 1 && regulatoryMaxPayoutRatio >= 1 - 1e-9;
-  const {
-    boardPressureScore,
-    boardPressureVolatility,
-    boardPressureFranchiseGap,
-    boardPressureRiskGap,
-    boardPressurePayoutRestraint,
-  } = computeBoardPressureMetrics(state, config.riskLimits, config, cet1Headroom, maxPayoutRatio);
 
   return {
     rwa,
@@ -650,7 +576,6 @@ export const calculateRiskMetrics = ({
     internalCet1TargetRatio,
     internalCet1Headroom,
     payoutBlockedByInternalTarget,
-    conductRiskScore,
     niiSensitivity100bp,
     eveSensitivity100bp,
     fundingMaturing3m,
@@ -660,11 +585,6 @@ export const calculateRiskMetrics = ({
     sectorConcentration,
     geographyConcentration,
     concentrationHhi,
-    boardPressureScore,
-    boardPressureVolatility,
-    boardPressureFranchiseGap,
-    boardPressureRiskGap,
-    boardPressurePayoutRestraint,
   };
 };
 

@@ -162,7 +162,6 @@ export const cloneBankState = (state: BankState): BankState => ({
     osii: cloneOsii(state.risk.osii),
     leverageFramework: cloneLeverageFramework(state.risk.leverageFramework),
   },
-  board: { ...state.board },
   threeYearPlan: cloneThreeYearPlan(state.threeYearPlan),
   capitalMarkets: state.capitalMarkets ? { ...state.capitalMarkets, transactions: state.capitalMarkets.transactions.map(tx => ({ ...tx })) } : undefined,
   equityMarket: cloneEquityMarket(state.equityMarket),

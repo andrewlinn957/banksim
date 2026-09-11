@@ -66,10 +66,7 @@ describe('Simulation correctness guardrails', () => {
     stressed.financial.capital.cet1 = targetCet1;
     cash.balance += cet1Delta;
 
-    stressed.behaviour.earningsVolatility = 0.8e9;
     stressed.behaviour.depositFranchiseStrength = 0.45;
-    stressed.behaviour.reputation = 0.45;
-    stressed.behaviour.conductRiskScore = 1.4;
     stressed.behaviour.fundingConfidenceState = 'stressed';
 
     const { events } = engine.step({

@@ -22,7 +22,6 @@ describe('Confidence state machine', () => {
     const stressed = cloneBankState(initialState);
     stressed.behaviour.fundingConfidenceState = 'strong';
     stressed.behaviour.depositFranchiseStrength = 0.3;
-    stressed.behaviour.reputation = 0.35;
 
     // Create a plausible retail-bank stress: reduced CET1 plus an encumbered liquidity portfolio.
     // Preserve the accounting identity by taking the capital reduction out of cash rather than
@@ -82,7 +81,6 @@ describe('Confidence state machine', () => {
     recovering.behaviour.fundingConfidenceState = 'watch';
     recovering.behaviour.confidenceUpgradeProgressMonths = 0;
     recovering.behaviour.depositFranchiseStrength = 0.96;
-    recovering.behaviour.reputation = 0.96;
     recovering.financial.capital.cet1 = 65e9;
     const cash = line(recovering, AssetProductType.CashReserves);
     const ltFunding = line(recovering, LiabilityProductType.WholesaleFundingLT);

@@ -139,9 +139,6 @@ const applyInitialOverride = (
   if (override?.status) {
     state.status = { ...state.status, ...override.status } as BankState['status'];
   }
-  if (override?.board) {
-    state.board = { ...state.board, ...override.board } as BankState['board'];
-  }
 
   const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
   const loanProducts = productTypesWithCapability('loan');
@@ -223,12 +220,6 @@ const applyInitialOverride = (
   initializeOpeningSupervisoryAssessments(state, config);
   state.risk.riskMetrics = calculateRiskMetrics({ state, config });
   state.risk.compliance = evaluateCompliance(state.risk.riskMetrics, config.riskLimits);
-  state.board = {
-    score: state.risk.riskMetrics.boardPressureScore,
-    earningsVolatility: state.risk.riskMetrics.boardPressureVolatility,
-    franchiseGap: state.risk.riskMetrics.boardPressureFranchiseGap,
-    riskGap: state.risk.riskMetrics.boardPressureRiskGap,
-  };
   return state;
 };
 

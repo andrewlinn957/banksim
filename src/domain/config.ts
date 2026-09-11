@@ -14,9 +14,7 @@ export type EngineFeatureFlagKey =
   | 'securitiesAccounting'
   | 'capitalPolicy'
   | 'concentrationRisk'
-  | 'boardPressure'
   | 'confidenceStateMachine'
-  | 'conductRisk'
   | 'recommendations'
   | 'stepDiagnosticsAttribution'
   | 'threeYearPlan';
@@ -179,7 +177,6 @@ export interface Ifrs9Parameters {
 export interface LiquidityDynamicsParameters {
   recessionDepositOutflowMultiplier: number;
   franchiseRunoffSensitivity: number;
-  reputationRunoffSensitivity: number;
   recessionInflowHaircut: number;
   recessionAsfPenalty: number;
   depositQualityRunoffSensitivity?: number;
@@ -206,14 +203,6 @@ export interface ConcentrationParameters {
   geographyPdMultiplierByStress?: Partial<Record<LoanGeography, number>>;
 }
 
-export interface BoardPressureParameters {
-  earningsVolatilitySmoothing: number;
-  volatilityWeight: number;
-  franchiseWeight: number;
-  riskWeight: number;
-  payoutRestraintWeight?: number;
-}
-
 export interface ConfidenceStateImpactParameters {
   spreadPenaltyBps: number;
   accessMultiplier: number;
@@ -233,25 +222,6 @@ export interface ConfidenceStateMachineParameters {
   hardCet1HeadroomStressed: number;
   upgradeSustainMonths: number;
   impacts: Record<FundingConfidenceState, ConfidenceStateImpactParameters>;
-}
-
-export interface ConductRiskParameters {
-  depositUnderpricingThreshold: number;
-  lendingOverpricingThreshold: number;
-  depositWeight: number;
-  lendingWeight: number;
-  underwritingAmplifier: number;
-  scoreBuildRate: number;
-  scoreDecayRate: number;
-  eventProbabilityBase: number;
-  eventProbabilitySlope: number;
-  eventProbabilityCap: number;
-  eventCooldownMonths: number;
-  fineRateOnRwa: number;
-  remediationRateOnIncome: number;
-  minEventCost: number;
-  franchiseHit: number;
-  reputationHit: number;
 }
 
 export interface SharePriceModelParameters {
@@ -320,9 +290,7 @@ export interface BehaviourParameters {
   irrbb?: IrrbbParameters;
   securitiesAccounting?: SecuritiesAccountingParameters;
   concentration?: ConcentrationParameters;
-  boardPressure?: BoardPressureParameters;
   confidenceStateMachine?: ConfidenceStateMachineParameters;
-  conductRisk?: ConductRiskParameters;
   sharePriceModel?: SharePriceModelParameters;
   boeFunding?: BoeFundingParameters;
   depositRisk?: DepositRiskParameters;
