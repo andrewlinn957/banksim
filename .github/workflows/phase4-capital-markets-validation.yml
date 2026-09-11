@@ -20,3 +20,4 @@ jobs:
       - run: npm run typecheck
       - run: npx vitest run src/engine/capitalMarkets.test.ts src/engine/capitalMarketsIntegration.test.ts --reporter=verbose
       - run: git diff --check
+# rerun after integration assertion refinement
