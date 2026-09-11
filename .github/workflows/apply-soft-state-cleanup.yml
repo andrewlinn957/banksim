@@ -1,0 +1,46 @@
+name: Apply soft-state cleanup
+
+on:
+  push:
+    branches:
+      - cleanup/remove-low-value-soft-state
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cleanup/remove-low-value-soft-state
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply cleanup
+        run: python3 scripts/remove_low_value_soft_state.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck and build
+        run: npm run typecheck && npm run build
+      - name: Fast tests
+        run: npm run test:fast
+      - name: Regression tests
+        run: npm run test:regression
+      - name: Show remaining related references
+        run: |
+          git grep -n -E 'BoardPressure|boardPressure|conductRisk|ConductRisk|conductEvent|conductCosts|cumulativeConductCosts|reputationRunoffSensitivity|internalTargetConductSensitivity|internalTargetVolatilitySensitivity|earningsVolatility|previousNetIncome|behaviour\.reputation|state\.board|\.board\.score' -- src || true
+      - name: Commit verified cleanup
+        if: success()
+        shell: bash
+        run: |
+          rm -f scripts/remove_low_value_soft_state.py
+          rm -f .github/workflows/audit-soft-state.yml
+          rm -f .github/workflows/apply-soft-state-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Remove low-value conduct and board-pressure mechanics'
+          git push origin HEAD:cleanup/remove-low-value-soft-state
