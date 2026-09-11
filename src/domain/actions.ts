@@ -7,6 +7,7 @@ import type {
   WholesaleFundingProductType,
 } from '../products/capabilities';
 import type { CapitalMarketsInstrument } from './capitalMarkets';
+import type { ThreeYearPlanTarget } from './threeYearPlan';
 
 export type WholesaleFundingProduct = WholesaleFundingProductType;
 
@@ -56,6 +57,12 @@ export interface LaunchCapitalMarketsTransactionAction {
   maxDiscount?: number;
   maxSpreadBps?: number;
   tenorMonths?: number;
+}
+
+/** Starts the next 36-month board plan after the current plan has completed. */
+export interface RenewThreeYearPlanAction {
+  type: 'renewThreeYearPlan';
+  targets: readonly ThreeYearPlanTarget[];
 }
 
 export interface DrawBoeFundingAction {
@@ -110,6 +117,7 @@ export type PlayerAction =
   | IssueEquityAction
   | IssueTier2Action
   | LaunchCapitalMarketsTransactionAction
+  | RenewThreeYearPlanAction
   | DrawBoeFundingAction
   | SetUnderwritingAction
   | SetMortgagePolicyAction
