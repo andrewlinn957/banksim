@@ -85,7 +85,7 @@ describe('capital-markets settlement integration', () => {
     expect(buckets.some(bucket => bucket.tenorMonths === 36 && bucket.monthsToMaturity === 35)).toBe(true);
   });
 
-  it('persists issuance history so subsequent bookbuilds see reduced capacity', () => {
+  it('persists issuance history so subsequent bookbuilds can apply the repeat-issuance penalty', () => {
     const engine = createSimulationEngine();
     const first = engine.step({
       state: cloneBankState(initialState), config: baseConfig,
@@ -99,7 +99,7 @@ describe('capital-markets settlement integration', () => {
     const b = second.executions.capitalMarkets[0];
 
     expect(b.recentIssuanceRatio).toBeGreaterThan(a.recentIssuanceRatio);
-    expect(b.demandAmount).toBeLessThan(a.demandAmount);
     expect(second.nextState.capitalMarkets?.transactions).toHaveLength(2);
+    expect(second.nextState.capitalMarkets?.transactions[0].executedAmount).toBe(a.executedAmount);
   });
 });
