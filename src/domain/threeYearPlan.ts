@@ -156,7 +156,10 @@ export const renewThreeYearPlanState = (args: {
   startStep: number;
   targets: readonly ThreeYearPlanTarget[];
 }): ThreeYearPlanState => {
-  const archive = archiveCompletedThreeYearPlan(args.completedPlan, args.startStep);
+  const archive = archiveCompletedThreeYearPlan(
+    args.completedPlan,
+    args.completedPlan.startStep + args.completedPlan.horizonMonths
+  );
   const priorCycles = [...(args.completedPlan.priorCycles ?? []), archive];
   return createThreeYearPlanState({
     startStep: args.startStep,
