@@ -20,9 +20,11 @@ describe('Step attribution diagnostics', () => {
           newRate: 0.03,
         },
         {
-          type: 'issueDebt',
-          productType: LiabilityProductType.WholesaleFundingLT,
-          amount: 8e9,
+          type: 'launchCapitalMarketsTransaction',
+          instrument: 'senior',
+          targetAmount: 8e9,
+          maxSpreadBps: 2500,
+          tenorMonths: 36,
         },
       ],
       shocks: [

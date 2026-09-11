@@ -1,5 +1,5 @@
 import { SimulationEvent, SimulationStepOutput } from '../engine/simulation';
-import { createSimulationEngine as createSimulationEngine } from '../engine/simulation';
+import { createSimulationEngine } from '../engine/simulation';
 import { cloneBankState } from '../engine/clone';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
@@ -171,8 +171,8 @@ export class SimulationController {
     timeline.forEach((entry) => {
       const { nextState } = this.step(
         state,
-        (entry.actions ?? []).map((a) => ({ ...a })),
-        (entry.shocks ?? []).map((s) => ({ ...s }))
+        entry.actions.map((a) => ({ ...a })),
+        entry.shocks.map((s) => ({ ...s }))
       );
       state = cloneBankState(nextState);
       snapshots.push(this.createSnapshot(state));

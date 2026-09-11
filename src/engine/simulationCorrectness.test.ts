@@ -7,95 +7,44 @@ import { createSimulationEngine } from './simulation';
 import { calculateRiskMetrics } from './metrics';
 
 describe('Simulation correctness guardrails', () => {
-  it('uses confidence-adjusted market default pricing when issuing debt without explicit rate override', () => {
+  it('uses confidence-adjusted market pricing for senior issuance', () => {
     const engine = createSimulationEngine();
-    const state = cloneBankState(initialState);
-    const amount = 10e9;
+    const strongState = cloneBankState(initialState);
+    strongState.behaviour.fundingConfidenceState = 'strong';
+    const stressedState = cloneBankState(initialState);
+    stressedState.behaviour.fundingConfidenceState = 'stressed';
 
-    const lineBefore = state.financial.balanceSheet.items.find(
-      (i) => i.productType === LiabilityProductType.WholesaleFundingLT
-    );
-    if (!lineBefore) {
-      throw new Error('Missing LT wholesale funding line item');
-    }
+    const action = { type: 'launchCapitalMarketsTransaction' as const, instrument: 'senior' as const, targetAmount: 500e6, maxSpreadBps: 5000, tenorMonths: 36 };
+    const strong = engine.step({ state: strongState, config: baseConfig, actions: [action], shocks: [] });
+    const stressed = engine.step({ state: stressedState, config: baseConfig, actions: [action], shocks: [] });
+    const strongExecution = strong.executions.capitalMarkets[0];
+    const stressedExecution = stressed.executions.capitalMarkets[0];
 
-    const marketPricing = state.market.riskFreeLong + state.market.seniorDebtSpread;
-    const confidenceState = state.behaviour.fundingConfidenceState ?? 'stable';
-    const confidenceImpact =
-      baseConfig.behaviour.confidenceStateMachine?.impacts?.[confidenceState] ??
-      baseConfig.behaviour.confidenceStateMachine?.impacts?.stable;
-    const executableAmount = amount * (confidenceImpact?.accessMultiplier ?? 1);
-    const issuanceRate = Math.max(0, marketPricing + (confidenceImpact?.spreadPenaltyBps ?? 0) / 10000);
-    const expectedBlendedRate =
-      (lineBefore.balance * lineBefore.interestRate + executableAmount * issuanceRate) /
-      (lineBefore.balance + executableAmount);
-
-    const { nextState } = engine.step({
-      state,
-      config: baseConfig,
-      actions: [
-        {
-          type: 'issueDebt',
-          productType: LiabilityProductType.WholesaleFundingLT,
-          amount,
-        },
-      ],
-      shocks: [],
-    });
-
-    const lineAfter = nextState.financial.balanceSheet.items.find(
-      (i) => i.productType === LiabilityProductType.WholesaleFundingLT
-    );
-    if (!lineAfter) {
-      throw new Error('Missing LT wholesale funding line item after issuance');
-    }
-
-    expect(lineAfter.interestRate).toBeCloseTo(expectedBlendedRate, 10);
-    expect(lineAfter.interestRate).toBeGreaterThan(0);
+    expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
+    expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
   });
 
-  it('respects explicit debt issuance rate override even in stressed confidence state', () => {
+  it('respects the management maximum spread when issuing senior debt', () => {
     const engine = createSimulationEngine();
     const state = cloneBankState(initialState);
-    state.behaviour.fundingConfidenceState = 'stressed';
-    const amount = 10e9;
-    const explicitRate = 0.06;
-
-    const accessMultiplier =
-      baseConfig.behaviour.confidenceStateMachine?.impacts?.stressed?.accessMultiplier ?? 1;
-    const executedAmount = amount * accessMultiplier;
-    const lineBefore = state.financial.balanceSheet.items.find(
+    const balanceBefore = state.financial.balanceSheet.items.find(
       (i) => i.productType === LiabilityProductType.WholesaleFundingLT
-    );
-    if (!lineBefore) {
-      throw new Error('Missing LT wholesale funding line item');
-    }
-    const expectedBlendedRate =
-      (lineBefore.balance * lineBefore.interestRate + executedAmount * explicitRate) /
-      (lineBefore.balance + executedAmount);
+    )?.balance ?? 0;
 
-    const { nextState } = engine.step({
+    const result = engine.step({
       state,
       config: baseConfig,
-      actions: [
-        {
-          type: 'issueDebt',
-          productType: LiabilityProductType.WholesaleFundingLT,
-          amount,
-          rate: explicitRate,
-        },
-      ],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 500e6, maxSpreadBps: 1, tenorMonths: 36 }],
       shocks: [],
     });
-
-    const lineAfter = nextState.financial.balanceSheet.items.find(
+    const execution = result.executions.capitalMarkets[0];
+    const balanceAfter = result.nextState.financial.balanceSheet.items.find(
       (i) => i.productType === LiabilityProductType.WholesaleFundingLT
-    );
-    if (!lineAfter) {
-      throw new Error('Missing LT wholesale funding line item after issuance');
-    }
+    )?.balance ?? 0;
 
-    expect(lineAfter.interestRate).toBeCloseTo(expectedBlendedRate, 10);
+    expect(execution.status).toBe('failed-price');
+    expect(execution.executedAmount).toBe(0);
+    expect(balanceAfter).toBeCloseTo(balanceBefore, 2);
   });
 
   it('emits internal warnings once per step and suppresses removed concentration limits', () => {

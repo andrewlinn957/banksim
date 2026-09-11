@@ -138,7 +138,7 @@ describe('Share price model', () => {
     const next = engine.step({
       state,
       config: baseConfig,
-      actions: [{ type: 'issueEquity', amount: 0.2e9 }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 0.2e9, maxDiscount: 0.5 }],
       shocks: [],
     }).nextState;
 

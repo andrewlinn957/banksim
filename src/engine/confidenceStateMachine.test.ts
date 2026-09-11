@@ -48,25 +48,32 @@ describe('Confidence state machine', () => {
     const issueFromOne = engine.step({
       state: cloneBankState(afterOne),
       config: baseConfig,
-      actions: [{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingLT, amount: issueAmount }],
+      actions: [{
+        type: 'launchCapitalMarketsTransaction',
+        instrument: 'senior',
+        targetAmount: issueAmount,
+        maxSpreadBps: 5000,
+        tenorMonths: 36,
+      }],
       shocks: [],
-    }).nextState;
+    });
     const issueFromTwo = engine.step({
       state: cloneBankState(afterTwo),
       config: baseConfig,
-      actions: [{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingLT, amount: issueAmount }],
+      actions: [{
+        type: 'launchCapitalMarketsTransaction',
+        instrument: 'senior',
+        targetAmount: issueAmount,
+        maxSpreadBps: 5000,
+        tenorMonths: 36,
+      }],
       shocks: [],
-    }).nextState;
+    });
 
-    const beforeOneLt = line(afterOne, LiabilityProductType.WholesaleFundingLT)?.balance ?? 0;
-    const beforeTwoLt = line(afterTwo, LiabilityProductType.WholesaleFundingLT)?.balance ?? 0;
-    const deltaOne = (line(issueFromOne, LiabilityProductType.WholesaleFundingLT)?.balance ?? 0) - beforeOneLt;
-    const deltaTwo = (line(issueFromTwo, LiabilityProductType.WholesaleFundingLT)?.balance ?? 0) - beforeTwoLt;
-    const rateOne = line(issueFromOne, LiabilityProductType.WholesaleFundingLT)?.interestRate ?? 0;
-    const rateTwo = line(issueFromTwo, LiabilityProductType.WholesaleFundingLT)?.interestRate ?? 0;
-
-    expect(deltaTwo).toBeLessThanOrEqual(deltaOne + 1e6);
-    expect(rateTwo).toBeGreaterThanOrEqual(rateOne - 1e-9);
+    const executionOne = issueFromOne.executions.capitalMarkets[0];
+    const executionTwo = issueFromTwo.executions.capitalMarkets[0];
+    expect(executionTwo.executedAmount).toBeLessThanOrEqual(executionOne.executedAmount + 1e6);
+    expect(executionTwo.clearingSpreadBps ?? 0).toBeGreaterThanOrEqual((executionOne.clearingSpreadBps ?? 0) - 1e-9);
   });
 
   it('requires sustained improvement before upgrading confidence state', () => {

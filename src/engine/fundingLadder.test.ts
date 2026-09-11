@@ -71,34 +71,24 @@ describe('Funding ladder lifecycle', () => {
     const stressedState = cloneBankState(initialState);
     stressedState.behaviour.fundingConfidenceState = 'stressed';
 
-    const beforeStrong = lineBalance(strongState, LiabilityProductType.WholesaleFundingLT);
-    const beforeStressed = lineBalance(stressedState, LiabilityProductType.WholesaleFundingLT);
-
     const strong = engine.step({
       state: strongState,
       config: baseConfig,
-      actions: [{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingLT, amount: requested }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
       shocks: [],
-    }).nextState;
-
+    });
     const stressed = engine.step({
       state: stressedState,
       config: baseConfig,
-      actions: [{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingLT, amount: requested }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
       shocks: [],
-    }).nextState;
+    });
 
-    const strongDelta = lineBalance(strong, LiabilityProductType.WholesaleFundingLT) - beforeStrong;
-    const stressedDelta = lineBalance(stressed, LiabilityProductType.WholesaleFundingLT) - beforeStressed;
-    const strongRate =
-      strong.financial.balanceSheet.items.find((item) => item.productType === LiabilityProductType.WholesaleFundingLT)
-        ?.interestRate ?? 0;
-    const stressedRate =
-      stressed.financial.balanceSheet.items.find((item) => item.productType === LiabilityProductType.WholesaleFundingLT)
-        ?.interestRate ?? 0;
-
-    expect(stressedDelta).toBeLessThan(strongDelta);
-    expect(stressedRate).toBeGreaterThan(strongRate);
+    const strongExecution = strong.executions.capitalMarkets[0];
+    const stressedExecution = stressed.executions.capitalMarkets[0];
+    expect(stressedExecution.executedAmount).toBeLessThan(strongExecution.executedAmount);
+    expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
+    expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
   });
 });
 

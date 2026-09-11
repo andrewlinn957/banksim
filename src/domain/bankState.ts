@@ -26,8 +26,6 @@ export interface ContractualMaturityBucket {
   rate: number;
 }
 
-/** @deprecated Compatibility name for liability funding code and existing saves. */
-export type FundingMaturityBucket = ContractualMaturityBucket;
 export type FundingLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
 export type AssetMaturityLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
 
@@ -60,10 +58,9 @@ export interface MortgagePolicyState {
   fixedPeriodMonths: number;
 }
 
+/** Current UI defaults for explicit gilt trades. This is not a standing rebalance instruction. */
 export interface TreasuryPolicyState {
-  /** @deprecated Legacy descriptive target retained for save/replay compatibility. */
   giltShareOfHqla: number;
-  /** @deprecated Legacy/default duration retained for old treasury-policy actions. */
   giltDurationYears: number;
 }
 
@@ -143,7 +140,6 @@ export interface SimulationStatus {
 }
 
 export interface BankState {
-  version: string;
   time: SimulationTime;
   financial: FinancialState;
   risk: RiskState;
