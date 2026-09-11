@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { initialState } from '../config/initialState';
+import { createDefaultThreeYearPlan } from '../config/threeYearPlan';
 import { boardDecisions } from './boardroom';
 import { parseRateInput } from '../utils/parsers';
 import Boardroom from '../components/Boardroom';
@@ -19,20 +20,55 @@ describe('board management', () => {
   it('renders the management surface with invalid-plan guidance and no forced monthly action', () => {
     const noop = () => {};
     const markup = renderToStaticMarkup(
-      <Boardroom
-        state={initialState}
-        history={[initialState]}
-        department={null}
-        hasErrors
-        onDepartment={noop}
-        onClose={noop}
-      />
+      <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onClose={noop} />
     );
     expect(markup).toContain('invalid policy input');
     expect(markup).toContain('Manage a department');
     expect(markup.match(/class="department-building/g)).toHaveLength(4);
     expect(markup).not.toContain('Adopt proposal');
     expect(markup).not.toContain('history-card');
+    expect(markup).not.toContain('Three-Year Plan');
+  });
+
+  it('separates live trajectory, formal reviews and annual milestones when the plan is enabled', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    const markup = renderToStaticMarkup(
+      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onClose={noop} />
+    );
+    expect(markup).toContain('Three-Year Plan');
+    expect(markup).toContain('Board Confidence');
+    expect(markup).toContain('Live trajectory');
+    expect(markup).toContain('No formal board review yet');
+    expect(markup).toContain('Next annual milestone · FY1');
+    expect(markup).toContain('Annual plan milestones');
+    expect(markup).toContain('70/100');
+  });
+
+  it('explains the latest Board Confidence movement using reviewed plan metrics', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.time.step = 3;
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    planned.threeYearPlan.boardConfidence = 68;
+    planned.threeYearPlan.reviewHistory = [{
+      month: 3,
+      boardConfidenceBefore: 70,
+      boardConfidenceAfter: 68,
+      evaluation: {
+        month: 3,
+        score: 62,
+        metrics: [{ metricId: 'eps', actual: .04, targetLower: .08, score: 20, weight: 25 }],
+      },
+    }];
+    const markup = renderToStaticMarkup(
+      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onClose={noop} />
+    );
+    expect(markup).toContain('Latest formal board review · month 3');
+    expect(markup).toContain('fell 2.0 points');
+    expect(markup).toContain('Largest plan-score drag');
+    expect(markup).toContain('EPS (80.0 pts)');
   });
 
   it('offers real equity recovery when internal capital headroom is negative', () => {

@@ -34,7 +34,7 @@ const epsTarget: ThreeYearPlanTarget = {
 };
 
 const registry = new ThreeYearPlanMetricRegistry<TestBank>()
-  .register({ id: 'eps', label: 'EPS', read: (state) => state.eps });
+  .register({ id: 'eps', label: 'EPS', format: 'moneyPerShare', read: (state) => state.eps });
 
 describe('Three-Year Plan', () => {
   it('is exactly 36 months and disabled by default', () => {
