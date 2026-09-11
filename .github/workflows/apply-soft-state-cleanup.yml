@@ -53,6 +53,19 @@ jobs:
           PY
       - name: Apply cleanup
         run: python3 scripts/remove_low_value_soft_state.py
+      - name: Fix generated help copy quoting
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/content/mechanicsRegistry.ts')
+          s=p.read_text()
+          bad="      'Management chooses the bank's internal prudential targets.',"
+          good='      "Management chooses the bank\'s internal prudential targets.",'
+          if bad not in s:
+              raise SystemExit('Expected generated risk-appetite help line not found')
+          p.write_text(s.replace(bad,good))
+          PY
       - name: Install dependencies
         run: npm ci
       - name: Typecheck and build
