@@ -19,6 +19,19 @@ describe('capital-markets catalogue layering', () => {
     expect(senior.settlement).toEqual({ kind: 'fundingProduct', productType: LiabilityProductType.WholesaleFundingLT });
   });
 
+  it('keeps demand-curve calibration on the instrument definition', () => {
+    expect(getCapitalMarketsInstrument('at1').fundingMarket).toEqual(
+      expect.objectContaining({ demandSlopeBps: 175, hardCapacityMultiple: 1.5 })
+    );
+    expect(getCapitalMarketsInstrument('tier2').fundingMarket).toEqual(
+      expect.objectContaining({ demandSlopeBps: 120, hardCapacityMultiple: 1.8 })
+    );
+    expect(getCapitalMarketsInstrument('senior').fundingMarket).toEqual(
+      expect.objectContaining({ demandSlopeBps: 75, hardCapacityMultiple: 2.5 })
+    );
+    expect(getCapitalMarketsInstrument('cet1').fundingMarket).toBeUndefined();
+  });
+
   it('exposes a single ordered registry for the management UI', () => {
     expect(CAPITAL_MARKETS_INSTRUMENT_ORDER).toEqual(['cet1', 'at1', 'tier2', 'senior']);
     expect(CAPITAL_MARKETS_INSTRUMENT_ORDER.map(key => getCapitalMarketsInstrument(key).label)).toEqual([
