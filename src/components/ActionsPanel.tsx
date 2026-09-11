@@ -87,8 +87,10 @@ const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
 const tenorLabel = (months: number): string =>
   months % 12 === 0 ? `${months / 12} years` : `${months} months`;
 
-const CapitalMarketsTicket = ({state,update,disabled,errors,quote,planImpact}:{state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact}) => {
-  const instrument = state.capitalMarketsInstrument;
+const CapitalMarketsTicket = ({state,update,disabled,errors,quote,planImpact,allowedInstruments,title}:{state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact;allowedInstruments:CapitalMarketsInstrument[];title:string}) => {
+  const queuedInstrument = state.capitalMarketsInstrument;
+  const instrument = queuedInstrument !== 'none' && allowedInstruments.includes(queuedInstrument) ? queuedInstrument : 'none';
+  const queuedElsewhere = queuedInstrument !== 'none' && instrument === 'none';
   const definition = instrument === 'none' ? undefined : getCapitalMarketsInstrument(instrument);
   const isDiscountPriced = definition?.pricingKind === 'discount';
   const tenors = definition?.permittedTenorMonths ?? [];
@@ -96,15 +98,16 @@ const CapitalMarketsTicket = ({state,update,disabled,errors,quote,planImpact}:{s
     ? quote.marketReferenceRate + quote.clearingSpreadBps / 10000
     : undefined;
   return <section className="policy-disclosure capital-markets-ticket" aria-label="Capital markets">
-    <div className="policy-section-title"><h3>Capital markets</h3><small>One transaction ticket. Market demand and clearing terms determine what actually settles.</small></div>
+    <div className="policy-section-title"><h3>{title}</h3><small>One transaction ticket. Market demand and clearing terms determine what actually settles.</small></div>
     <div className="policy-fields policy-fields-primary">
-      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled} onChange={e=>update('capitalMarketsInstrument',e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select><small>Choose the claim you want investors to buy.</small></label>
+      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled} onChange={e=>update('capitalMarketsInstrument',e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select><small>Choose the claim you want investors to buy.</small></label>
       <Field field="capitalMarketsTargetAmount" label="Target size (£)" hint="The book can be partially filled if investor demand is smaller than your target." state={state} update={update} disabled={disabled||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
       {isDiscountPriced
         ? <Field field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="The deal fails rather than price below this limit." state={state} update={update} disabled={disabled} error={errors?.capitalMarketsMaxDiscount} placeholder="e.g. 12%"/>
         : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="The deal fails if the clearing spread is wider than this limit." state={state} update={update} disabled={disabled||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
       {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select><small>Longer debt locks in the clearing cost for longer.</small></label>}
     </div>
+    {queuedElsewhere&&<div className="muted">A capital-markets transaction is queued in the other management area.</div>}
     {definition&&quote&&<div className={`alert ${quote.status.startsWith('failed')?'warning':'info'} capital-markets-book`}>
       <strong>Indicative book · {definition.label}</strong>
       <div className="muted">Demand {formatCurrency(quote.demandAmount)} · coverage {quote.coverageRatio.toFixed(2)}× · executable {formatCurrency(quote.executedAmount)} of {formatCurrency(quote.targetAmount)}</div>
@@ -163,7 +166,8 @@ export default function ActionsPanel({department,state,onChange,disabled,errors,
       <p className="muted">AT1 coupons remain discretionary and are subject to buffers and distribution restrictions; newly issued AT1 uses its market-clearing coupon.</p>
     </>}
 
-    {(department==='Capital'||department==='Treasury')&&<CapitalMarketsTicket state={state} update={update} disabled={disabled} errors={errors} quote={capitalMarketsQuote} planImpact={capitalMarketsPlanImpact}/>} 
+    {department==='Capital'&&<CapitalMarketsTicket state={state} update={update} disabled={disabled} errors={errors} quote={capitalMarketsQuote} planImpact={capitalMarketsPlanImpact} allowedInstruments={['cet1']} title="Equity issuance"/>}
+    {department==='Treasury'&&<CapitalMarketsTicket state={state} update={update} disabled={disabled} errors={errors} quote={capitalMarketsQuote} planImpact={capitalMarketsPlanImpact} allowedInstruments={['at1','tier2','senior']} title="Wholesale funding markets"/>} 
 
     {department==='Treasury'&&<>
       <div className="policy-fields policy-fields-primary">

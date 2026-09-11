@@ -8,11 +8,12 @@ describe('Three-Year Plan board mandate', () => {
   it('shows normal bank management without any board proposal agenda when plan mode is off', () => {
     const noop = () => {};
     const markup = renderToStaticMarkup(
-      <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onClose={noop} />
+      <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onRisk={noop} onClose={noop} />
     );
     expect(markup).toContain('invalid policy input');
-    expect(markup).toContain('Manage a department');
-    expect(markup.match(/class="department-building/g)).toHaveLength(4);
+    expect(markup).toContain('Bank functional areas');
+    expect(markup).toContain('Risk &amp; Regulatory');
+    expect(markup.match(/class="department-building/g)).toHaveLength(5);
     expect(markup).not.toContain('Board agenda');
     expect(markup).not.toContain('Back proposal');
     expect(markup).not.toContain('12-month mandate');
@@ -24,7 +25,7 @@ describe('Three-Year Plan board mandate', () => {
     const planned = structuredClone(initialState);
     planned.threeYearPlan = createDefaultThreeYearPlan(planned);
     const markup = renderToStaticMarkup(
-      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onClose={noop} />
+      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onRisk={noop} onClose={noop} />
     );
     expect(markup).toContain('Three-Year Plan');
     expect(markup).toContain('Board mandate');
@@ -60,7 +61,7 @@ describe('Three-Year Plan board mandate', () => {
       })),
     };
     const markup = renderToStaticMarkup(
-      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onClose={noop} />
+      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onRisk={noop} onClose={noop} />
     );
     expect(markup).toContain('Final plan result');
     expect(markup).toContain('mandate complete');
@@ -86,7 +87,7 @@ describe('Three-Year Plan board mandate', () => {
       },
     }];
     const markup = renderToStaticMarkup(
-      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onClose={noop} />
+      <Boardroom state={planned} history={[planned]} department={null} hasErrors={false} onDepartment={noop} onRisk={noop} onClose={noop} />
     );
     expect(markup).toContain('Latest formal board review · month 3');
     expect(markup).toContain('fell 2.0 points');

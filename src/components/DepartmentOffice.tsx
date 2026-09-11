@@ -14,7 +14,14 @@ interface Props {
  capitalMarketsQuote?:CapitalMarketsBookbuildResult; capitalMarketsPlanImpact?:CapitalMarketsPlanImpact;
 }
 
-export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
+const labels:Record<Department,string>={Customers:'Deposits',Lending:'Lending',Capital:'Finance & Capital',Treasury:'Treasury & Funding'};
+const reportLinks:Partial<Record<Department,Array<[string,string]>>>={
+ Lending:[['Loans','Loan portfolio']],
+ Capital:[['Performance','Performance'],['Accounts','Accounts'],['Share Price','Share price'],['Costs','Costs']],
+ Treasury:[['Regulatory','Liquidity & prudential detail']],
+};
+
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const competitorRates=department==='Customers'
@@ -34,11 +41,13 @@ export default function DepartmentOffice({department,state,history,form,errors,h
  const giltQuotedYield = department==='Treasury'
   ? nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, selectedGiltMaturity)
   : undefined;
+ const reports=reportLinks[department]??[];
  return <div className="department-office">
   <p className="office-status">{summary.status}<small>{period?`${period.label} · ${period.months}/3 months closed`:'Opening position · no months closed'}</small></p>
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
   <p className="department-consequence">{summary.explanation}</p>
   {competitorRates.length>0&&<section className="competitor-rates" aria-label="Competitor rates"><div><strong>Market reference</strong><small>Current competing offers</small></div><dl>{competitorRates.map(([label,rate])=><div key={label}><dt>{label}</dt><dd>{formatPct(rate)}</dd></div>)}</dl></section>}
   <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
+  {reports.length>0&&<nav className="area-report-links" aria-label={`${labels[department]} reports`}><div><strong>Reports</strong><small>Open the detailed view when you need it.</small></div>{reports.map(([tab,label])=><button key={tab} className="button ghost" onClick={()=>onReport(tab)}>{label} →</button>)}</nav>}
  </div>;
 }
