@@ -6,6 +6,7 @@ import { CashFlowStatement } from './cashflow';
 import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
 import { ProductType } from './enums';
 import type { ThreeYearPlanState } from './threeYearPlan';
+import type { CapitalMarketsState } from './capitalMarkets';
 
 export type LoanCohortsMap = Partial<Record<ProductType, LoanCohort[]>>;
 
@@ -149,6 +150,8 @@ export interface BankState {
   board: BoardPressureState;
   /** Optional, opt-in management accountability layer. */
   threeYearPlan?: ThreeYearPlanState;
+  /** Capital-markets execution history and effective issued-instrument terms. */
+  capitalMarkets?: CapitalMarketsState;
   equityMarket: EquityMarketState;
   market: MarketState;
   behaviour: BehaviouralState;
