@@ -1,26 +1,16 @@
-import { LiquidityRegulatoryClass, ProductType, PRODUCTS } from './catalogue';
+import { NsfrAsfRegulatoryClass, NsfrRsfRegulatoryClass, ProductType, PRODUCTS } from './catalogue';
 
 export type NsfrMaturityBand = 'under6m' | 'sixTo12m' | 'oneYearPlus' | 'none';
 
-export type NsfrAsfCategory =
-  | 'otherLiabilities'
-  | 'stableRetail'
-  | 'otherRetail'
-  | 'nonFinancialCorporate'
-  | 'centralBank'
-  | 'counterpartyUnknown'
-  | 'tier2Capital';
+export type NsfrAsfCategory = Exclude<NsfrAsfRegulatoryClass, 'none' | 'retail'> | 'stableRetail' | 'otherRetail';
 
 export type NsfrRsfCategory =
-  | 'centralBankReserve'
-  | 'level1Sovereign'
+  | Exclude<NsfrRsfRegulatoryClass, 'none' | 'mortgage' | 'otherLoan'>
   | 'mortgageShort'
   | 'mortgageLong'
   | 'otherLoanShort'
   | 'otherLoanLong'
   | 'nonPerforming'
-  | 'derivativeAsset'
-  | 'derivativeLiability'
   | 'undrawnCommitment'
   | 'encumberedSixTo12m'
   | 'encumberedOneYearPlus';
@@ -157,25 +147,6 @@ export interface NsfrProductRule {
   rsf?: 'mortgage' | 'otherLoan' | NsfrRsfCategory;
 }
 
-export const NSFR_PRODUCT_RULES: Record<LiquidityRegulatoryClass, NsfrProductRule> = {
-  derivativeAsset: { rsf: 'derivativeAsset' },
-  derivativeLiability: { asf: 'otherLiabilities', rsf: 'derivativeLiability' },
-  creditProvision: { asf: 'otherLiabilities' },
-  centralBankReserve: { rsf: 'centralBankReserve' },
-  level1Sovereign: { rsf: 'level1Sovereign' },
-  residentialMortgage: { rsf: 'mortgage' },
-  consumerLoan: { rsf: 'otherLoan' },
-  corporateLoan: { rsf: 'otherLoan' },
-  retailSightDeposit: { asf: 'retail' },
-  retailTermDeposit: { asf: 'retail' },
-  corporateOperatingDeposit: { asf: 'nonFinancialCorporate' },
-  corporateNonOperatingDeposit: { asf: 'nonFinancialCorporate' },
-  wholesaleFundingShort: { asf: 'counterpartyUnknown' },
-  wholesaleFundingLong: { asf: 'counterpartyUnknown' },
-  centralBankSecuredFunding: { asf: 'centralBank' },
-  tier2Funding: { asf: 'tier2Capital' },
-};
-
 export const nsfrMaturityBand = (monthsToMaturity?: number | null): NsfrMaturityBand => {
   if (monthsToMaturity === undefined || monthsToMaturity === null) return 'none';
   if (monthsToMaturity < 6) return 'under6m';
@@ -189,5 +160,10 @@ export const nsfrAsfFactor = (category: NsfrAsfCategory, monthsToMaturity?: numb
 export const nsfrRsfFactor = (category: NsfrRsfCategory): number =>
   NSFR_RSF_CATEGORIES[category].factors.none;
 
-export const getNsfrProductRule = (productType: ProductType): NsfrProductRule =>
-  NSFR_PRODUCT_RULES[PRODUCTS[productType].regulatory.liquidity];
+export const getNsfrProductRule = (productType: ProductType): NsfrProductRule => {
+  const regulatory = PRODUCTS[productType].regulatory;
+  return {
+    asf: regulatory.nsfrAsf === 'none' ? undefined : regulatory.nsfrAsf,
+    rsf: regulatory.nsfrRsf === 'none' ? undefined : regulatory.nsfrRsf,
+  };
+};
