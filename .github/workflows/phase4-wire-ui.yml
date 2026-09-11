@@ -34,3 +34,4 @@ jobs:
           git add src/App.tsx src/game/boardroom.ts src/game/boardroom.test.tsx
           git commit -m "Route live issuance through capital-markets bookbuild"
           git push origin HEAD:phase4-capital-markets-bookbuild
+# rerun after scenario-form transform fix
