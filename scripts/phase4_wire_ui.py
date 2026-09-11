@@ -9,8 +9,12 @@ s = s.replace("import { createDefaultThreeYearPlan } from './config/threeYearPla
 
 old_form = """    issueLTDebtAmount: '',\n    issueEquityAmount: '',\n    issueTier2Amount: '',"""
 new_form = """    capitalMarketsInstrument: 'none',\n    capitalMarketsTargetAmount: '',\n    capitalMarketsMaxDiscount: '15%',\n    capitalMarketsMaxSpreadBps: '1000',\n    capitalMarketsTenorMonths: '60',"""
-assert s.count(old_form) == 2, s.count(old_form)
-s = s.replace(old_form, new_form)
+assert old_form in s
+s = s.replace(old_form, new_form, 1)
+old_scenario_form = """      issueLTDebtAmount: '',\n      issueEquityAmount: '',\n      issueTier2Amount: '',"""
+new_scenario_form = """      capitalMarketsInstrument: 'none',\n      capitalMarketsTargetAmount: '',\n      capitalMarketsMaxDiscount: '15%',\n      capitalMarketsMaxSpreadBps: '1000',\n      capitalMarketsTenorMonths: '60',"""
+assert old_scenario_form in s
+s = s.replace(old_scenario_form, new_scenario_form, 1)
 
 old_clear = """      issueLTDebtAmount: '',\n      issueEquityAmount: '',\n      issueTier2Amount: '',"""
 new_clear = """      capitalMarketsInstrument: 'none',\n      capitalMarketsTargetAmount: '',"""
