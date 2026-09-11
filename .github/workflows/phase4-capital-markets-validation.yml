@@ -1,0 +1,22 @@
+name: Phase4 capital markets validation
+
+on:
+  push:
+    branches: [phase4-capital-markets-bookbuild]
+    paths: [.github/workflows/phase4-capital-markets-validation.yml]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-capital-markets-bookbuild
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run src/engine/capitalMarkets.test.ts src/engine/capitalMarketsIntegration.test.ts --reporter=verbose
+      - run: git diff --check
