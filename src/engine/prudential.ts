@@ -247,7 +247,8 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
             asfContribution(category, Math.max(0, f.notional), i.label, f.monthsToMaturity)
           );
         } else {
-          asfContributions = [asfContribution(category, b, i.label, fallbackMonthsForBucket(i.maturityBucket))];
+          const fallbackMaturity = rule.fundingMaturityTreatment ? fallbackMonthsForBucket(i.maturityBucket) : null;
+          asfContributions = [asfContribution(category, b, i.label, fallbackMaturity)];
         }
       }
     }
