@@ -44,6 +44,11 @@ jobs:
           if old_raise not in s:
               raise SystemExit('Expected sub() assertion block not found')
           s=s.replace(old_raise,new_raise)
+          marker='\n# --- Final source-level guard'
+          if marker not in s:
+              raise SystemExit('Final guard marker not found')
+          addition='''\n# Scenario overrides can no longer override removed Board Pressure state.\nsub(\n    "src/config/scenarios.ts",\n    r"  if \\(override\\?\\.board\\) \\{.*?\\n  \\}\\n",\n)\n'''
+          s=s.replace(marker,addition+marker)
           p.write_text(s)
           PY
       - name: Apply cleanup
