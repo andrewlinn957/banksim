@@ -33,6 +33,8 @@ export interface NsfrContribution {
   amount: number;
   factor: number;
   weighted: number;
+  // For ASF this is funding residual maturity. For C80 RSF rows it is the
+  // exposure residual-maturity column; encumbrance is represented by corep row.
   maturityBand: NsfrMaturityBand;
 }
 
@@ -66,10 +68,11 @@ const rsfContribution = (
   category: NsfrRsfCategory,
   amount: number,
   sourceLabel: string,
-  factor = nsfrRsfFactor(category),
-  maturityBand: NsfrMaturityBand = 'none'
+  maturityBand: NsfrMaturityBand = 'none',
+  factorOverride?: number
 ): NsfrContribution => {
   const definition = NSFR_RSF_CATEGORIES[category];
+  const factor = factorOverride ?? nsfrRsfFactor(category, maturityBand);
   return {
     side: 'RSF', category, corep: definition.corep, label: definition.label, group: definition.group,
     sourceLabel, amount, factor, weighted: amount * factor, maturityBand,
@@ -87,6 +90,7 @@ const applyNsfrEncumbrance = (
     if (!treatment) return [contribution];
     const encumberedAmount = contribution.amount * encumberedShare;
     const freeAmount = contribution.amount - encumberedAmount;
+    const factor = treatment.factors[contribution.maturityBand];
     const result: NsfrContribution[] = [];
     if (freeAmount > 0) {
       result.push({ ...contribution, amount: freeAmount, weighted: freeAmount * contribution.factor });
@@ -97,8 +101,8 @@ const applyNsfrEncumbrance = (
         corep: treatment.corep,
         label: treatment.label,
         amount: encumberedAmount,
-        factor: treatment.factor,
-        weighted: encumberedAmount * treatment.factor,
+        factor,
+        weighted: encumberedAmount * factor,
       });
     }
     return result;
@@ -291,6 +295,10 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
     }
 
     if (hasCapability(p, 'loan')) {
+      if (nsfrRule.rsf !== 'mortgage' && nsfrRule.rsf !== 'otherLoan') {
+        throw new Error(`Loan product ${p} must declare mortgage or otherLoan NSFR RSF treatment`);
+      }
+      const loanCategory: NsfrRsfCategory = nsfrRule.rsf;
       const cohorts = s.loanCohorts?.[p] ?? [];
       const workouts = s.workoutPipelines?.[p] ?? [];
       inflow = cohorts.reduce(
@@ -310,8 +318,6 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
         cohorts.reduce((sum, l) => sum + l.outstandingPrincipal, 0) +
         workouts.reduce((sum, w) => sum + w.defaultedPrincipal, 0);
       const scale = gross > 0 ? b / gross : 1;
-      const shortCategory: NsfrRsfCategory = nsfrRule.rsf === 'mortgage' ? 'mortgageShort' : 'otherLoanShort';
-      const longCategory: NsfrRsfCategory = nsfrRule.rsf === 'mortgage' ? 'mortgageLong' : 'otherLoanLong';
       const loanContributions: NsfrContribution[] = [];
       cohorts.forEach(l => {
         if (l.stage === 'stage3') {
@@ -321,24 +327,38 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
         const term = Math.max(1, l.termMonths - l.ageMonths);
         const payment = contractualLoanPayment(l.outstandingPrincipal, l.annualInterestRate, term);
         let remaining = l.outstandingPrincipal;
-        // Article 428q(4): contractual amortisation due before one year receives its shorter tenor.
+        let remainingAfterFiveMonths = remaining;
+        let remainingAfterElevenMonths = remaining;
+        // C80 distinguishes exposure residual maturity <6m, 6–12m and >=1y.
+        // Allocate contractual principal amortisation to those columns while the
+        // C80 row itself continues to represent encumbrance treatment.
         for (let month = 1; month <= Math.min(11, term); month++) {
           remaining = Math.max(
             0,
             remaining -
               Math.max(0, payment - (remaining * Math.max(0, l.annualInterestRate)) / 12)
           );
+          if (month === Math.min(5, term)) remainingAfterFiveMonths = remaining;
+          if (month === Math.min(11, term)) remainingAfterElevenMonths = remaining;
         }
-        const shortAmount = (l.outstandingPrincipal - remaining) * scale;
-        const longAmount = remaining * scale;
-        if (shortAmount > 0) loanContributions.push(rsfContribution(shortCategory, shortAmount, i.label, undefined, 'sixTo12m'));
-        if (longAmount > 0) loanContributions.push(rsfContribution(longCategory, longAmount, i.label, undefined, 'oneYearPlus'));
+        const underSixMonths = (l.outstandingPrincipal - remainingAfterFiveMonths) * scale;
+        const sixToTwelveMonths = (remainingAfterFiveMonths - remainingAfterElevenMonths) * scale;
+        const oneYearPlus = remainingAfterElevenMonths * scale;
+        if (underSixMonths > 0) {
+          loanContributions.push(rsfContribution(loanCategory, underSixMonths, i.label, 'under6m'));
+        }
+        if (sixToTwelveMonths > 0) {
+          loanContributions.push(rsfContribution(loanCategory, sixToTwelveMonths, i.label, 'sixTo12m'));
+        }
+        if (oneYearPlus > 0) {
+          loanContributions.push(rsfContribution(loanCategory, oneYearPlus, i.label, 'oneYearPlus'));
+        }
       });
       workouts.forEach(w => {
         if (w.defaultedPrincipal > 0) loanContributions.push(rsfContribution('nonPerforming', w.defaultedPrincipal * scale, i.label));
       });
       if (loanContributions.length === 0 && b > 0) {
-        loanContributions.push(rsfContribution(longCategory, b, i.label, undefined, 'oneYearPlus'));
+        loanContributions.push(rsfContribution(loanCategory, b, i.label, 'oneYearPlus'));
       }
       rsfContributions = loanContributions;
     }

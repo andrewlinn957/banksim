@@ -16,7 +16,8 @@ const aggregateRows=(contributions:NsfrContribution[]):FundingRow[]=>{
  const rows=new Map<string,FundingRow>();
  contributions.forEach(c=>{
   const key=`${c.corep}|${c.label}|${c.factor}|${c.maturityBand}`;
-  const suffix=c.maturityBand==='under6m'?' · <6m':c.maturityBand==='sixTo12m'?' · 6–12m':c.maturityBand==='oneYearPlus'?' · ≥1y':'';
+  const band=c.maturityBand==='under6m'?'<6m':c.maturityBand==='sixTo12m'?'6–12m':c.maturityBand==='oneYearPlus'?'≥1y':'';
+  const suffix=band?(c.side==='RSF'?` · exposure maturity ${band}`:` · ${band}`):'';
   const existing=rows.get(key)??{label:`${c.corep} · ${c.label}${suffix}`,amount:0,weighted:0,factor:c.factor};
   existing.amount+=c.amount;existing.weighted+=c.weighted;rows.set(key,existing);
  });
