@@ -3,6 +3,7 @@ import type { SimulationConfig } from '../domain/config';
 import type { CapitalMarketsBookbuildResult, CapitalMarketsInstrument, CapitalMarketsOrder } from '../domain/capitalMarkets';
 import { BalanceSheetSide } from '../domain/enums';
 import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
+import { nelsonSiegelYield } from './ukMarketModel';
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 const safeRatio = (num: number, den: number): number => den > 1e-9 ? num / den : 0;
@@ -41,6 +42,11 @@ const normaliseTenor = (instrument: CapitalMarketsInstrument, requested?: number
   const allowed = definition.permittedTenorMonths;
   if (!allowed?.length) return raw;
   return allowed.reduce((best, tenor) => Math.abs(tenor - raw) < Math.abs(best - raw) ? tenor : best, allowed[0]);
+};
+
+const benchmarkRate = (state: BankState, instrument: CapitalMarketsInstrument, tenorMonths?: number): number => {
+  if (instrument === 'at1' || tenorMonths === undefined) return state.market.riskFreeLong;
+  return nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, clamp(tenorMonths / 12, 0.25, 30));
 };
 
 export const buildCapitalMarketsBook = (
@@ -98,7 +104,7 @@ export const buildCapitalMarketsBook = (
       + 180 * recentRatio * instrumentSensitivity
       + capitalPenaltyBps
     );
-    marketReferenceRate = state.market.riskFreeLong;
+    marketReferenceRate = benchmarkRate(state, order.instrument, tenorMonths);
     failedPrice = order.maxSpreadBps !== undefined && clearingSpreadBps > Math.max(0, order.maxSpreadBps) + 1e-9;
   }
 
