@@ -62,33 +62,26 @@ describe('Funding ladder lifecycle', () => {
     expect(stressed.risk.riskMetrics.fundingMaturing12m).toBeGreaterThanOrEqual(0);
   });
 
-  it('confidence state applies stepwise spread/access penalties to issuance', () => {
+  it('keeps confidence-state effects confined to contractual rollover rather than new capital-market issuance', () => {
     const engine = createSimulationEngine();
-    const requested = 12e9;
-
     const strongState = cloneBankState(initialState);
-    strongState.behaviour.fundingConfidenceState = 'strong';
     const stressedState = cloneBankState(initialState);
+    strongState.behaviour.fundingConfidenceState = 'strong';
     stressedState.behaviour.fundingConfidenceState = 'stressed';
+    (strongState.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);
+    (stressedState.fundingLadders[LiabilityProductType.WholesaleFundingLT] ?? []).forEach(b => b.monthsToMaturity = 1);
 
-    const strong = engine.step({
-      state: strongState,
-      config: baseConfig,
-      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
-      shocks: [],
-    });
-    const stressed = engine.step({
-      state: stressedState,
-      config: baseConfig,
-      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
-      shocks: [],
-    });
+    const strong = engine.step({ state: strongState, config: baseConfig, actions: [], shocks: [] }).nextState;
+    const stressed = engine.step({ state: stressedState, config: baseConfig, actions: [], shocks: [] }).nextState;
+    const strongFunding = strong.financial.balanceSheet.items.find(
+      item => item.productType === LiabilityProductType.WholesaleFundingLT
+    );
+    const stressedFunding = stressed.financial.balanceSheet.items.find(
+      item => item.productType === LiabilityProductType.WholesaleFundingLT
+    );
 
-    const strongExecution = strong.executions.capitalMarkets[0];
-    const stressedExecution = stressed.executions.capitalMarkets[0];
-    expect(stressedExecution.executedAmount).toBeLessThan(strongExecution.executedAmount);
-    expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
-    expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
+    expect(stressedFunding?.balance ?? 0).toBeLessThan(strongFunding?.balance ?? 0);
+    expect(stressedFunding?.interestRate ?? 0).toBeGreaterThan(strongFunding?.interestRate ?? 0);
   });
 });
 

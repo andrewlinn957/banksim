@@ -31,16 +31,42 @@ describe('capital-markets bookbuild', () => {
     expect(repeat.demandAmount).toBeLessThan(first.demandAmount);
   });
 
-  it('makes AT1 access worse when market confidence deteriorates', () => {
-    const stable = cloneBankState(initialState);
+  it('makes AT1 access worse when observable issuer fundamentals deteriorate', () => {
+    const healthy = cloneBankState(initialState);
     const stressed = cloneBankState(initialState);
-    stressed.behaviour.fundingConfidenceState = 'stressed';
-    stressed.risk.riskMetrics.fundingConfidenceState = 'stressed';
-    stressed.risk.riskMetrics.fundingConfidenceScore = 0.3;
-    const good = buildCapitalMarketsBook(stable, baseConfig, { instrument: 'at1', targetAmount: 100e6, maxSpreadBps: 2500 });
+    stressed.risk.riskMetrics.cet1Headroom = -0.01;
+    stressed.risk.riskMetrics.leverageRatio = baseConfig.riskLimits.minLeverageRatio - 0.005;
+    stressed.risk.riskMetrics.lcr = 0.85;
+    stressed.risk.riskMetrics.nsfr = 0.90;
+    stressed.behaviour.depositFranchiseStrength = 0.35;
+    stressed.market.seniorDebtSpread = healthy.market.seniorDebtSpread + 0.015;
+    Object.values(stressed.loanCohorts).flatMap(cohorts => cohorts ?? []).forEach((cohort, index) => {
+      cohort.stage = index % 3 === 0 ? 'stage3' : 'stage2';
+    });
+
+    const good = buildCapitalMarketsBook(healthy, baseConfig, { instrument: 'at1', targetAmount: 100e6, maxSpreadBps: 2500 });
     const bad = buildCapitalMarketsBook(stressed, baseConfig, { instrument: 'at1', targetAmount: 100e6, maxSpreadBps: 2500 });
     expect(bad.clearingSpreadBps).toBeGreaterThan(good.clearingSpreadBps ?? 0);
     expect(bad.demandAmount).toBeLessThan(good.demandAmount);
+    expect(bad.fundingMarketAssessment?.drivers.some(driver => driver.key === 'capital' && driver.spreadBps > 0)).toBe(true);
+  });
+
+  it('does not use the legacy Funding Confidence state to price debt or determine capacity', () => {
+    const a = cloneBankState(initialState);
+    const b = cloneBankState(initialState);
+    a.behaviour.fundingConfidenceScore = 1;
+    a.behaviour.fundingConfidenceState = 'strong';
+    a.risk.riskMetrics.fundingConfidenceScore = 1;
+    a.risk.riskMetrics.fundingConfidenceState = 'strong';
+    b.behaviour.fundingConfidenceScore = 0;
+    b.behaviour.fundingConfidenceState = 'stressed';
+    b.risk.riskMetrics.fundingConfidenceScore = 0;
+    b.risk.riskMetrics.fundingConfidenceState = 'stressed';
+
+    const x = buildCapitalMarketsBook(a, baseConfig, { instrument: 'senior', targetAmount: 100e6, maxSpreadBps: 2000, tenorMonths: 36 });
+    const y = buildCapitalMarketsBook(b, baseConfig, { instrument: 'senior', targetAmount: 100e6, maxSpreadBps: 2000, tenorMonths: 36 });
+    expect(y.clearingSpreadBps).toBeCloseTo(x.clearingSpreadBps ?? 0, 10);
+    expect(y.demandAmount).toBeCloseTo(x.demandAmount, 2);
   });
 
   it('normalises debt tenors to instrument terms', () => {

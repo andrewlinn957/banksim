@@ -1,3 +1,5 @@
+import type { FundingMarketAssessment } from './fundingMarket';
+
 export type CapitalMarketsInstrument = 'cet1' | 'at1' | 'tier2' | 'senior';
 export type CapitalMarketsPricingKind = 'discount' | 'spread';
 export type CapitalMarketsBookbuildStatus = 'filled' | 'partial' | 'failed-price' | 'failed-demand';
@@ -27,6 +29,12 @@ export interface CapitalMarketsBookbuildResult {
   fees: number;
   netProceeds: number;
   recentIssuanceRatio: number;
+  /**
+   * Backend-only diagnostic output from the fundamentals-driven funding-market engine.
+   * No current UI consumes this object; it is retained so future UX can choose how much
+   * of the underlying mechanism to expose without recalculating it.
+   */
+  fundingMarketAssessment?: FundingMarketAssessment;
 }
 
 export interface CapitalMarketsTransactionRecord extends CapitalMarketsBookbuildResult {
