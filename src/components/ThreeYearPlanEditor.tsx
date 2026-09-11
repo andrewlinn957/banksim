@@ -34,7 +34,9 @@ export default function ThreeYearPlanEditor({ state, onChange }: Props) {
   const updateWeight = (metricId: string, raw: string) => {
     const weight = Number(raw);
     if (!Number.isFinite(weight) || weight < 0) return;
-    onChange(plan.targets.map(target => target.metricId === metricId ? { ...target, weight } : target));
+    const targets = plan.targets.map(target => target.metricId === metricId ? { ...target, weight } : target);
+    if (targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0) <= 0) return;
+    onChange(targets);
   };
 
   const updateMilestone = (metricId: string, month: 12 | 24 | 36, raw: string) => {
