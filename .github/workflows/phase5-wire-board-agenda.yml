@@ -1,0 +1,45 @@
+name: Phase5 wire board agenda
+
+on:
+  push:
+    branches: [phase5-plan-aware-boardroom]
+    paths: [.github/workflows/phase5-wire-board-agenda.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase5-plan-aware-boardroom
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Wire existing proposal callback into Boardroom
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/App.tsx')
+          s=p.read_text()
+          old="<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>"
+          new="<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions}>"
+          assert old in s, 'Boardroom invocation changed unexpectedly'
+          p.write_text(s.replace(old,new,1))
+          PY
+      - run: npm ci
+      - run: npx vitest run src/game/boardroom.test.tsx --reporter=verbose
+      - run: npm run typecheck
+      - run: npm run build
+      - run: git diff --check
+      - name: Commit wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx
+          git commit -m "Wire board agenda proposal actions"
+          git push origin HEAD:phase5-plan-aware-boardroom
