@@ -1,0 +1,84 @@
+name: Phase4 catalogue diff cleanup
+
+on:
+  push:
+    branches: [phase4-capital-markets-bookbuild]
+    paths: [.github/workflows/phase4-catalogue-diff-cleanup.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-capital-markets-bookbuild
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Restore formatting and apply minimal capability patch
+        run: |
+          git show origin/main:src/products/catalogue.ts > src/products/catalogue.ts
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/products/catalogue.ts')
+          s=p.read_text()
+          s=s.replace("export type TreasuryAssetRateSource = 'bankRate' | 'giltCurve';", "export type TreasuryAssetRateSource = 'bankRate' | 'giltCurve';\nexport type CapitalMarketsFundingInstrument = 'tier2' | 'senior';",1)
+          s=s.replace("export interface WholesaleFundingCapability {\n  tenorClass: WholesaleFundingTenorClass;\n  issuable?: boolean;\n}\n", "export interface WholesaleFundingCapability {\n  tenorClass: WholesaleFundingTenorClass;\n  issuable?: boolean;\n}\n\n/** Capital-market issuance metadata for funding products. Product identity and tenor eligibility live here. */\nexport interface CapitalMarketsFundingCapability {\n  instrument: CapitalMarketsFundingInstrument;\n  defaultTenorMonths: number;\n  permittedTenorMonths: readonly number[];\n}\n",1)
+          s=s.replace("  wholesaleFunding?: WholesaleFundingCapability;\n  treasuryAsset?: TreasuryAssetCapability;", "  wholesaleFunding?: WholesaleFundingCapability;\n  capitalMarketsFunding?: CapitalMarketsFundingCapability;\n  treasuryAsset?: TreasuryAssetCapability;",1)
+          old="""      wholesaleFunding: {
+        tenorClass: 'long',
+        issuable: true,
+      },
+    },
+    regulatory: {
+      liquidity: 'wholesaleFundingLong',"""
+          new="""      wholesaleFunding: {
+        tenorClass: 'long',
+        issuable: true,
+      },
+      capitalMarketsFunding: {
+        instrument: 'senior',
+        defaultTenorMonths: 36,
+        permittedTenorMonths: [24, 36, 60],
+      },
+    },
+    regulatory: {
+      liquidity: 'wholesaleFundingLong',"""
+          assert old in s
+          s=s.replace(old,new,1)
+          old="""  Tier2Debt: {
+    productType: 'Tier2Debt',
+    label: 'Tier 2 subordinated debt',
+    side: 'Liability',
+    capabilities: {},"""
+          new="""  Tier2Debt: {
+    productType: 'Tier2Debt',
+    label: 'Tier 2 subordinated debt',
+    side: 'Liability',
+    capabilities: {
+      capitalMarketsFunding: {
+        instrument: 'tier2',
+        defaultTenorMonths: 60,
+        permittedTenorMonths: [60, 84, 120],
+      },
+    },"""
+          assert old in s
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run src/products/capabilities.test.ts src/capitalMarkets/catalogue.test.ts src/engine/capitalMarkets.test.ts src/engine/capitalMarketsIntegration.test.ts --reporter=verbose
+      - run: git diff --check
+      - name: Commit minimal catalogue diff
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/products/catalogue.ts
+          git commit -m "Keep capital markets capability diff minimal"
+          git push origin HEAD:phase4-capital-markets-bookbuild
