@@ -5,6 +5,7 @@ import { centralBankExclusion, committedExposure, commitmentLiquidity, prudentia
 import { pillar2AAssessmentForMetrics } from './pillar2A';
 import { calculateCapitalBufferFramework } from './capitalBuffers';
 import { calculateLeverageFramework } from './leverageFramework';
+import { calculateCor011 } from './cor011';
 import { BankState } from '../domain/bankState';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { AssetProductType, BalanceSheetSide, HQLALevel, LiabilityProductType, ProductType } from '../domain/enums';
@@ -14,7 +15,6 @@ import { LoanGeography, LoanSector } from '../domain/loanCohorts';
 import { PRODUCTS } from '../products/catalogue';
 import {
   eligibleTier2OwnFunds,
-  liquidityTagForProduct,
   productTypesWithFundingMaturityTreatment,
   productTypesWithLeverageTreatment,
   regulatoryRiskWeight,
@@ -43,10 +43,9 @@ const isRecessionRegime = (state: BankState): boolean =>
   state.market.unemploymentRate > 0.075;
 
 /**
- * Generic HQLA composition helper. It deliberately honours the liquidity tag
- * on each supplied position so tests/scenarios can construct hypothetical
- * Level 2A/2B portfolios. Live positions receive those tags from the product
- * regulatory classification rather than from configuration.
+ * Generic HQLA composition helper retained for isolated tests and hypothetical
+ * portfolio analysis. The live regulatory LCR no longer uses balance-sheet
+ * liquidity tags; it is calculated by the dedicated COR011/LCR engine.
  */
 export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
   let level1 = 0, level2a = 0, level2b = 0;
@@ -64,9 +63,6 @@ export const computeHqlaComposition = (items: BalanceSheetItem[]) => {
 };
 
 export const computeHqla = (items: BalanceSheetItem[]): number => computeHqlaComposition(items).total;
-
-const regulatoryHqlaItems = (items: BalanceSheetItem[]): BalanceSheetItem[] =>
-  items.map(item => ({ ...item, liquidityTag: liquidityTagForProduct(item.productType) }));
 
 interface LiquidityDynamicsFactors {
   depositOutflowMultiplier: number;
@@ -502,7 +498,9 @@ export const calculateRiskMetrics = ({
     leverageCet1Ratio < leverageFramework.cet1ThresholdRate
   );
 
-  const hqla = computeHqla(regulatoryHqlaItems(assets));
+  const cor011 = calculateCor011(state, config);
+  const hqla = cor011.c76.liquidityBuffer;
+  const lcr = cor011.c76.lcr;
   const depositQualityIndex = computeDepositQualityIndex(state);
   const liquidityFactors = computeLiquidityDynamicsFactors(
     state,
@@ -513,9 +511,6 @@ export const calculateRiskMetrics = ({
   const lines = prudentialLiquidityLines(state, config);
   const commitments = commitmentLiquidity(state);
   const inflows = lines.reduce((sum, l) => sum + l.inflow, 0);
-  const outflows = lines.reduce((sum, l) => sum + l.outflow, commitments.outflow);
-  const net = outflows - Math.min(inflows, outflows * .75);
-  const lcr = net > 0 ? hqla / net : Infinity;
   const asf = adjustedCet1 + state.financial.capital.at1 + lines.reduce((sum, l) => sum + l.asf, 0);
   const rsf = lines.reduce((sum, l) => sum + l.rsf, commitments.rsf);
   const nsfr = rsf > 0 ? asf / rsf : Infinity;
