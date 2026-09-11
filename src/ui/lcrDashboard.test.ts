@@ -2,7 +2,7 @@ import { describe,it,expect } from 'vitest';
 import { lcrDashboardData } from '../components/LcrDashboard';
 import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
-import { calculateRiskMetrics,computeHqla } from '../engine/metrics';
+import { calculateRiskMetrics } from '../engine/metrics';
 import { cloneBankState } from '../engine/clone';
 import { HQLALevel,AssetProductType,BalanceSheetSide } from '../domain/enums';
 describe('LCR dashboard reconciliation',()=>{
@@ -15,7 +15,7 @@ describe('LCR dashboard reconciliation',()=>{
   expect(d.ratio).toBeCloseTo(m.lcr,12);
   expect(d.surplus).toBeCloseTo(m.hqla-d.net*baseConfig.riskLimits.minLcr,5);
  });
- it('shows HQLA after encumbrance, haircuts and composition caps',()=>{
+ it('uses COR011 product classification rather than mutable balance-sheet liquidity tags',()=>{
   const state=cloneBankState(initialState),template=state.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.CashReserves)!;
   state.financial.balanceSheet.items=[
    {...template,balance:100,encumbrance:{encumberedAmount:20},liquidityTag:{...template.liquidityTag,hqlaLevel:HQLALevel.Level1}},
@@ -23,9 +23,11 @@ describe('LCR dashboard reconciliation',()=>{
    {...template,balance:300,liquidityTag:{...template.liquidityTag,hqlaLevel:HQLALevel.Level2B}},
   ];
   const d=lcrDashboardData(state,baseConfig);
-  expect(d.hqla.level1).toBe(80);
-  expect(d.hqla.capDeduction).toBeGreaterThan(0);
-  expect(d.hqla.total).toBe(computeHqla(state.financial.balanceSheet.items));
+  expect(d.hqla.level1).toBe(680);
+  expect(d.hqla.level2a).toBe(0);
+  expect(d.hqla.level2b).toBe(0);
+  expect(d.hqla.capDeduction).toBe(0);
+  expect(d.hqla.total).toBe(680);
   expect(d.hqlaParts.reduce((s,p)=>s+p.value,0)).toBe(d.hqla.total);
  });
  it('shows binding inflow caps and handles zero outflows',()=>{
