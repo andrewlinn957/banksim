@@ -1,31 +1,9 @@
 import { describe,expect,it } from 'vitest';
 import { baseConfig } from '../config/baseConfig';
-import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets } from '../config/threeYearPlan';
+import { createDefaultThreeYearPlan } from '../config/threeYearPlan';
 import { initialState } from '../config/initialState';
 import { cloneBankState } from './clone';
 import { createSimulationEngine } from './simulation';
-import { THREE_YEAR_PLAN_METRICS as M } from './threeYearPlanMetrics';
-
-const completedPlanState=()=>{
-  const state=cloneBankState(initialState);
-  state.threeYearPlan=createDefaultThreeYearPlan(state);
-  state.time.step=36;
-  state.threeYearPlan.completed=true;
-  state.threeYearPlan.boardConfidence=81;
-  state.threeYearPlan.currentEvaluation={
-    month:36,
-    score:76,
-    metrics:state.threeYearPlan.targets.map(target=>({metricId:target.metricId,actual:target.milestones[2].lower,targetLower:target.milestones[2].lower,targetUpper:target.milestones[2].upper,score:76,weight:target.weight})),
-  };
-  state.threeYearPlan.lastEvaluationStep=36;
-  state.threeYearPlan.reviewHistory=[{
-    month:36,
-    evaluation:state.threeYearPlan.currentEvaluation,
-    boardConfidenceBefore:82,
-    boardConfidenceAfter:81,
-  }];
-  return state;
-};
 
 describe('Three-Year Plan engine integration',()=>{
   it('reviews quarterly only when explicitly enabled and records the confidence movement',()=>{
@@ -52,46 +30,23 @@ describe('Three-Year Plan engine integration',()=>{
     const state=cloneBankState(initialState); state.threeYearPlan=createDefaultThreeYearPlan(state);
     let working=state; const engine=createSimulationEngine();
     for(let i=0;i<3;i++) working=engine.step({state:working,config:baseConfig,actions:[],shocks:[]}).nextState;
-    expect(working.threeYearPlan?.currentEvaluation).toBeUndefined(); expect(working.threeYearPlan?.boardConfidence).toBe(70);
+    expect(working.threeYearPlan?.currentEvaluation).toBeUndefined();
+    expect(working.threeYearPlan?.boardConfidence).toBe(70);
     expect(working.threeYearPlan?.reviewHistory).toHaveLength(0);
   });
 
-  it('executes renewal as a normal player action before the first month of the successor plan',()=>{
-    const state=completedPlanState();
-    const targets=createDefaultThreeYearPlanTargets(state);
+  it('freezes the completed mandate after month 36',()=>{
+    const state=cloneBankState(initialState); state.threeYearPlan=createDefaultThreeYearPlan(state);
     const config={...baseConfig,featureFlags:{...baseConfig.featureFlags,threeYearPlan:true}};
-    const result=createSimulationEngine().step({
-      state,
-      config,
-      actions:[{type:'renewThreeYearPlan',targets}],
-      shocks:[],
-    });
-
-    expect(result.nextState.time.step).toBe(37);
-    expect(result.nextState.threeYearPlan?.cycleNumber).toBe(2);
-    expect(result.nextState.threeYearPlan?.startStep).toBe(36);
-    expect(result.nextState.threeYearPlan?.boardConfidence).toBe(81);
-    expect(result.nextState.threeYearPlan?.priorCycles).toHaveLength(1);
-    expect(result.nextState.threeYearPlan?.priorCycles?.[0].finalBoardConfidence).toBe(81);
-    expect(result.nextState.threeYearPlan?.currentEvaluation).toBeUndefined();
-    expect(result.nextState.threeYearPlan?.reviewHistory).toHaveLength(0);
-    expect(result.events.some(event=>event.message.includes('Cycle 2 agreed'))).toBe(true);
-    expect(state.threeYearPlan?.cycleNumber).toBe(1);
-    expect(state.threeYearPlan?.priorCycles).toHaveLength(0);
-  });
-
-  it('does not activate a successor plan the board would refuse to agree',()=>{
-    const state=completedPlanState();
-    const targets=createDefaultThreeYearPlanTargets(state).map(target=>({
-      ...target,
-      weight:target.metricId===M.lcr?70:5,
-      milestones:target.milestones.map(milestone=>({...milestone,lower:target.metricId===M.eps||target.metricId===M.rote?-1:.01})),
-    }));
-    const config={...baseConfig,featureFlags:{...baseConfig.featureFlags,threeYearPlan:true}};
-    const result=createSimulationEngine().step({state,config,actions:[{type:'renewThreeYearPlan',targets}],shocks:[]});
-
-    expect(result.nextState.threeYearPlan?.cycleNumber).toBe(1);
-    expect(result.nextState.threeYearPlan?.completed).toBe(true);
-    expect(result.events.some(event=>event.message.includes('renewal rejected'))).toBe(true);
+    const engine=createSimulationEngine(); let working=state;
+    for(let i=0;i<36;i++) working=engine.step({state:working,config,actions:[],shocks:[]}).nextState;
+    const finalEvaluation=working.threeYearPlan?.currentEvaluation;
+    const finalConfidence=working.threeYearPlan?.boardConfidence;
+    expect(working.threeYearPlan?.completed).toBe(true);
+    expect(finalEvaluation?.month).toBe(36);
+    working=engine.step({state:working,config,actions:[],shocks:[]}).nextState;
+    expect(working.threeYearPlan?.completed).toBe(true);
+    expect(working.threeYearPlan?.currentEvaluation).toEqual(finalEvaluation);
+    expect(working.threeYearPlan?.boardConfidence).toBe(finalConfidence);
   });
 });

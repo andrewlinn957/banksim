@@ -1,7 +1,6 @@
 import { BankState } from '../domain/bankState';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { Department, departmentSummary } from '../game/departments';
-import { BoardDecision } from '../game/boardroom';
 import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
 import { periodHistory } from '../game/management';
 import { formatPct } from '../utils/formatters';
@@ -9,8 +8,8 @@ import { nelsonSiegelYield } from '../engine/ukMarketModel';
 
 interface Props {
  department:Department; state:BankState; history:BankState[]; form:ActionFormState;
- errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean; selected:string[];
- onChange:(form:ActionFormState)=>void; onDecision:(decision:BoardDecision)=>void;
+ errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean;
+ onChange:(form:ActionFormState)=>void;
  onReport:(tab:string)=>void; onHelp:(id:string)=>void; estimate:BankState|null;
  capitalMarketsQuote?:CapitalMarketsBookbuildResult; capitalMarketsPlanImpact?:CapitalMarketsPlanImpact;
 }
