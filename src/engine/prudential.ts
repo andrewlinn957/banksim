@@ -14,6 +14,7 @@ import {
   NsfrMaturityBand,
   NsfrRsfCategory,
   nsfrAsfFactor,
+  nsfrEncumbranceTreatment,
   nsfrMaturityBand,
   nsfrRsfFactor,
 } from '../products/nsfr';
@@ -73,6 +74,35 @@ const rsfContribution = (
     side: 'RSF', category, corep: definition.corep, label: definition.label, group: definition.group,
     sourceLabel, amount, factor, weighted: amount * factor, maturityBand,
   };
+};
+
+const applyNsfrEncumbrance = (
+  contributions: NsfrContribution[],
+  encumberedShare: number,
+  months: number
+): NsfrContribution[] => {
+  if (encumberedShare <= 0 || months < 6) return contributions;
+  return contributions.flatMap(contribution => {
+    const treatment = nsfrEncumbranceTreatment(contribution.category as NsfrRsfCategory, months);
+    if (!treatment) return [contribution];
+    const encumberedAmount = contribution.amount * encumberedShare;
+    const freeAmount = contribution.amount - encumberedAmount;
+    const result: NsfrContribution[] = [];
+    if (freeAmount > 0) {
+      result.push({ ...contribution, amount: freeAmount, weighted: freeAmount * contribution.factor });
+    }
+    if (encumberedAmount > 0) {
+      result.push({
+        ...contribution,
+        corep: treatment.corep,
+        label: treatment.label,
+        amount: encumberedAmount,
+        factor: treatment.factor,
+        weighted: encumberedAmount * treatment.factor,
+      });
+    }
+    return result;
+  });
 };
 
 export const retailCurrentAccountRegulatoryFactors = (s: BankState) => {
@@ -312,22 +342,15 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
       rsfContributions = loanContributions;
     }
 
-    let asf = asfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
-    let rsf = rsfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
-
     if (asset) {
       const enc = Math.min(b, Math.max(0, i.encumbrance?.encumberedAmount ?? 0));
       const months = i.encumbrance?.remainingMonths ?? 12;
-      const base = b > 0 ? rsf / b : 0;
-      const target = months >= 12 ? 1 : months >= 6 ? Math.max(0.5, base) : base;
-      const uplift = Math.max(0, enc * (target - base));
-      if (uplift > 0) {
-        const category: NsfrRsfCategory = months >= 12 ? 'encumberedOneYearPlus' : 'encumberedSixTo12m';
-        const contribution = rsfContribution(category, enc, i.label, target - base, months >= 12 ? 'oneYearPlus' : 'sixTo12m');
-        rsfContributions.push(contribution);
-        rsf += contribution.weighted;
-      }
+      const encumberedShare = b > 0 ? enc / b : 0;
+      rsfContributions = applyNsfrEncumbrance(rsfContributions, encumberedShare, months);
     }
+
+    const asf = asfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
+    const rsf = rsfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
 
     return { productType: p, label: i.label, balance: b, asset, outflow, inflow, asf, rsf, asfContributions, rsfContributions };
   });
