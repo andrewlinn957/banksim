@@ -10,7 +10,8 @@ describe('COR011 reconciliation', () => {
     const metrics = calculateRiskMetrics({ state: initialState, config: baseConfig });
     expect(cor011.inflows.every(inflow => inflow.capClass === '75')).toBe(true);
     expect(cor011.c76.liquidityBuffer).toBeCloseTo(metrics.hqla, 4);
-    expect(cor011.c76.netLiquidityOutflow).toBeCloseTo(metrics.netOutflow, 4);
+    const metricsNetOutflow = Number.isFinite(metrics.lcr) && metrics.lcr > 0 ? metrics.hqla / metrics.lcr : 0;
+    expect(cor011.c76.netLiquidityOutflow).toBeCloseTo(metricsNetOutflow, 4);
     expect(cor011.c76.lcr).toBeCloseTo(metrics.lcr, 10);
   });
 });
