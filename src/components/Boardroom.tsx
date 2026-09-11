@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef } from 'react';
 import { BankState } from '../domain/bankState';
+import type { ThreeYearPlanTarget } from '../domain/threeYearPlan';
 import { Department, departmentSummary } from '../game/departments';
 import { boardDecisions, monthlyBrief, type BoardDecision } from '../game/boardroom';
 import { periodHistory } from '../game/management';
@@ -14,11 +15,13 @@ interface Props {
  onClose: () => void;
  onDecision?: (decision: BoardDecision) => void;
  selectedDecisions?: string[];
+ canEditPlan?: boolean;
+ onPlanTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
  children?: ReactNode;
 }
 const departments: Department[] = ['Customers','Lending','Capital','Treasury'];
 const jobs: Record<Department,string> = {Customers:'Set deposit offers',Lending:'Price loans & set standards',Capital:'Retain profit & raise equity',Treasury:'Fund the bank & manage hedges'};
-export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,onDecision,selectedDecisions=[],children}:Props) {
+export default function Boardroom({state,history,department,hasErrors,onDepartment,onClose,onDecision,selectedDecisions=[],canEditPlan=false,onPlanTargetsChange,children}:Props) {
  const quarter=periodHistory(history,3).at(-1);
  const panel=useRef<HTMLElement|null>(null);
  const departmentButtons=useRef<Partial<Record<Department,HTMLButtonElement>>>({});
@@ -49,7 +52,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    <div className="muted">Backing a proposal only pre-fills the relevant management controls. Nothing executes until you run the next month.</div>
   </section>
 
-  <ThreeYearPlanPanel state={state}/>
+  <ThreeYearPlanPanel state={state} canEdit={canEditPlan} onTargetsChange={onPlanTargetsChange}/>
   {hasErrors&&!department&&<div className="alert danger" role="alert">A department has an invalid policy input. Open it to correct the plan before advancing time.</div>}
   {department&&<section ref={panel} tabIndex={-1} id="department-workspace" className="department-workspace" aria-label={`${department} management`}><div className="department-heading"><div><div className="eyebrow">Department</div><h2>{department}</h2></div><button className="button ghost" onClick={onClose} aria-label="Close department">✕</button></div>{children}</section>}
  </main>;
