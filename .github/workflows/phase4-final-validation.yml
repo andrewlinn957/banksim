@@ -1,0 +1,44 @@
+name: Phase4 final validation
+
+on:
+  push:
+    branches: [phase4-capital-markets-bookbuild]
+    paths: [.github/workflows/phase4-final-validation.yml]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase4-capital-markets-bookbuild
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:fast
+      - run: npm run test:regression
+      - name: Opening-book calibration sweep
+        run: |
+          cat > src/engine/phase4Calibration.tmp.test.ts <<'EOF'
+          import { describe,it } from 'vitest';
+          import { initialState } from '../config/initialState';
+          import { baseConfig } from '../config/baseConfig';
+          import { buildCapitalMarketsBook } from './capitalMarkets';
+          describe('phase4 calibration',()=>{it('prints indicative opening books',()=>{
+            const orders=[
+              {instrument:'cet1' as const,targetAmount:100e6,maxDiscount:.5},{instrument:'cet1' as const,targetAmount:250e6,maxDiscount:.5},{instrument:'cet1' as const,targetAmount:500e6,maxDiscount:.5},
+              {instrument:'at1' as const,targetAmount:75e6,maxSpreadBps:5000},{instrument:'at1' as const,targetAmount:150e6,maxSpreadBps:5000},
+              {instrument:'tier2' as const,targetAmount:100e6,maxSpreadBps:5000,tenorMonths:60},{instrument:'tier2' as const,targetAmount:200e6,maxSpreadBps:5000,tenorMonths:84},
+              {instrument:'senior' as const,targetAmount:150e6,maxSpreadBps:5000,tenorMonths:36},{instrument:'senior' as const,targetAmount:300e6,maxSpreadBps:5000,tenorMonths:60},
+            ];
+            const rows=orders.map(order=>{const q=buildCapitalMarketsBook(initialState,baseConfig,order);return {instrument:q.instrument,target:order.targetAmount,status:q.status,demand:q.demandAmount,coverage:q.coverageRatio,executed:q.executedAmount,discount:q.clearingDiscount,spreadBps:q.clearingSpreadBps,benchmark:q.marketReferenceRate,allIn:q.marketReferenceRate!==undefined&&q.clearingSpreadBps!==undefined?q.marketReferenceRate+q.clearingSpreadBps/10000:undefined,issuePrice:q.issuePrice,fees:q.fees};});
+            console.log('PHASE4_OPENING_BOOKS='+JSON.stringify(rows));
+          });});
+          EOF
+          npx vitest run src/engine/phase4Calibration.tmp.test.ts --reporter=verbose
+          rm src/engine/phase4Calibration.tmp.test.ts
+      - run: git diff --check
