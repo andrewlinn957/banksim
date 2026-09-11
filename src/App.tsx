@@ -16,7 +16,7 @@ import {
   BalanceSheetSide,
 } from './domain/enums';
 import RiskDashboard from './components/RiskDashboard';
-import { ActionFormState } from './components/ActionsPanel';
+import { ActionFormState, type CapitalMarketsPlanImpact } from './components/ActionsPanel';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
 import {
@@ -47,6 +47,8 @@ import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
 import { createDefaultThreeYearPlan } from './config/threeYearPlan';
+import { buildCapitalMarketsBook } from './engine/capitalMarkets';
+import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
 const controller = new SimulationController(baseConfig);
 const tabs = [
@@ -114,9 +116,11 @@ const App = () => {
       (bankState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
     mortgageMaxLtv: String(bankState.behaviour.mortgagePolicy?.maxLtv ?? .85),
     mortgageFixedPeriodMonths: String(bankState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
-    issueLTDebtAmount: '',
-    issueEquityAmount: '',
-    issueTier2Amount: '',
+    capitalMarketsInstrument: 'none',
+    capitalMarketsTargetAmount: '',
+    capitalMarketsMaxDiscount: '15%',
+    capitalMarketsMaxSpreadBps: '1000',
+    capitalMarketsTenorMonths: '60',
     dividendPayoutRatio: (
       bankState.behaviour.capitalPolicy?.dividendPayoutRatio ??
       baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
@@ -215,6 +219,19 @@ const App = () => {
 
   const failureSummary = buildFailureSummary(bankState.risk.compliance, bankState.risk.riskMetrics);
   const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);
+  const capitalMarketsQuote = useMemo(() => {
+    const instrument=actionForm.capitalMarketsInstrument;
+    const target=parsedActionForm.values.capitalMarketsTargetAmount;
+    if(instrument==='none'||parsedActionForm.hasErrors||target===undefined||target<=0) return undefined;
+    const definition=getCapitalMarketsInstrument(instrument);
+    return buildCapitalMarketsBook(bankState,simConfig,{
+      instrument,
+      targetAmount:target,
+      maxDiscount:definition.pricingKind==='discount'?parsedActionForm.values.capitalMarketsMaxDiscount:undefined,
+      maxSpreadBps:definition.pricingKind==='spread'?parsedActionForm.values.capitalMarketsMaxSpreadBps:undefined,
+      tenorMonths:definition.permittedTenorMonths?.length?parsedActionForm.values.capitalMarketsTenorMonths:undefined,
+    });
+  },[actionForm.capitalMarketsInstrument,bankState,parsedActionForm,simConfig]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -249,6 +266,15 @@ const App = () => {
       },
     };
   }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite]);
+  const capitalMarketsPlanImpact = useMemo<CapitalMarketsPlanImpact | undefined>(() => {
+    if(!bankState.threeYearPlan?.enabled||actionForm.capitalMarketsInstrument==='none'||!preview?.baseline) return undefined;
+    return {
+      cet1Before:bankState.risk.riskMetrics.cet1Ratio,
+      cet1After:preview.baseline.risk.riskMetrics.cet1Ratio,
+      epsBefore:bankState.equityMarket.epsTtm,
+      epsAfter:preview.baseline.equityMarket.epsTtm,
+    };
+  },[actionForm.capitalMarketsInstrument,bankState,preview]);
 
   const recommendations = useMemo(() => {
     controller.setConfig(simConfig);
@@ -279,9 +305,11 @@ const App = () => {
       ...prev,
       giltTradeDirection: 'none',
       giltTradeAmount: '',
-      issueLTDebtAmount: '',
-      issueEquityAmount: '',
-      issueTier2Amount: '',
+      capitalMarketsInstrument: 'none',
+      capitalMarketsTargetAmount: '',
+      capitalMarketsMaxDiscount: '15%',
+      capitalMarketsMaxSpreadBps: '1000',
+      capitalMarketsTenorMonths: '60',
       boeFacility: 'none',
       boeFundingAmount: '',
       hedgeDirection: 'none',
@@ -429,9 +457,11 @@ const App = () => {
         (scenarioState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
       mortgageMaxLtv: String(scenarioState.behaviour.mortgagePolicy?.maxLtv ?? .85),
       mortgageFixedPeriodMonths: String(scenarioState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
-      issueLTDebtAmount: '',
-      issueEquityAmount: '',
-      issueTier2Amount: '',
+      capitalMarketsInstrument: 'none',
+      capitalMarketsTargetAmount: '',
+      capitalMarketsMaxDiscount: '15%',
+      capitalMarketsMaxSpreadBps: '1000',
+      capitalMarketsTenorMonths: '60',
       dividendPayoutRatio: (
         scenarioState.behaviour.capitalPolicy?.dividendPayoutRatio ??
         scenarioConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
@@ -494,7 +524,7 @@ const App = () => {
 
 
       {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)}>
-        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null}/>
+        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}
       {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
@@ -807,7 +837,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
     }
   });
 
-  const amountFields: Array<keyof ActionFormState> = ['issueLTDebtAmount','issueEquityAmount','issueTier2Amount','giltTradeAmount','boeFundingAmount','hedgeNotional'];
+  const amountFields: Array<keyof ActionFormState> = ['capitalMarketsTargetAmount','giltTradeAmount','boeFundingAmount','hedgeNotional'];
   amountFields.forEach((field) => {
     const parsed = parseMoneyInput(state[field]);
     if (parsed.error) {
@@ -823,6 +853,25 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
   for (const field of ['mortgageFixedPeriodMonths','termDepositTenorMonths','giltDurationYears'] as Array<keyof ActionFormState>) { const raw=Number(state[field]); if(!Number.isFinite(raw)||raw<=0) errors[field]='Must be a positive number'; else values[field]=raw; }
   if(state.giltTradeDirection!=='none' && (values.giltTradeAmount??0)<=0) errors.giltTradeAmount='Enter an amount for the selected gilt transaction';
   if(state.boeFacility!=='none' && (values.boeFundingAmount??0)<=0) errors.boeFundingAmount='Enter an amount for the selected Bank of England facility';
+  if(state.capitalMarketsInstrument!=='none') {
+    if((values.capitalMarketsTargetAmount??0)<=0) errors.capitalMarketsTargetAmount='Enter a positive target size for the transaction';
+    const definition=getCapitalMarketsInstrument(state.capitalMarketsInstrument);
+    if(definition.pricingKind==='discount') {
+      const parsed=parseRateInput(state.capitalMarketsMaxDiscount);
+      if(parsed.error) errors.capitalMarketsMaxDiscount=parsed.error;
+      else if(parsed.value===undefined||parsed.value<0||parsed.value>0.5) errors.capitalMarketsMaxDiscount='Maximum discount must be between 0% and 50%';
+      else values.capitalMarketsMaxDiscount=parsed.value;
+    } else {
+      const spread=Number(state.capitalMarketsMaxSpreadBps);
+      if(!Number.isFinite(spread)||spread<=0||spread>5000) errors.capitalMarketsMaxSpreadBps='Maximum spread must be between 1 and 5,000 bp';
+      else values.capitalMarketsMaxSpreadBps=spread;
+    }
+    if(definition.permittedTenorMonths?.length) {
+      const tenor=Math.round(Number(state.capitalMarketsTenorMonths));
+      if(!Number.isFinite(tenor)||!definition.permittedTenorMonths.includes(tenor)) errors.capitalMarketsTenorMonths='Select a permitted debt tenor';
+      else values.capitalMarketsTenorMonths=tenor;
+    }
+  }
 
   const payoutParsed = parseRateInput(state.dividendPayoutRatio);
   if (payoutParsed.error) {
@@ -929,18 +978,15 @@ const buildActionsFromParsed = (
     });
   }
   if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
-  if (values.issueTier2Amount!==undefined && values.issueTier2Amount>0) actions.push({type:'issueTier2',amount:values.issueTier2Amount,maturityMonths:60});
-  if (values.issueLTDebtAmount !== undefined && values.issueLTDebtAmount > 0) {
+  if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
+    const definition=getCapitalMarketsInstrument(formState.capitalMarketsInstrument);
     actions.push({
-      type: 'issueDebt',
-      productType: LiabilityProductType.WholesaleFundingLT,
-      amount: values.issueLTDebtAmount,
-    });
-  }
-  if (values.issueEquityAmount !== undefined && values.issueEquityAmount > 0) {
-    actions.push({
-      type: 'issueEquity',
-      amount: values.issueEquityAmount,
+      type: 'launchCapitalMarketsTransaction',
+      instrument: formState.capitalMarketsInstrument,
+      targetAmount: values.capitalMarketsTargetAmount,
+      maxDiscount: definition.pricingKind === 'discount' ? values.capitalMarketsMaxDiscount : undefined,
+      maxSpreadBps: definition.pricingKind === 'spread' ? values.capitalMarketsMaxSpreadBps : undefined,
+      tenorMonths: definition.permittedTenorMonths?.length ? values.capitalMarketsTenorMonths : undefined,
     });
   }
   const fallbackPayout =

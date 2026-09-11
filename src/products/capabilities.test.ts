@@ -34,6 +34,22 @@ describe('product capabilities', () => {
     );
   });
 
+  it('selects product-backed capital-market instruments from capabilities', () => {
+    expect(productTypesWithCapability('capitalMarketsFunding').sort()).toEqual(
+      [LiabilityProductType.WholesaleFundingLT, LiabilityProductType.Tier2Debt].sort()
+    );
+    expect(getCapability(LiabilityProductType.WholesaleFundingLT, 'capitalMarketsFunding')).toEqual({
+      instrument: 'senior',
+      defaultTenorMonths: 36,
+      permittedTenorMonths: [24, 36, 60],
+    });
+    expect(getCapability(LiabilityProductType.Tier2Debt, 'capitalMarketsFunding')).toEqual({
+      instrument: 'tier2',
+      defaultTenorMonths: 60,
+      permittedTenorMonths: [60, 84, 120],
+    });
+  });
+
   it('returns capability data without product-name branching', () => {
     expect(getCapability(AssetProductType.ConsumerLoans, 'loan')).toMatchObject({
       benchmark: 'consumer',

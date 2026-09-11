@@ -1,7 +1,8 @@
 import { BankState } from '../domain/bankState';
+import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { Department, departmentSummary } from '../game/departments';
 import { BoardDecision } from '../game/boardroom';
-import ActionsPanel, { ActionFormState } from './ActionsPanel';
+import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
 import { periodHistory } from '../game/management';
 import { formatPct } from '../utils/formatters';
 import { nelsonSiegelYield } from '../engine/ukMarketModel';
@@ -11,9 +12,10 @@ interface Props {
  errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean; selected:string[];
  onChange:(form:ActionFormState)=>void; onDecision:(decision:BoardDecision)=>void;
  onReport:(tab:string)=>void; onHelp:(id:string)=>void; estimate:BankState|null;
+ capitalMarketsQuote?:CapitalMarketsBookbuildResult; capitalMarketsPlanImpact?:CapitalMarketsPlanImpact;
 }
 
-export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange}:Props) {
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const competitorRates=department==='Customers'
@@ -38,6 +40,6 @@ export default function DepartmentOffice({department,state,history,form,errors,h
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
   <p className="department-consequence">{summary.explanation}</p>
   {competitorRates.length>0&&<section className="competitor-rates" aria-label="Competitor rates"><div><strong>Market reference</strong><small>Current competing offers</small></div><dl>{competitorRates.map(([label,rate])=><div key={label}><dt>{label}</dt><dd>{formatPct(rate)}</dd></div>)}</dl></section>}
-  <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield}/>
+  <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
  </div>;
 }

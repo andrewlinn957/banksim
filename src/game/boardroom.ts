@@ -24,9 +24,11 @@ export const boardDecisions = (s: BankState): BoardDecision[] => {
     benefit: 'Restore capacity to absorb losses',
     tradeoff: 'Existing shareholders are diluted; issuance carries a fee',
     changes: {
-      issueEquityAmount: String(
+      capitalMarketsInstrument: 'cet1',
+      capitalMarketsTargetAmount: String(
         Math.ceil(Math.max(25e6, -s.risk.riskMetrics.internalCet1Headroom * s.risk.riskMetrics.rwa + 25e6))
       ),
+      capitalMarketsMaxDiscount: '20%',
       dividendPayoutRatio: '0',
     },
   };
@@ -80,7 +82,10 @@ export const boardDecisions = (s: BankState): BoardDecision[] => {
       benefit: 'More cash and stable funding',
       tradeoff: 'An interest bill for years; debt is not capital',
       changes: {
-        issueLTDebtAmount: String(Math.round(Math.max(50e6, s.risk.riskMetrics.fundingMaturing3m * .5))),
+        capitalMarketsInstrument: 'senior',
+        capitalMarketsTargetAmount: String(Math.round(Math.max(50e6, s.risk.riskMetrics.fundingMaturing3m * .5))),
+        capitalMarketsMaxSpreadBps: '750',
+        capitalMarketsTenorMonths: '36',
         dividendPayoutRatio: '0',
       },
     },

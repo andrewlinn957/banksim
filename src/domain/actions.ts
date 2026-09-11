@@ -6,6 +6,7 @@ import type {
   LoanProductType,
   WholesaleFundingProductType,
 } from '../products/capabilities';
+import type { CapitalMarketsInstrument } from './capitalMarkets';
 
 export type WholesaleFundingProduct = WholesaleFundingProductType;
 
@@ -26,6 +27,7 @@ export interface BuySellAssetAction {
   maturityYears?: number;
 }
 
+/** @deprecated Replay compatibility; live management uses launchCapitalMarketsTransaction. */
 export interface IssueDebtAction {
   type: 'issueDebt';
   productType: WholesaleFundingProduct;
@@ -34,15 +36,26 @@ export interface IssueDebtAction {
   maturityMonths?: number;
 }
 
+/** @deprecated Replay compatibility; live management uses launchCapitalMarketsTransaction. */
 export interface IssueEquityAction {
   type: 'issueEquity';
   amount: number;
 }
 
+/** @deprecated Replay compatibility; live management uses launchCapitalMarketsTransaction. */
 export interface IssueTier2Action {
   type: 'issueTier2';
   amount: number;
   maturityMonths?: number;
+}
+
+export interface LaunchCapitalMarketsTransactionAction {
+  type: 'launchCapitalMarketsTransaction';
+  instrument: CapitalMarketsInstrument;
+  targetAmount: number;
+  maxDiscount?: number;
+  maxSpreadBps?: number;
+  tenorMonths?: number;
 }
 
 export interface DrawBoeFundingAction {
@@ -96,6 +109,7 @@ export type PlayerAction =
   | IssueDebtAction
   | IssueEquityAction
   | IssueTier2Action
+  | LaunchCapitalMarketsTransactionAction
   | DrawBoeFundingAction
   | SetUnderwritingAction
   | SetMortgagePolicyAction

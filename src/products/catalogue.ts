@@ -5,6 +5,7 @@ export type DepositBenchmark = 'retailCurrentAccount' | 'termDeposit' | 'corpora
 export type LoanBenchmark = 'mortgage' | 'consumer' | 'corporate';
 export type WholesaleFundingTenorClass = 'short' | 'long';
 export type TreasuryAssetRateSource = 'bankRate' | 'giltCurve';
+export type CapitalMarketsFundingInstrument = 'tier2' | 'senior';
 
 export type LiquidityRegulatoryClass =
   | 'derivativeAsset'
@@ -61,6 +62,13 @@ export interface WholesaleFundingCapability {
   issuable?: boolean;
 }
 
+/** Capital-market issuance metadata for funding products. Product identity and tenor eligibility live here. */
+export interface CapitalMarketsFundingCapability {
+  instrument: CapitalMarketsFundingInstrument;
+  defaultTenorMonths: number;
+  permittedTenorMonths: readonly number[];
+}
+
 /** Contractual/treasury behaviour authored once in the product catalogue. */
 export interface TreasuryAssetCapability {
   tradable?: boolean;
@@ -74,6 +82,7 @@ export interface ProductCapabilities {
   customerDeposit?: CustomerDepositCapability;
   loan?: LoanCapability;
   wholesaleFunding?: WholesaleFundingCapability;
+  capitalMarketsFunding?: CapitalMarketsFundingCapability;
   treasuryAsset?: TreasuryAssetCapability;
 }
 
@@ -350,6 +359,11 @@ export const LIABILITY_PRODUCTS = defineProducts({
         tenorClass: 'long',
         issuable: true,
       },
+      capitalMarketsFunding: {
+        instrument: 'senior',
+        defaultTenorMonths: 36,
+        permittedTenorMonths: [24, 36, 60],
+      },
     },
     regulatory: {
       liquidity: 'wholesaleFundingLong',
@@ -374,7 +388,13 @@ export const LIABILITY_PRODUCTS = defineProducts({
     productType: 'Tier2Debt',
     label: 'Tier 2 subordinated debt',
     side: 'Liability',
-    capabilities: {},
+    capabilities: {
+      capitalMarketsFunding: {
+        instrument: 'tier2',
+        defaultTenorMonths: 60,
+        permittedTenorMonths: [60, 84, 120],
+      },
+    },
     regulatory: {
       liquidity: 'tier2Funding',
       creditRisk: 'none',
