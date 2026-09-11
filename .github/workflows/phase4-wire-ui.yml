@@ -21,7 +21,9 @@ jobs:
           node-version: '20'
           cache: npm
       - name: Apply UI wiring
-        run: python scripts/phase4_wire_ui.py
+        run: |
+          python scripts/phase4_wire_ui.py
+          python scripts/phase4_ui_postfix.py
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
@@ -31,7 +33,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/App.tsx src/game/boardroom.ts src/game/boardroom.test.tsx
+          git add src/App.tsx src/components/ActionsPanel.tsx src/game/boardroom.ts src/game/boardroom.test.tsx
           git commit -m "Route live issuance through capital-markets bookbuild"
           git push origin HEAD:phase4-capital-markets-bookbuild
-# rerun after scenario-form transform fix
+# rerun after generated UI type fixes
