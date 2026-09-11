@@ -4,7 +4,7 @@ The default career uses a fictional operating cost base of £18m per month, plus
 
 Two behavioural defects amplified short-term changes:
 
-- The bank-wide franchise index summed each deposit product's change. It now weights changes by opening deposit balances. Product segmentation therefore cannot multiply reputational damage; persistent underpricing still erodes franchise and customer balances.
+- The bank-wide franchise index summed each deposit product's change. It now weights changes by opening deposit balances. Product segmentation therefore cannot multiply franchise damage; persistent underpricing still erodes franchise and customer balances.
 - A single monthly GDP decline of 0.25% automatically moved the entire performing loan book to Stage 2. Staging now uses credit deterioration relative to origination, including macro conditions through stressed PD and borrower affordability. Existing Stage 2 cure criteria and Stage 3 treatment remain in place. There is no delayed recognition or earnings smoothing.
 
 IFRS 9's SICR assessment concerns changes in default risk since initial recognition and reasonable, supportable forward-looking information. Its illustrative examples distinguish affected groups of borrowers. A mechanical GDP cutoff for the whole bank does not model that assessment. The simulator's relative annual-PD threshold remains a disclosed simplification, not a complete lifetime SICR model. Sources: [IFRS 9, 5.5.9 and B5.5.9–14](https://www.ifrs.org/content/dam/ifrs/publications/pdf-standards/english/2021/issued/part-a/ifrs-9-financial-instruments.pdf), [IFRS 9 illustrative examples, collective assessment](https://www.ifrs.org/content/dam/ifrs/publications/html-standards/english/2024/issued/ifrs9-ie.html).

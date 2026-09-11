@@ -14,7 +14,6 @@ const quietConfig = {
     ...baseConfig.featureFlags,
     depositSegmentation: false,
     loanPipeline: false,
-    conductRisk: false,
     irrbbHedges: false,
     securitiesAccounting: false,
     capitalPolicy: false,

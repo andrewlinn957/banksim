@@ -157,14 +157,6 @@ const TopMetricsPanel = ({
           value={formatPct(riskMetrics.geographyConcentration)}
           helper="Largest geography share."
         />
-        <Metric
-          label="Board Pressure"
-          value={riskMetrics.boardPressureScore.toFixed(1)}
-          helper="Composite soft-pressure score (0-100)."
-          tooltip="Composite of earnings volatility, franchise gap, and risk gap."
-          helpSectionId="board-pressure"
-          onNavigateHelp={onNavigateHelp}
-        />
       </MetricGroup>
 
       <MetricGroup title="Franchise">

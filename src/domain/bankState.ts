@@ -64,14 +64,6 @@ export interface TreasuryPolicyState {
   giltDurationYears: number;
 }
 
-export interface BoardPressureState {
-  score: number;
-  earningsVolatility: number;
-  franchiseGap: number;
-  riskGap: number;
-  payoutRestraint?: number;
-}
-
 export interface EquityMarketState {
   sharesOutstanding: number;
   sharePrice: number;
@@ -92,7 +84,6 @@ export interface SimulationTime {
 export interface BehaviouralState {
   riskAppetite?: { cet1: number; leverage: number; lcr: number; nsfr: number; irrbbEveLimit?: number };
   depositFranchiseStrength: number;
-  reputation: number;
   ratingNotchOffset: number;
   depositRateLagMemory?: Partial<Record<ProductType, number>>;
   depositUnderpricingMonths?: Partial<Record<ProductType, number>>;
@@ -106,15 +97,9 @@ export interface BehaviouralState {
   insuredRetailDepositShare?: number;
   /** Approximate share of total deposits represented by the largest depositor/group. */
   largeDepositorShare?: number;
-  previousNetIncome?: number;
-  earningsVolatility?: number;
   fundingConfidenceScore?: number;
   fundingConfidenceState?: FundingConfidenceState;
   confidenceUpgradeProgressMonths?: number;
-  conductRiskScore?: number;
-  conductEventCooldownMonths?: number;
-  conductEventCount?: number;
-  cumulativeConductCosts?: number;
 }
 
 export interface FinancialState {
@@ -143,7 +128,6 @@ export interface BankState {
   time: SimulationTime;
   financial: FinancialState;
   risk: RiskState;
-  board: BoardPressureState;
   /** Optional, opt-in management accountability layer. */
   threeYearPlan?: ThreeYearPlanState;
   /** Capital-markets execution history and effective issued-instrument terms. */

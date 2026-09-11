@@ -18,7 +18,6 @@ export interface Recommendation {
     lcrDelta: number;
     nsfrDelta: number;
     netIncomeDelta: number;
-    boardPressureDelta: number;
   };
   score: number;
 }
@@ -87,7 +86,7 @@ const candidateSet = (state: BankState, config: SimulationConfig): Recommendatio
       id: 'cut-payouts',
       title: 'Reduce distribution policy',
       rationale: 'Retained earnings rebuild CET1 and reduce MDA risk.',
-      caveat: 'Lower payout may increase board pressure from investors.',
+      caveat: 'Lower payout may weigh on shareholder sentiment.',
       actions: [
         {
           type: 'setCapitalPolicy',
@@ -182,20 +181,17 @@ export const buildRecommendations = (state: BankState, config: SimulationConfig)
         nsfrDelta: after.nsfr - baseline.nsfr,
         netIncomeDelta:
           projectedState.financial.incomeStatement.netIncome - state.financial.incomeStatement.netIncome,
-        boardPressureDelta: after.boardPressureScore - baseline.boardPressureScore,
       };
 
       const improvementCet1 = baseDeficitCet1 - deficit(after.cet1Ratio, limits.minCet1Ratio);
       const improvementLcr = baseDeficitLcr - deficit(after.lcr, limits.minLcr);
       const improvementNsfr = baseDeficitNsfr - deficit(after.nsfr, limits.minNsfr);
-      const boardBenefit = Math.max(0, -projected.boardPressureDelta) / 100;
       const earningsPenalty = Math.max(0, -projected.netIncomeDelta) / 1e9;
 
       const score =
         improvementCet1 * 4 +
         improvementLcr * 3 +
         improvementNsfr * 3 +
-        boardBenefit * 0.5 -
         earningsPenalty * 0.15;
 
       return {

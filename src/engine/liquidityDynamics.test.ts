@@ -11,14 +11,12 @@ describe('Dynamic liquidity factors', () => {
     benign.market.gdpGrowthMoM = 0.002;
     benign.market.unemploymentRate = 0.045;
     benign.behaviour.depositFranchiseStrength = 0.9;
-    benign.behaviour.reputation = 0.9;
 
     const stressed = cloneBankState(initialState);
     stressed.market.macroModel.gdpRegime = 'recession';
     stressed.market.gdpGrowthMoM = -0.004;
     stressed.market.unemploymentRate = 0.09;
     stressed.behaviour.depositFranchiseStrength = 0.35;
-    stressed.behaviour.reputation = 0.25;
 
     const benignMetrics = calculateRiskMetrics({ state: benign, config: baseConfig, lcrOutflowMultiplier: 1 });
     const stressedMetrics = calculateRiskMetrics({ state: stressed, config: baseConfig, lcrOutflowMultiplier: 1 });

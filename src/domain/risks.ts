@@ -172,7 +172,6 @@ export interface RiskMetrics {
   internalCet1TargetRatio: number;
   internalCet1Headroom: number;
   payoutBlockedByInternalTarget: boolean;
-  conductRiskScore: number;
   niiSensitivity100bp: number;
   eveSensitivity100bp: number;
   fundingMaturing3m: number;
@@ -182,11 +181,6 @@ export interface RiskMetrics {
   sectorConcentration: number;
   geographyConcentration: number;
   concentrationHhi: number;
-  boardPressureScore: number;
-  boardPressureVolatility: number;
-  boardPressureFranchiseGap: number;
-  boardPressureRiskGap: number;
-  boardPressurePayoutRestraint: number;
 }
 
 export interface CapitalBufferStack {
@@ -202,10 +196,8 @@ export interface CapitalPolicyLimits {
   at1CouponRateAnnual: number;
   at1DiscretionaryCet1Threshold: number;
   internalTargetBaseBuffer: number;
-  internalTargetVolatilitySensitivity: number;
   internalTargetStressSensitivity: number;
   internalTargetConfidenceSensitivity: number;
-  internalTargetConductSensitivity: number;
   internalTargetMaxBuffer: number;
   payoutRestrictionSlope: number;
   at1InternalTargetHeadroom: number;
@@ -214,12 +206,6 @@ export interface CapitalPolicyLimits {
 export interface ConcentrationLimits {
   maxSingleSectorShare: number;
   maxSingleGeographyShare: number;
-}
-
-export interface BoardPressureLimits {
-  earningsVolatilityTolerance: number;
-  franchiseTarget: number;
-  riskAppetiteCet1Headroom: number;
 }
 
 export interface RwaAddOnLimits {
@@ -262,7 +248,6 @@ export interface RiskLimits {
   capitalBufferStack: CapitalBufferStack;
   capitalPolicy: CapitalPolicyLimits;
   concentration: ConcentrationLimits;
-  boardPressure: BoardPressureLimits;
 }
 
 export interface ComplianceStatus {

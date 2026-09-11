@@ -8,7 +8,6 @@ import { BalanceSheet } from '../domain/balanceSheet';
 import {
   BankState,
   BehaviouralState,
-  BoardPressureState,
   EquityMarketState,
   FinancialState,
   RiskState,
@@ -134,7 +133,6 @@ const incomeStatement: IncomeStatement = {
   servicingCosts: 0,
   originationCosts: 0,
   workoutCosts: 0,
-  conductCosts: 0,
   at1CouponExpense: 0,
   dividendsPaid: 0,
   preTaxProfit: 0,
@@ -172,7 +170,6 @@ const placeholderRiskMetrics: RiskMetrics = {
   internalCet1TargetRatio: 0,
   internalCet1Headroom: 0,
   payoutBlockedByInternalTarget: false,
-  conductRiskScore: 0,
   niiSensitivity100bp: 0,
   eveSensitivity100bp: 0,
   fundingMaturing3m: 0,
@@ -182,11 +179,6 @@ const placeholderRiskMetrics: RiskMetrics = {
   sectorConcentration: 0,
   geographyConcentration: 0,
   concentrationHhi: 0,
-  boardPressureScore: 0,
-  boardPressureVolatility: 0,
-  boardPressureFranchiseGap: 0,
-  boardPressureRiskGap: 0,
-  boardPressurePayoutRestraint: 0,
 };
 
 const placeholderCompliance: ComplianceStatus = {
@@ -255,7 +247,6 @@ const market: MarketState = {
 
 const behaviour: BehaviouralState = {
   depositFranchiseStrength: 0.7,
-  reputation: 0.84,
   ratingNotchOffset: 0,
   depositRateLagMemory: {
     [LiabilityProductType.RetailCurrentAccounts]: 0.017,
@@ -291,15 +282,9 @@ const behaviour: BehaviouralState = {
     dividendPayoutRatio: baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio,
     at1CouponMode: 'auto',
   },
-  previousNetIncome: 0,
-  earningsVolatility: 0,
   fundingConfidenceScore: 1,
   fundingConfidenceState: 'stable',
   confidenceUpgradeProgressMonths: 0,
-  conductRiskScore: 0,
-  conductEventCooldownMonths: 0,
-  conductEventCount: 0,
-  cumulativeConductCosts: 0,
 };
 
 const financial: FinancialState = {
@@ -319,14 +304,6 @@ const financial: FinancialState = {
 const risk: RiskState = {
   riskMetrics: placeholderRiskMetrics,
   compliance: placeholderCompliance,
-};
-
-const board: BoardPressureState = {
-  score: 0,
-  earningsVolatility: 0,
-  franchiseGap: 0,
-  riskGap: 0,
-  payoutRestraint: 0,
 };
 
 const equityMarket: EquityMarketState = {
@@ -355,7 +332,6 @@ const seedState: BankState = {
   time,
   financial,
   risk,
-  board,
   equityMarket,
   market,
   behaviour,
@@ -457,17 +433,6 @@ export const initialState: BankState = {
     fundingConfidenceScore: riskMetrics.fundingConfidenceScore,
     fundingConfidenceState: riskMetrics.fundingConfidenceState,
     confidenceUpgradeProgressMonths: 0,
-    conductRiskScore: riskMetrics.conductRiskScore,
-    conductEventCooldownMonths: 0,
-    conductEventCount: 0,
-    cumulativeConductCosts: 0,
-  },
-  board: {
-    score: riskMetrics.boardPressureScore,
-    earningsVolatility: riskMetrics.boardPressureVolatility,
-    franchiseGap: riskMetrics.boardPressureFranchiseGap,
-    riskGap: riskMetrics.boardPressureRiskGap,
-    payoutRestraint: riskMetrics.boardPressurePayoutRestraint,
   },
   risk: {
     ...seedState.risk,

@@ -1560,149 +1560,6 @@ const stepFundingConfidenceState = (
   }
 };
 
-interface ConductRiskStepResult {
-  conductCosts: number;
-  eventProbability: number;
-  eventTriggered: boolean;
-  scoreBefore: number;
-  scoreAfter: number;
-  pricingSeverity: number;
-}
-
-const stepConductRisk = (
-  state: BankState,
-  config: SimulationConfig,
-  dtMonths: number,
-  events: SimulationEvent[]
-): ConductRiskStepResult => {
-  const params = config.behaviour.conductRisk;
-  const scoreBefore = clamp(state.behaviour.conductRiskScore ?? 0, 0, 2);
-  if (!params || dtMonths <= 0) {
-    state.behaviour.conductRiskScore = scoreBefore;
-    return {
-      conductCosts: 0,
-      eventProbability: 0,
-      eventTriggered: false,
-      scoreBefore,
-      scoreAfter: scoreBefore,
-      pricingSeverity: 0,
-    };
-  }
-
-  const depositThreshold = Math.max(1e-4, params.depositUnderpricingThreshold);
-  const lendingThreshold = Math.max(1e-4, params.lendingOverpricingThreshold);
-
-  const retailOffered = weightedOfferedRate(state, RETAIL_DEPOSIT_PRODUCTS);
-  const corporateOffered = weightedOfferedRate(state, CORPORATE_DEPOSIT_PRODUCTS);
-  const corporateCompetitor =
-    state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
-
-  const retailDepositSeverity = Math.max(0, state.market.competitorRetailCurrentAccountRate - retailOffered - depositThreshold) /
-    depositThreshold;
-  const corporateDepositSeverity = Math.max(0, corporateCompetitor - corporateOffered - depositThreshold) /
-    depositThreshold;
-  const depositSeverity = (retailDepositSeverity + corporateDepositSeverity) / 2;
-
-  const mortgageRate = findItem(state.financial.balanceSheet, AssetProductType.Mortgages)?.interestRate ?? 0;
-  const corporateLoanRate =
-    findItem(state.financial.balanceSheet, AssetProductType.CorporateLoans)?.interestRate ??
-    (state.market.riskFreeLong + state.market.corporateLoanSpread);
-  const mortgageSeverity = Math.max(0, mortgageRate - state.market.competitorMortgageRate - lendingThreshold) /
-    lendingThreshold;
-  const corporateSeverity = Math.max(
-    0,
-    corporateLoanRate - (state.market.riskFreeLong + state.market.corporateLoanSpread) - lendingThreshold
-  ) / lendingThreshold;
-  const lendingSeverity = (mortgageSeverity + corporateSeverity) / 2;
-
-  const avgUnderwritingTightness =
-    ((state.behaviour.underwritingTightness?.[AssetProductType.Mortgages] ?? 0) +
-      (state.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0)) /
-    2;
-  const underwritingLooseness = clamp(1 - avgUnderwritingTightness, 0, 1);
-  const pricingSeverityRaw =
-    Math.max(0, params.depositWeight) * depositSeverity + Math.max(0, params.lendingWeight) * lendingSeverity;
-  const pricingSeverity = pricingSeverityRaw * (1 + Math.max(0, params.underwritingAmplifier) * underwritingLooseness);
-
-  const build = Math.max(0, params.scoreBuildRate) * pricingSeverity * dtMonths;
-  const decay = Math.max(0, params.scoreDecayRate) * dtMonths * (1 + Math.max(0, 1 - pricingSeverity));
-  const scoreAfter = clamp(scoreBefore + build - decay, 0, 2);
-  state.behaviour.conductRiskScore = scoreAfter;
-
-  const cooldownBefore = Math.max(0, state.behaviour.conductEventCooldownMonths ?? 0);
-  const cooldownAfter = Math.max(0, cooldownBefore - dtMonths);
-  state.behaviour.conductEventCooldownMonths = cooldownAfter;
-
-  const eventProbabilityRaw =
-    Math.max(0, params.eventProbabilityBase) + Math.max(0, params.eventProbabilitySlope) * scoreAfter;
-  const eventProbability = clamp(eventProbabilityRaw * dtMonths, 0, Math.max(0, params.eventProbabilityCap));
-
-  const drawSeed =
-    ((state.market.macroModel.rngSeed >>> 0) ^
-      ((Math.floor(state.time.step * 2654435761) >>> 0) + Math.floor(scoreAfter * 1e6))) >>>
-    0;
-  const draw = xorshiftUnit(drawSeed);
-  const eventTriggered = cooldownAfter <= 0 && draw < eventProbability;
-
-  let conductCosts = 0;
-  if (eventTriggered) {
-    const rwa = Math.max(0, state.risk.riskMetrics.rwa);
-    const mortgageBal = Math.max(0, findItem(state.financial.balanceSheet, AssetProductType.Mortgages)?.balance ?? 0);
-    const corporateBal = Math.max(0, findItem(state.financial.balanceSheet, AssetProductType.CorporateLoans)?.balance ?? 0);
-    const monthlyIncomeProxy =
-      (mortgageBal * Math.max(0, mortgageRate) + corporateBal * Math.max(0, corporateLoanRate)) /
-      Math.max(1, MONTHS_IN_YEAR);
-    const fine = Math.max(Math.max(0, params.minEventCost), rwa * Math.max(0, params.fineRateOnRwa));
-    const remediation = Math.max(0, params.remediationRateOnIncome) * Math.max(0, monthlyIncomeProxy);
-    conductCosts = fine + remediation;
-
-    const stressAmplifier = 1 + scoreAfter * 0.2;
-    state.behaviour.depositFranchiseStrength = clamp(
-      state.behaviour.depositFranchiseStrength - Math.max(0, params.franchiseHit) * stressAmplifier,
-      0,
-      1
-    );
-    state.behaviour.reputation = clamp(
-      state.behaviour.reputation - Math.max(0, params.reputationHit) * stressAmplifier,
-      0,
-      1
-    );
-    state.behaviour.conductEventCooldownMonths = Math.max(0, params.eventCooldownMonths);
-    state.behaviour.conductEventCount = Math.max(0, state.behaviour.conductEventCount ?? 0) + 1;
-    state.behaviour.cumulativeConductCosts =
-      Math.max(0, state.behaviour.cumulativeConductCosts ?? 0) + conductCosts;
-
-    events.push(
-      createEvent(
-        'warning',
-        `Conduct event triggered: score ${scoreAfter.toFixed(2)}, fine ${fine.toFixed(2)}, remediation ${remediation.toFixed(
-          2
-        )}, franchise ${(state.behaviour.depositFranchiseStrength * 100).toFixed(1)}%`,
-        ['conduct', 'deposits', 'capital']
-      )
-    );
-  } else if (scoreAfter >= 0.8 && scoreBefore < 0.8) {
-    events.push(
-      createEvent(
-        'warning',
-        `Conduct risk elevated: score ${scoreAfter.toFixed(2)}, event probability ${(eventProbability * 100).toFixed(
-          1
-        )}%`,
-        ['conduct']
-      )
-    );
-  }
-
-  return {
-    conductCosts,
-    eventProbability,
-    eventTriggered,
-    scoreBefore,
-    scoreAfter,
-    pricingSeverity,
-  };
-};
-
 const applyDepositMixMigration = (
   state: BankState,
   config: SimulationConfig,
@@ -1800,7 +1657,7 @@ export const applyDepositBehaviour = (
         PRODUCTS[i.productType]?.behaviour?.isCustomerDeposit
     );
   // Franchise is one bank-wide index. Weight by opening balances so adding a
-  // product line cannot multiply the speed of reputation damage or recovery.
+  // product line cannot multiply the speed of franchise damage or recovery.
   const totalOpeningDeposits = depositItems.reduce((sum, item) => sum + Math.max(0, item.balance), 0);
   depositItems.forEach((item) => {
       const meta = PRODUCTS[item.productType];
@@ -2322,7 +2179,6 @@ export interface CapitalCloseResult {
   servicingCosts: number;
   originationCosts: number;
   workoutCosts: number;
-  conductCosts: number;
   provisionCharge: number;
   realizedLoanLosses: number;
   realizedNonLoanLosses: number;
@@ -2353,7 +2209,6 @@ export const closeCapital = (
   securitiesValuation: SecuritiesValuationResult,
   loanOriginations: number,
   defaultedPrincipal: number,
-  conductCosts: number,
   events: SimulationEvent[]
 ): CapitalCloseResult => {
   const loanBookBalance = losses.loanItems.reduce((sum, item) => sum + item.balance, 0);
@@ -2385,8 +2240,7 @@ export const closeCapital = (
     defaultedPrincipal + impliedNplStock * 0.2 + workoutPipelineStock * 0.45
   );
   const workoutCosts = (costModel?.workoutCostRateOnDefaults ?? 0) * workoutBase;
-  const effectiveConductCosts = Math.max(0, conductCosts);
-  const operatingExpenses = fixedOperatingCosts + servicingCosts + originationCosts + workoutCosts + effectiveConductCosts;
+  const operatingExpenses = fixedOperatingCosts + servicingCosts + originationCosts + workoutCosts;
 
   const totalInterestIncome = accruals.interestIncome + loanInterestIncome;
   const netInterestIncome = totalInterestIncome - accruals.interestExpense + hedgeCarry;
@@ -2413,7 +2267,6 @@ export const closeCapital = (
     servicingCosts,
     originationCosts,
     workoutCosts,
-    conductCosts: effectiveConductCosts,
     at1CouponExpense: 0,
     dividendsPaid: 0,
     preTaxProfit,
@@ -2425,12 +2278,6 @@ export const closeCapital = (
   state.financial.capital.cet1 += netIncome;
   state.financial.capital.accumulatedOCI += securitiesValuation.fvociOciMovement;
 
-  const smoothing = clamp(config.behaviour.boardPressure?.earningsVolatilitySmoothing ?? 0.75, 0, 0.99);
-  const previousNetIncome = state.behaviour.previousNetIncome ?? netIncome;
-  const incomeDelta = Math.abs(netIncome - previousNetIncome);
-  const priorVol = state.behaviour.earningsVolatility ?? incomeDelta;
-  state.behaviour.earningsVolatility = priorVol * smoothing + incomeDelta * (1 - smoothing);
-  state.behaviour.previousNetIncome = netIncome;
 
   const operatingCashDelta =
     totalInterestIncome - accruals.interestExpense + hedgeCarry + feeIncome - operatingExpenses - tax;
@@ -2442,7 +2289,7 @@ export const closeCapital = (
       'info',
       `Cost split: fixed ${fixedOperatingCosts.toFixed(2)}, servicing ${servicingCosts.toFixed(
         2
-      )}, origination ${originationCosts.toFixed(2)}, workout ${workoutCosts.toFixed(2)}, conduct ${effectiveConductCosts.toFixed(2)}`
+      )}, origination ${originationCosts.toFixed(2)}, workout ${workoutCosts.toFixed(2)}`
     )
   );
   events.push(
@@ -2462,7 +2309,6 @@ export const closeCapital = (
     servicingCosts,
     originationCosts,
     workoutCosts,
-    conductCosts: effectiveConductCosts,
     provisionCharge: losses.provisionCharge,
     realizedLoanLosses: losses.realizedLoanLosses,
     realizedNonLoanLosses: losses.realizedNonLoanLosses,
@@ -2603,16 +2449,8 @@ export const computeMetrics = (
 
   state.risk.riskMetrics = metrics;
   state.risk.compliance = evaluateCompliance(metrics, config.riskLimits);
-  state.board = {
-    score: metrics.boardPressureScore,
-    earningsVolatility: metrics.boardPressureVolatility,
-    franchiseGap: metrics.boardPressureFranchiseGap,
-    riskGap: metrics.boardPressureRiskGap,
-    payoutRestraint: metrics.boardPressurePayoutRestraint,
-  };
   state.behaviour.fundingConfidenceScore = metrics.fundingConfidenceScore;
   state.behaviour.fundingConfidenceState = metrics.fundingConfidenceState;
-  state.behaviour.conductRiskScore = metrics.conductRiskScore;
 
   state.status.hasFailed =
     state.status.hasFailed ||
@@ -3066,25 +2904,6 @@ export const createSimulationEngine = (): SimulationEngine => {
         )
       );
     }
-    const conductStep = featureFlags.conductRisk
-      ? stepConductRisk(state, activeConfig, dtMonths, events)
-      : {
-          conductCosts: 0,
-          eventProbability: 0,
-          eventTriggered: false,
-          scoreBefore: state.behaviour.conductRiskScore ?? 0,
-          scoreAfter: state.behaviour.conductRiskScore ?? 0,
-          pricingSeverity: 0,
-        };
-    if (conductStep.conductCosts > 0) {
-      events.push(
-        createEvent(
-          'warning',
-          `Conduct remediation costs recognised this step: ${conductStep.conductCosts.toFixed(2)}`,
-          ['conduct', 'income']
-        )
-      );
-    }
     const accruals = accruePnL(state, dtYears);
     const hedgeCarry = featureFlags.irrbbHedges ? stepHedges(state, activeConfig, dtMonths, dtYears, events) : 0;
     if (featureFlags.irrbbHedges) {
@@ -3119,7 +2938,6 @@ export const createSimulationEngine = (): SimulationEngine => {
       securitiesValuation,
       loanBehaviour.originatedNotional,
       cohortStep.defaultedPrincipal,
-      conductStep.conductCosts,
       events
     );
     capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;

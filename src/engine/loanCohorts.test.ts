@@ -253,7 +253,6 @@ describe('Loan cohort engine', () => {
       { fvtplValuationImpact: 0, fvociOciMovement: 0, nonCashAdjustmentsByProduct: {} },
       0,
       cohortRes.defaultedPrincipal,
-      0,
       []
     );
 

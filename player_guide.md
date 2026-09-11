@@ -158,7 +158,7 @@ Main state buckets:
 - Capital (`cet1`, `at1`, `accumulatedOCI`)
 - Income statement and cash-flow statement
 - Risk metrics and compliance
-- Behavioral state (franchise, reputation, underwriting, confidence, conduct)
+- Behavioral state (deposit franchise, underwriting, funding confidence)
 - Loan cohorts and workout buckets
 - Funding maturity ladders
 - Equity market state (`sharePrice`, `marketCap`, `epsTtm`, `peMultiple`)
@@ -510,7 +510,6 @@ If event triggers:
 - cost = fine + remediation
 - fine linked to RWA with minimum floor
 - remediation linked to income proxy
-- franchise and reputation are hit
 - cooldown resets
 
 Conduct costs flow into operating expenses and reduce CET1 via net income.
@@ -636,7 +635,6 @@ NSFR:
 Derived from:
 - recession regime
 - franchise weakness
-- reputation weakness
 - deposit quality weakness
 
 Outputs:
