@@ -136,11 +136,7 @@ jobs:
           '',
           'funding ladder save fallback',
           )
-          replace_once(
-              '  state.fundingLadders ??= {};\n',
-              '',
-              'generic funding ladder save fallback',
-          )
+          replace_once('  state.fundingLadders ??= {};\n', '', 'generic funding ladder save fallback')
           replace_once(
               '  // Legacy saved games with an existing line, or products with real maturity buckets, still work normally.\n',
               '  // Existing positions or products with real maturity buckets are synchronized normally.\n',
@@ -167,11 +163,7 @@ jobs:
           '',
           'hedge collection save fallback',
           )
-          replace_once(
-              '  const hedges = state.financial.hedges ?? [];\n',
-              '  const hedges = state.financial.hedges;\n',
-              'hedge step save fallback',
-          )
+          replace_once('  const hedges = state.financial.hedges ?? [];\n', '  const hedges = state.financial.hedges;\n', 'hedge step save fallback')
           replace_once(
               '    const buckets = state.fundingLadders?.[liability.productType] ?? [];\n',
               '    const buckets = state.fundingLadders[liability.productType] ?? [];\n',
@@ -184,56 +176,204 @@ jobs:
           )
 
           obsolete = [
-              'FundingMaturityBucket',
-              'IssueDebtAction',
-              'IssueEquityAction',
-              'IssueTier2Action',
-              'SetTreasuryPolicyAction',
-              'action.maturityYears',
-              'applyIssueDebt(',
-              'applyIssueEquity(',
-              'applyIssueTier2(',
-              'applyTreasuryPolicy(',
+              'FundingMaturityBucket', 'IssueDebtAction', 'IssueEquityAction', 'IssueTier2Action',
+              'SetTreasuryPolicyAction', 'action.maturityYears', 'applyIssueDebt(', 'applyIssueEquity(',
+              'applyIssueTier2(', 'applyTreasuryPolicy(',
           ]
           for symbol in obsolete:
               if symbol in text:
                   raise SystemExit(f'obsolete simulation symbol remains: {symbol}')
-
           path.write_text(text)
 
+          # Current recommendation engine should emit only current PlayerAction variants.
           recommendations = Path('src/engine/recommendations.ts')
           rec = recommendations.read_text()
           rec = rec.replace("import { AssetProductType, LiabilityProductType } from '../domain/enums';", "import { AssetProductType } from '../domain/enums';")
-          old_equity = "actions: [{ type: 'issueEquity', amount: 2e9 }],"
-          new_equity = "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 2e9 }],"
-          if old_equity not in rec:
-              raise SystemExit('missing legacy equity recommendation')
-          rec = rec.replace(old_equity, new_equity, 1)
-          old_debt = """        {
+          rec = rec.replace(
+              "actions: [{ type: 'issueEquity', amount: 2e9 }],",
+              "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 2e9, maxDiscount: 0.5 }],",
+          )
+          rec = rec.replace(
+          """        {
                     type: 'issueDebt',
                     productType: LiabilityProductType.WholesaleFundingLT,
                     amount: 5e9,
                     maturityMonths: 36,
-                  },"""
-          new_debt = """        {
+                  },""",
+          """        {
                     type: 'launchCapitalMarketsTransaction',
                     instrument: 'senior',
                     targetAmount: 5e9,
+                    maxSpreadBps: 2500,
                     tenorMonths: 36,
-                  },"""
-          if old_debt not in rec:
-              raise SystemExit('missing legacy debt recommendation')
-          rec = rec.replace(old_debt, new_debt, 1)
+                  },""",
+          )
           recommendations.write_text(rec)
 
           suite_path = Path('src/engine/simulationTestSuite.ts')
-          suite = suite_path.read_text()
-          old_suite = "{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingST, amount: 20e9, rate: 0.055 },"
-          new_suite = "{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 20e9, tenorMonths: 12 },"
-          if old_suite not in suite:
-              raise SystemExit('missing legacy debt simulation suite action')
-          suite = suite.replace(old_suite, new_suite, 1)
+          suite = suite_path.read_text().replace(
+              "{ type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingST, amount: 20e9, rate: 0.055 },",
+              "{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 20e9, maxSpreadBps: 2500, tenorMonths: 24 },",
+          )
           suite_path.write_text(suite)
+
+          # Funding confidence is now tested at the capital-markets execution layer.
+          funding_path = Path('src/engine/fundingLadder.test.ts')
+          funding = funding_path.read_text()
+          old_funding = re.compile(r"  it\('confidence state applies stepwise spread/access penalties to issuance', \(\) => \{[\s\S]*?\n  \}\);\n", re.M)
+          new_funding = """  it('confidence state applies stepwise spread/access penalties to issuance', () => {
+            const engine = createSimulationEngine();
+            const requested = 12e9;
+
+            const strongState = cloneBankState(initialState);
+            strongState.behaviour.fundingConfidenceState = 'strong';
+            const stressedState = cloneBankState(initialState);
+            stressedState.behaviour.fundingConfidenceState = 'stressed';
+
+            const strong = engine.step({
+              state: strongState,
+              config: baseConfig,
+              actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
+              shocks: [],
+            });
+            const stressed = engine.step({
+              state: stressedState,
+              config: baseConfig,
+              actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: requested, maxSpreadBps: 5000, tenorMonths: 36 }],
+              shocks: [],
+            });
+
+            const strongExecution = strong.executions.capitalMarkets[0];
+            const stressedExecution = stressed.executions.capitalMarkets[0];
+            expect(stressedExecution.executedAmount).toBeLessThan(strongExecution.executedAmount);
+            expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
+            expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
+          });
+"""
+          funding, count = old_funding.subn(new_funding, funding, count=1)
+          if count != 1:
+              raise SystemExit('could not migrate funding confidence test')
+          funding_path.write_text(funding)
+
+          # Replace correctness tests for the removed direct-debt helper with current bookbuild guardrails.
+          correctness_path = Path('src/engine/simulationCorrectness.test.ts')
+          correctness = correctness_path.read_text()
+          first_two = re.compile(
+              r"  it\('uses confidence-adjusted market default pricing when issuing debt without explicit rate override', \(\) => \{[\s\S]*?\n  \}\);\n\n  it\('respects explicit debt issuance rate override even in stressed confidence state', \(\) => \{[\s\S]*?\n  \}\);\n",
+              re.M,
+          )
+          replacement = """  it('uses confidence-adjusted market pricing for senior issuance', () => {
+            const engine = createSimulationEngine();
+            const strongState = cloneBankState(initialState);
+            strongState.behaviour.fundingConfidenceState = 'strong';
+            const stressedState = cloneBankState(initialState);
+            stressedState.behaviour.fundingConfidenceState = 'stressed';
+
+            const action = { type: 'launchCapitalMarketsTransaction' as const, instrument: 'senior' as const, targetAmount: 500e6, maxSpreadBps: 5000, tenorMonths: 36 };
+            const strong = engine.step({ state: strongState, config: baseConfig, actions: [action], shocks: [] });
+            const stressed = engine.step({ state: stressedState, config: baseConfig, actions: [action], shocks: [] });
+            const strongExecution = strong.executions.capitalMarkets[0];
+            const stressedExecution = stressed.executions.capitalMarkets[0];
+
+            expect(stressedExecution.clearingSpreadBps ?? 0).toBeGreaterThan(strongExecution.clearingSpreadBps ?? 0);
+            expect(stressedExecution.demandAmount).toBeLessThan(strongExecution.demandAmount);
+          });
+
+          it('respects the management maximum spread when issuing senior debt', () => {
+            const engine = createSimulationEngine();
+            const state = cloneBankState(initialState);
+            const balanceBefore = state.financial.balanceSheet.items.find(
+              (i) => i.productType === LiabilityProductType.WholesaleFundingLT
+            )?.balance ?? 0;
+
+            const result = engine.step({
+              state,
+              config: baseConfig,
+              actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 500e6, maxSpreadBps: 1, tenorMonths: 36 }],
+              shocks: [],
+            });
+            const execution = result.executions.capitalMarkets[0];
+            const balanceAfter = result.nextState.financial.balanceSheet.items.find(
+              (i) => i.productType === LiabilityProductType.WholesaleFundingLT
+            )?.balance ?? 0;
+
+            expect(execution.status).toBe('failed-price');
+            expect(execution.executedAmount).toBe(0);
+            expect(balanceAfter).toBeCloseTo(balanceBefore, 2);
+          });
+"""
+          correctness, count = first_two.subn(replacement, correctness, count=1)
+          if count != 1:
+              raise SystemExit('could not migrate simulation correctness debt tests')
+          correctness_path.write_text(correctness)
+
+          share_path = Path('src/engine/sharePrice.test.ts')
+          share = share_path.read_text().replace(
+              "actions: [{ type: 'issueEquity', amount: 0.2e9 }],",
+              "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 0.2e9, maxDiscount: 0.5 }],",
+          )
+          share_path.write_text(share)
+
+          small_path = Path('src/engine/smallRetailBank.test.ts')
+          small = small_path.read_text()
+          small = small.replace(
+              "actions: [{ type: 'setTreasuryPolicy', giltShareOfHqla: 0.4, giltDurationYears: 2 }],",
+              "actions: [{ type: 'buySellAsset', productType: A.Gilts, amountDelta: 100e6, tenorMonths: 24 }],",
+          )
+          small = small.replace(
+              "    expect(out.behaviour.treasuryPolicy?.giltDurationYears).toBe(2);",
+              "    expect(balance(out, A.Gilts)).toBeGreaterThan(gilts0);\n    expect((out.assetMaturityLadders?.[A.Gilts] ?? []).some(bucket => bucket.tenorMonths === 24)).toBe(true);",
+          )
+          small = small.replace(
+              "actions: [{ type: 'issueTier2', amount: 150e6, maturityMonths: 60 }],",
+              "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: 150e6, maxSpreadBps: 2500, tenorMonths: 60 }],",
+          )
+          small_path.write_text(small)
+
+          tier2_path = Path('src/engine/tier2Requirement.test.ts')
+          tier2 = tier2_path.read_text()
+          tier2 = tier2.replace(
+          """    const result = engine.step({
+                state: cloneBankState(initialState),
+                config: quietConfig,
+                actions: [{ type: 'issueTier2', amount, maturityMonths: 60 }],
+                shocks: [],
+              }).nextState;
+
+              const metrics = result.risk.riskMetrics;
+              const eligibleTier2 = eligibleTier2OwnFunds(result);""",
+          """    const issuance = engine.step({
+                state: cloneBankState(initialState),
+                config: quietConfig,
+                actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: amount, maxSpreadBps: 2500, tenorMonths: 60 }],
+                shocks: [],
+              });
+              const result = issuance.nextState;
+              const executedAmount = issuance.executions.capitalMarkets[0].executedAmount;
+
+              const metrics = result.risk.riskMetrics;
+              const eligibleTier2 = eligibleTier2OwnFunds(result);""",
+          )
+          tier2 = tier2.replace(
+              "    expect(eligibleTier2).toBeCloseTo(amount, 2);",
+              "    expect(executedAmount).toBeGreaterThan(0);\n    expect(eligibleTier2).toBeCloseTo(executedAmount, 2);",
+              1,
+          )
+          tier2 = tier2.replace(
+              "actions: [{ type: 'issueTier2', amount: 500e6, maturityMonths: 60 }],",
+              "actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: 500e6, maxSpreadBps: 2500, tenorMonths: 60 }],",
+          )
+          tier2_path.write_text(tier2)
+
+          # Fail this job if any deleted action/schema vocabulary still survives in TS sources.
+          deleted_tokens = ['issueDebt', 'issueEquity', 'issueTier2', 'setTreasuryPolicy', 'maturityYears', 'FundingMaturityBucket']
+          for token in deleted_tokens:
+              hits = []
+              for source in Path('src').rglob('*.ts*'):
+                  if token in source.read_text():
+                      hits.append(str(source))
+              if hits:
+                  raise SystemExit(f'deleted compatibility token {token} remains in: {hits}')
           PY
 
           rm .github/workflows/cleanup-legacy-compat.yml
