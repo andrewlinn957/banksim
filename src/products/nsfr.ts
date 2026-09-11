@@ -11,15 +11,24 @@ export type NsfrRsfCategory =
   | 'otherLoanShort'
   | 'otherLoanLong'
   | 'nonPerforming'
-  | 'undrawnCommitment'
-  | 'encumberedSixTo12m'
-  | 'encumberedOneYearPlus';
+  | 'undrawnCommitment';
 
 export interface NsfrCategoryDefinition {
   corep: string;
   label: string;
   group: string;
   factors: Record<NsfrMaturityBand, number>;
+}
+
+export interface NsfrEncumbranceTreatment {
+  corep: string;
+  label: string;
+  factor: number;
+}
+
+export interface NsfrRsfCategoryDefinition extends NsfrCategoryDefinition {
+  encumberedSixTo12m?: NsfrEncumbranceTreatment;
+  encumberedOneYearPlus?: NsfrEncumbranceTreatment;
 }
 
 export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition> = {
@@ -73,42 +82,52 @@ export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition
   },
 };
 
-export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrCategoryDefinition> = {
+export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrRsfCategoryDefinition> = {
   centralBankReserve: {
     corep: 'C80 1.1.1.1',
     label: 'Cash, reserves and HQLA central bank exposures: unencumbered / <6m encumbrance',
     group: 'Cash & central bank',
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
+    encumberedSixTo12m: { corep: 'C80 1.1.1.2', label: 'Cash, reserves and HQLA central bank exposures: encumbered 6–12m', factor: 0.50 },
+    encumberedOneYearPlus: { corep: 'C80 1.1.1.3', label: 'Cash, reserves and HQLA central bank exposures: encumbered ≥1y', factor: 1 },
   },
   level1Sovereign: {
     corep: 'C80 1.2.1.1',
     label: 'Level 1 assets eligible for 0% LCR haircut: unencumbered / <6m encumbrance',
     group: 'Level 1 securities',
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
+    encumberedSixTo12m: { corep: 'C80 1.2.1.2', label: 'Level 1 assets eligible for 0% LCR haircut: encumbered 6–12m', factor: 0.50 },
+    encumberedOneYearPlus: { corep: 'C80 1.2.1.3', label: 'Level 1 assets eligible for 0% LCR haircut: encumbered ≥1y', factor: 1 },
   },
   mortgageShort: {
     corep: 'C80 1.4.5.1',
     label: 'Low-risk non-financial customer loans: <1y contractual amount',
     group: 'Residential mortgages',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
+    encumberedSixTo12m: { corep: 'C80 1.4.5.2', label: 'Low-risk non-financial customer loans: encumbered 6–12m', factor: 0.50 },
+    encumberedOneYearPlus: { corep: 'C80 1.4.5.3', label: 'Low-risk non-financial customer loans: encumbered ≥1y', factor: 1 },
   },
   mortgageLong: {
     corep: 'C80 1.4.5.1',
     label: 'Low-risk non-financial customer loans: ≥1y contractual amount',
     group: 'Residential mortgages',
     factors: { under6m: 0.65, sixTo12m: 0.65, oneYearPlus: 0.65, none: 0.65 },
+    encumberedSixTo12m: { corep: 'C80 1.4.5.2', label: 'Low-risk non-financial customer loans: encumbered 6–12m', factor: 0.65 },
+    encumberedOneYearPlus: { corep: 'C80 1.4.5.3', label: 'Low-risk non-financial customer loans: encumbered ≥1y', factor: 1 },
   },
   otherLoanShort: {
     corep: 'C80 1.4.6.1',
     label: 'Other loans to non-financial customers: <1y contractual amount',
     group: 'Other customer loans',
     factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
+    encumberedOneYearPlus: { corep: 'C80 1.4.6.2', label: 'Other loans to non-financial customers: encumbered ≥1y', factor: 1 },
   },
   otherLoanLong: {
     corep: 'C80 1.4.6.1',
     label: 'Other performing loans to non-financial customers: ≥1y contractual amount',
     group: 'Other customer loans',
     factors: { under6m: 0.85, sixTo12m: 0.85, oneYearPlus: 0.85, none: 0.85 },
+    encumberedOneYearPlus: { corep: 'C80 1.4.6.2', label: 'Other loans to non-financial customers: encumbered ≥1y', factor: 1 },
   },
   nonPerforming: {
     corep: 'C80 1.9.3',
@@ -134,18 +153,6 @@ export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrCategoryDefinition
     group: 'Undrawn commitments',
     factors: { under6m: 0.05, sixTo12m: 0.05, oneYearPlus: 0.05, none: 0.05 },
   },
-  encumberedSixTo12m: {
-    corep: 'C80 applicable *.2 encumbrance row',
-    label: 'Encumbrance uplift for assets encumbered 6–12 months',
-    group: 'Encumbrance uplift',
-    factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
-  },
-  encumberedOneYearPlus: {
-    corep: 'C80 applicable *.3 / ≥1y encumbrance row',
-    label: 'Encumbrance uplift for assets encumbered at least one year',
-    group: 'Encumbrance uplift',
-    factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
-  },
 };
 
 export interface NsfrProductRule {
@@ -165,6 +172,16 @@ export const nsfrAsfFactor = (category: NsfrAsfCategory, monthsToMaturity?: numb
 
 export const nsfrRsfFactor = (category: NsfrRsfCategory): number =>
   NSFR_RSF_CATEGORIES[category].factors.none;
+
+export const nsfrEncumbranceTreatment = (
+  category: NsfrRsfCategory,
+  months: number
+): NsfrEncumbranceTreatment | undefined => {
+  const definition = NSFR_RSF_CATEGORIES[category];
+  if (months >= 12) return definition.encumberedOneYearPlus;
+  if (months >= 6) return definition.encumberedSixTo12m;
+  return undefined;
+};
 
 export const getNsfrProductRule = (productType: ProductType): NsfrProductRule => {
   const regulatory = PRODUCTS[productType].regulatory;
