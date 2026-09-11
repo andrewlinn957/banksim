@@ -75,6 +75,10 @@ describe('board management', () => {
   it('prioritises an existing management proposal when it addresses the largest plan miss', () => {
     const planned = structuredClone(initialState);
     planned.time.step = 6;
+    planned.risk.riskMetrics.internalCet1Headroom = .02;
+    planned.risk.riskMetrics.praBufferBreached = false;
+    planned.risk.riskMetrics.lcr = Math.max(1.3, planned.risk.riskMetrics.lcr);
+    planned.risk.riskMetrics.nsfr = Math.max(1.2, planned.risk.riskMetrics.nsfr);
     planned.threeYearPlan = createDefaultThreeYearPlan(planned);
     planned.threeYearPlan.targets = planned.threeYearPlan.targets.map(target =>
       target.metricId === 'customerDeposits'
