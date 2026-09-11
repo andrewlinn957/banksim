@@ -80,12 +80,6 @@ const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlan
   targets: plan.targets.map(clonePlanTarget),
   currentEvaluation: plan.currentEvaluation ? clonePlanEvaluation(plan.currentEvaluation) : undefined,
   reviewHistory: plan.reviewHistory?.map(clonePlanReview),
-  priorCycles: plan.priorCycles?.map(cycle => ({
-    ...cycle,
-    targets: cycle.targets.map(clonePlanTarget),
-    finalEvaluation: clonePlanEvaluation(cycle.finalEvaluation),
-    reviewHistory: cycle.reviewHistory.map(clonePlanReview),
-  })),
 }) : undefined;
 
 const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });

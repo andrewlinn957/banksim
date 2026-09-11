@@ -1,13 +1,11 @@
 import { baseConfig } from '../config/baseConfig';
-import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets } from '../config/threeYearPlan';
+import { createDefaultThreeYearPlan } from '../config/threeYearPlan';
 import { initialState } from '../config/initialState';
 import type { PlayerAction } from '../domain/actions';
 import type { BankState } from '../domain/bankState';
 import { AssetProductType, BalanceSheetSide, LiabilityProductType } from '../domain/enums';
-import type { ThreeYearPlanTarget } from '../domain/threeYearPlan';
 import { cloneBankState } from './clone';
 import { createSimulationEngine } from './simulation';
-import { THREE_YEAR_PLAN_METRICS as M } from './threeYearPlanMetrics';
 
 export const INTEGRATED_CALIBRATION_SEEDS = [11, 101, 1001, 10001, 100001, 2026, 271828, 314159] as const;
 export const INTEGRATED_CALIBRATION_HORIZON_MONTHS = 72;
@@ -61,9 +59,6 @@ export interface IntegratedCalibrationRun {
   sharePriceReturn: number;
   planScore?: number;
   boardConfidence?: number;
-  cycle1Score?: number;
-  cycle1Confidence?: number;
-  completedPlanCycles: number;
   capitalMarketsAttempts: number;
   capitalMarketsExecutions: number;
   capitalRaised: number;
@@ -92,8 +87,6 @@ export interface IntegratedCalibrationSummary {
   meanSharePriceReturn: number;
   meanPlanScore?: number;
   meanBoardConfidence?: number;
-  meanCycle1Score?: number;
-  meanCycle1Confidence?: number;
   meanCapitalRaised: number;
   meanCapitalMarketsExecutions: number;
   confidenceRange?: [number, number];
@@ -291,32 +284,10 @@ const actionsForStrategy = (strategy: CalibrationStrategyId, state: BankState, m
   return actions;
 };
 
-const cloneTargets = (targets: readonly ThreeYearPlanTarget[]): ThreeYearPlanTarget[] => targets.map(target => ({
-  ...target,
-  milestones: target.milestones.map(milestone => ({ ...milestone })),
-}));
-
-export const createTrivialThreeYearPlanTargets = (state: BankState): ThreeYearPlanTarget[] => {
-  const defaults = createDefaultThreeYearPlanTargets(state);
-  return defaults.map(target => {
-    const lower = target.metricId === M.eps || target.metricId === M.rote
-      ? -1
-      : target.metricId === M.customerLending || target.metricId === M.customerDeposits
-        ? Math.max(1, target.baseline * 0.1)
-        : 0.01;
-    return {
-      ...target,
-      weight: target.metricId === M.lcr ? 70 : 5,
-      milestones: target.milestones.map(milestone => ({ ...milestone, lower })),
-    };
-  });
-};
-
 export const runIntegratedCalibration = (args: {
   strategy: CalibrationStrategyId;
   seed: number;
   horizonMonths?: number;
-  planTargets?: 'default' | 'trivial';
 }): IntegratedCalibrationRun => {
   const horizonMonths = args.horizonMonths ?? INTEGRATED_CALIBRATION_HORIZON_MONTHS;
   const config = { ...baseConfig, featureFlags: { ...baseConfig.featureFlags, threeYearPlan: true } };
@@ -324,7 +295,6 @@ export const runIntegratedCalibration = (args: {
   let state = cloneBankState(initialState);
   state.market.macroModel.rngSeed = args.seed;
   state.threeYearPlan = createDefaultThreeYearPlan(state);
-  if (args.planTargets === 'trivial') state.threeYearPlan.targets = createTrivialThreeYearPlanTargets(state);
 
   const openingLoans = totalLoans(state);
   const openingDeposits = totalDeposits(state);
@@ -336,12 +306,6 @@ export const runIntegratedCalibration = (args: {
 
   for (let month = 0; month < horizonMonths; month++) {
     const actions: PlayerAction[] = [];
-    if (state.threeYearPlan?.enabled && state.threeYearPlan.completed) {
-      const targets = args.planTargets === 'trivial'
-        ? createTrivialThreeYearPlanTargets(state)
-        : createDefaultThreeYearPlanTargets(state);
-      actions.push({ type: 'renewThreeYearPlan', targets: cloneTargets(targets) });
-    }
     actions.push(...actionsForStrategy(args.strategy, state, month));
     state = engine.step({ state, config, actions, shocks: [] }).nextState;
     cumulativeNetIncome += state.financial.incomeStatement.netIncome;
@@ -360,9 +324,6 @@ export const runIntegratedCalibration = (args: {
   const executed = transactions.filter(transaction => transaction.executedAmount > 0);
   const raised = (instrument: 'cet1' | 'at1' | 'tier2' | 'senior') =>
     executed.filter(transaction => transaction.instrument === instrument).reduce((sum, transaction) => sum + transaction.executedAmount, 0);
-  const priorCycles = state.threeYearPlan?.priorCycles ?? [];
-  const cycle1 = priorCycles.find(cycle => cycle.cycleNumber === 1);
-  const completedPlanCycles = priorCycles.length + (state.threeYearPlan?.completed ? 1 : 0);
   const bookValuePerShare = state.equityMarket.bookValuePerShare ?? 0;
   const rote = bookValuePerShare > 0 ? state.equityMarket.epsTtm / bookValuePerShare : 0;
 
@@ -394,9 +355,6 @@ export const runIntegratedCalibration = (args: {
     sharePriceReturn: openingSharePrice > 0 ? state.equityMarket.sharePrice / openingSharePrice - 1 : 0,
     planScore: state.threeYearPlan?.currentEvaluation?.score,
     boardConfidence: state.threeYearPlan?.boardConfidence,
-    cycle1Score: cycle1?.finalEvaluation.score,
-    cycle1Confidence: cycle1?.finalBoardConfidence,
-    completedPlanCycles,
     capitalMarketsAttempts: transactions.length,
     capitalMarketsExecutions: executed.length,
     capitalRaised: executed.reduce((sum, transaction) => sum + transaction.executedAmount, 0),
@@ -436,8 +394,6 @@ export const summarizeIntegratedCalibration = (runs: readonly IntegratedCalibrat
       meanSharePriceReturn: mean(group.map(run => run.sharePriceReturn)),
       meanPlanScore: meanDefined(group.map(run => run.planScore)),
       meanBoardConfidence: meanDefined(group.map(run => run.boardConfidence)),
-      meanCycle1Score: meanDefined(group.map(run => run.cycle1Score)),
-      meanCycle1Confidence: meanDefined(group.map(run => run.cycle1Confidence)),
       meanCapitalRaised: mean(group.map(run => run.capitalRaised)),
       meanCapitalMarketsExecutions: mean(group.map(run => run.capitalMarketsExecutions)),
       confidenceRange: confidences.length ? [Math.min(...confidences), Math.max(...confidences)] : undefined,

@@ -29,7 +29,6 @@ import {
   IssueEquityAction,
   IssueTier2Action,
   LaunchCapitalMarketsTransactionAction,
-  RenewThreeYearPlanAction,
   DrawBoeFundingAction,
   SetMortgagePolicyAction,
   SetTreasuryPolicyAction,
@@ -74,9 +73,7 @@ import { createEmptyStepExecutionResult, type AssetTradeExecution, type StepExec
 import { applyFeatureFlagsToConfig, resolveFeatureFlags } from './featureFlags';
 import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from './contractualAssetLifecycle';
 import { reviewThreeYearPlan } from './threeYearPlan';
-import { renewThreeYearPlanState } from '../domain/threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
-import { validateThreeYearPlanAgreement } from '../config/threeYearPlan';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 
@@ -164,27 +161,6 @@ const actionHandlers: ActionHandlerMap = {
     });
     settleCapitalMarketsBookbuild(ctx.state, ctx.config, book, ctx.events);
     ctx.executions.capitalMarkets.push({ kind: 'capitalMarkets', ...book });
-  },
-  renewThreeYearPlan: (action: RenewThreeYearPlanAction, ctx) => {
-    const plan = ctx.state.threeYearPlan;
-    if (!resolveFeatureFlags(ctx.config).threeYearPlan || !plan?.enabled || !plan.completed || !plan.currentEvaluation) {
-      ctx.events.push(createEvent('warning', 'Three-Year Plan renewal requires a completed active plan.'));
-      return;
-    }
-    const agreementIssues = validateThreeYearPlanAgreement(ctx.state, action.targets);
-    if (agreementIssues.length > 0) {
-      ctx.events.push(createEvent('warning', `Three-Year Plan renewal rejected: ${agreementIssues[0]}`));
-      return;
-    }
-    ctx.state.threeYearPlan = renewThreeYearPlanState({
-      completedPlan: plan,
-      startStep: ctx.state.time.step,
-      targets: action.targets,
-    });
-    ctx.events.push(createEvent(
-      'info',
-      `Three-Year Plan Cycle ${ctx.state.threeYearPlan.cycleNumber ?? 2} agreed. Board Confidence carried forward at ${(ctx.state.threeYearPlan.boardConfidence ?? 70).toFixed(0)}/100.`
-    ));
   },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
