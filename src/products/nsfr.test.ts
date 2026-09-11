@@ -3,23 +3,26 @@ import { AssetProductType as A, LiabilityProductType as L, PRODUCTS } from './ca
 import {
   getNsfrProductRule,
   NSFR_ASF_CATEGORIES,
-  NSFR_PRODUCT_RULES,
   NSFR_RSF_CATEGORIES,
   nsfrAsfFactor,
 } from './nsfr';
 
 describe('PRA NSFR regulatory registry', () => {
-  it('covers every liquidity regulatory class used by the product catalogue', () => {
-    const classes = new Set(Object.values(PRODUCTS).map(product => product.regulatory.liquidity));
-    classes.forEach(regulatoryClass => expect(NSFR_PRODUCT_RULES[regulatoryClass]).toBeDefined());
+  it('gives every catalogue product explicit ASF and RSF classifications', () => {
+    Object.values(PRODUCTS).forEach(product => {
+      expect(product.regulatory.nsfrAsf).toBeDefined();
+      expect(product.regulatory.nsfrRsf).toBeDefined();
+    });
   });
 
-  it('keeps product identity separate from NSFR treatment', () => {
-    expect(getNsfrProductRule(L.WholesaleFundingST)).toEqual({ asf: 'counterpartyUnknown' });
-    expect(getNsfrProductRule(L.WholesaleFundingLT)).toEqual({ asf: 'counterpartyUnknown' });
-    expect(getNsfrProductRule(L.Tier2Debt)).toEqual({ asf: 'tier2Capital' });
-    expect(getNsfrProductRule(A.Mortgages)).toEqual({ rsf: 'mortgage' });
-    expect(getNsfrProductRule(A.ConsumerLoans)).toEqual({ rsf: 'otherLoan' });
+  it('keeps product identity and LCR treatment separate from NSFR treatment', () => {
+    expect(getNsfrProductRule(L.WholesaleFundingST)).toEqual({ asf: 'counterpartyUnknown', rsf: undefined });
+    expect(getNsfrProductRule(L.WholesaleFundingLT)).toEqual({ asf: 'counterpartyUnknown', rsf: undefined });
+    expect(getNsfrProductRule(L.Tier2Debt)).toEqual({ asf: 'tier2Capital', rsf: undefined });
+    expect(getNsfrProductRule(A.Mortgages)).toEqual({ asf: undefined, rsf: 'mortgage' });
+    expect(getNsfrProductRule(A.ConsumerLoans)).toEqual({ asf: undefined, rsf: 'otherLoan' });
+    expect(PRODUCTS[L.WholesaleFundingLT].regulatory.liquidity).toBe('wholesaleFundingLong');
+    expect(PRODUCTS[L.WholesaleFundingLT].regulatory.nsfrAsf).toBe('counterpartyUnknown');
   });
 
   it('implements the PRA C81 maturity schedules centrally', () => {
