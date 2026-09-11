@@ -22,22 +22,38 @@ interface Props {
   state: BankState;
   canEdit?: boolean;
   onTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
+  canRenew?: boolean;
+  renewalDraft?: readonly ThreeYearPlanTarget[] | null;
+  onBeginRenewal?: () => void;
+  onRenewalTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
+  onCancelRenewal?: () => void;
 }
 
-export default function ThreeYearPlanPanel({state,canEdit=false,onTargetsChange}:Props) {
+export default function ThreeYearPlanPanel({
+  state,
+  canEdit=false,
+  onTargetsChange,
+  canRenew=false,
+  renewalDraft=null,
+  onBeginRenewal,
+  onRenewalTargetsChange,
+  onCancelRenewal,
+}:Props) {
   const plan=state.threeYearPlan; if(!plan?.enabled) return null;
   const month=Math.min(plan.horizonMonths,Math.max(0,state.time.step-plan.startStep));
   const live=plan.completed&&plan.currentEvaluation?plan.currentEvaluation:evaluateThreeYearPlan({state,month,targets:plan.targets,registry:bankThreeYearPlanMetricRegistry});
   const confidence=plan.boardConfidence??70;
+  const cycleNumber=plan.cycleNumber??1;
   const nextReview=plan.completed?null:Math.min(plan.horizonMonths,Math.max(plan.reviewIntervalMonths,(Math.floor(month/plan.reviewIntervalMonths)+1)*plan.reviewIntervalMonths));
   const latestReview=plan.reviewHistory?.[plan.reviewHistory.length-1];
   const drivers=latestReview?planDrivers(latestReview.evaluation):[];
   const nextMilestone=month<12?{label:'FY1',month:12}:month<24?{label:'FY2',month:24}:month<36?{label:'FY3',month:36}:null;
+  const priorCycles=plan.priorCycles??[];
 
   return <section className="card stack three-year-plan" aria-label="Three-Year Plan">
-    <div className="section-heading"><div><div className="eyebrow">Three-Year Plan</div><h2>Board mandate</h2></div><div><strong>{confidence.toFixed(0)}/100</strong><div className="muted">Board Confidence · {confidenceLabel(confidence)}</div></div></div>
+    <div className="section-heading"><div><div className="eyebrow">Three-Year Plan · Cycle {cycleNumber}</div><h2>Board mandate</h2></div><div><strong>{confidence.toFixed(0)}/100</strong><div className="muted">Board Confidence · {confidenceLabel(confidence)}</div></div></div>
 
-    {canEdit&&onTargetsChange&&<ThreeYearPlanEditor state={state} onChange={onTargetsChange}/>} 
+    {canEdit&&onTargetsChange&&<ThreeYearPlanEditor targets={plan.targets} onChange={onTargetsChange} title={cycleNumber===1?'Set opening board plan':`Set Cycle ${cycleNumber} board plan`}/>} 
 
     <div className="grid-two">
       <div><strong>{plan.completed?'Final plan result':'Live trajectory'} · {live.score.toFixed(0)}/100</strong><div className="muted">Month {month} of 36{plan.completed?' · plan complete':` · indicative until formal review month ${nextReview}`}</div></div>
@@ -50,9 +66,28 @@ export default function ThreeYearPlanPanel({state,canEdit=false,onTargetsChange}
       {latestReview&&<div className="muted" style={{marginTop:6}}>{drivers.length===0?'All plan measures met their reviewed trajectory.':<>Largest plan-score drag: {drivers.map((item,index)=>{const def=bankThreeYearPlanMetricRegistry.get(item.metric.metricId);return <span key={item.metric.metricId}>{index?', ':''}{def.label} ({item.drag.toFixed(1)} pts)</span>;})}.</>}</div>}
     </div>
 
-    <div><strong>Live trajectory</strong><div className="muted">This updates every month. It affects Board Confidence only when the next formal quarterly review occurs.</div></div>
-    <table className="data-table"><thead><tr><th>Measure</th><th className="numeric">Actual</th><th className="numeric">Current plan</th><th className="numeric">Score</th><th className="numeric">Weight</th></tr></thead><tbody>{live.metrics.map(metric=>{const def=bankThreeYearPlanMetricRegistry.get(metric.metricId);return <tr key={metric.metricId}><td>{def.label}</td><td className="numeric">{formatValue(metric.actual,def.format)}</td><td className="numeric">{formatTarget(metric.targetLower,metric.targetUpper,def.format)}</td><td className="numeric">{metric.score.toFixed(0)}</td><td className="numeric">{metric.weight}%</td></tr>;})}</tbody></table>
+    {plan.completed&&canRenew&&(
+      renewalDraft&&onRenewalTargetsChange
+        ? <div className="stack">
+            <ThreeYearPlanEditor
+              targets={renewalDraft}
+              onChange={onRenewalTargetsChange}
+              title={`Agree Cycle ${cycleNumber+1} plan`}
+              detail={`The next plan starts when you run the next month. Board Confidence opens at ${confidence.toFixed(0)}/100, inherited from Cycle ${cycleNumber}; no other state variable changes it directly.`}
+            />
+            <div className="muted">Cycle {cycleNumber+1} is queued. Edit the targets now, then run the next month to put the plan into force.</div>
+            {onCancelRenewal&&<div><button className="button ghost" onClick={onCancelRenewal}>Cancel renewal</button></div>}
+          </div>
+        : onBeginRenewal&&<div className="policy-disclosure"><strong>Continue the long-term mandate</strong><p className="muted">The completed plan stays frozen until you agree its successor. A new cycle carries forward Board Confidence and resets only the plan milestones.</p><button className="button" onClick={onBeginRenewal}>Agree next Three-Year Plan</button></div>
+    )}
+
+    {!plan.completed&&<><div><strong>Live trajectory</strong><div className="muted">This updates every month. It affects Board Confidence only when the next formal quarterly review occurs.</div></div>
+    <table className="data-table"><thead><tr><th>Measure</th><th className="numeric">Actual</th><th className="numeric">Current plan</th><th className="numeric">Score</th><th className="numeric">Weight</th></tr></thead><tbody>{live.metrics.map(metric=>{const def=bankThreeYearPlanMetricRegistry.get(metric.metricId);return <tr key={metric.metricId}><td>{def.label}</td><td className="numeric">{formatValue(metric.actual,def.format)}</td><td className="numeric">{formatTarget(metric.targetLower,metric.targetUpper,def.format)}</td><td className="numeric">{metric.score.toFixed(0)}</td><td className="numeric">{metric.weight}%</td></tr>;})}</tbody></table></>}
+
+    {plan.completed&&<details><summary>Final Cycle {cycleNumber} scorecard</summary><table className="data-table"><thead><tr><th>Measure</th><th className="numeric">Actual</th><th className="numeric">Final plan</th><th className="numeric">Score</th><th className="numeric">Weight</th></tr></thead><tbody>{live.metrics.map(metric=>{const def=bankThreeYearPlanMetricRegistry.get(metric.metricId);return <tr key={metric.metricId}><td>{def.label}</td><td className="numeric">{formatValue(metric.actual,def.format)}</td><td className="numeric">{formatTarget(metric.targetLower,metric.targetUpper,def.format)}</td><td className="numeric">{metric.score.toFixed(0)}</td><td className="numeric">{metric.weight}%</td></tr>;})}</tbody></table></details>}
 
     <details><summary>Annual plan milestones</summary><table className="data-table"><thead><tr><th>Measure</th><th className="numeric">FY1</th><th className="numeric">FY2</th><th className="numeric">FY3</th></tr></thead><tbody>{plan.targets.map(target=>{const def=bankThreeYearPlanMetricRegistry.get(target.metricId);return <tr key={target.metricId}><td>{def.label}</td>{target.milestones.map(milestone=><td className="numeric" key={milestone.month}>{formatTarget(milestone.lower,milestone.upper,def.format)}</td>)}</tr>;})}</tbody></table></details>
+
+    {priorCycles.length>0&&<details><summary>Previous plan cycles ({priorCycles.length})</summary><table className="data-table"><thead><tr><th>Cycle</th><th className="numeric">Months</th><th className="numeric">Final score</th><th className="numeric">Final confidence</th></tr></thead><tbody>{priorCycles.map(cycle=><tr key={`${cycle.cycleNumber}-${cycle.startStep}`}><td>Cycle {cycle.cycleNumber}</td><td className="numeric">{cycle.startStep+1}–{cycle.endStep}</td><td className="numeric">{cycle.finalEvaluation.score.toFixed(0)}/100</td><td className="numeric">{cycle.finalBoardConfidence.toFixed(0)}/100</td></tr>)}</tbody></table></details>}
   </section>;
 }

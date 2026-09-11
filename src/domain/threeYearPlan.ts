@@ -46,6 +46,17 @@ export interface ThreeYearPlanReviewRecord {
   boardConfidenceAfter: number;
 }
 
+/** Immutable summary retained when a completed plan is replaced by its successor. */
+export interface ThreeYearPlanCycleRecord {
+  cycleNumber: number;
+  startStep: number;
+  endStep: number;
+  targets: readonly ThreeYearPlanTarget[];
+  finalEvaluation: ThreeYearPlanEvaluation;
+  reviewHistory: readonly ThreeYearPlanReviewRecord[];
+  finalBoardConfidence: number;
+}
+
 /** Board Confidence is deliberately owned by, and updated only through, the plan state. */
 export interface ThreeYearPlanState {
   enabled: boolean;
@@ -60,6 +71,10 @@ export interface ThreeYearPlanState {
   boardConfidence?: number;
   lastEvaluationStep?: number;
   completed?: boolean;
+  /** Defaults to 1 for saves created before renewable plans existed. */
+  cycleNumber?: number;
+  /** Completed predecessor plans, oldest first. */
+  priorCycles?: readonly ThreeYearPlanCycleRecord[];
 }
 
 export interface ThreeYearPlanSettings {
@@ -74,10 +89,29 @@ export const DEFAULT_THREE_YEAR_PLAN_SETTINGS: ThreeYearPlanSettings = {
   confidenceUpdateWeight: 0.25,
 };
 
+const cloneEvaluation = (evaluation: ThreeYearPlanEvaluation): ThreeYearPlanEvaluation => ({
+  ...evaluation,
+  metrics: evaluation.metrics.map(metric => ({ ...metric })),
+});
+
+const cloneTargets = (targets: readonly ThreeYearPlanTarget[]): ThreeYearPlanTarget[] =>
+  targets.map(target => ({
+    ...target,
+    milestones: target.milestones.map(milestone => ({ ...milestone })),
+  }));
+
+const cloneReviews = (reviews: readonly ThreeYearPlanReviewRecord[] | undefined): ThreeYearPlanReviewRecord[] =>
+  (reviews ?? []).map(review => ({
+    ...review,
+    evaluation: cloneEvaluation(review.evaluation),
+  }));
+
 export const createThreeYearPlanState = (args: {
   startStep: number;
   targets: readonly ThreeYearPlanTarget[];
   settings?: ThreeYearPlanSettings;
+  cycleNumber?: number;
+  priorCycles?: readonly ThreeYearPlanCycleRecord[];
 }): ThreeYearPlanState => {
   const settings = args.settings ?? DEFAULT_THREE_YEAR_PLAN_SETTINGS;
   return {
@@ -86,9 +120,56 @@ export const createThreeYearPlanState = (args: {
     horizonMonths: THREE_YEAR_PLAN_HORIZON_MONTHS,
     reviewIntervalMonths: THREE_YEAR_PLAN_REVIEW_INTERVAL_MONTHS,
     confidenceUpdateWeight: settings.confidenceUpdateWeight,
-    targets: args.targets,
+    targets: cloneTargets(args.targets),
     reviewHistory: [],
     boardConfidence: settings.enabled ? settings.initialBoardConfidence : undefined,
     completed: false,
+    cycleNumber: args.cycleNumber ?? 1,
+    priorCycles: [...(args.priorCycles ?? [])],
   };
+};
+
+export const archiveCompletedThreeYearPlan = (
+  plan: ThreeYearPlanState,
+  endStep: number
+): ThreeYearPlanCycleRecord => {
+  if (!plan.enabled || !plan.completed || !plan.currentEvaluation) {
+    throw new Error('Only a completed Three-Year Plan can be archived');
+  }
+  return {
+    cycleNumber: plan.cycleNumber ?? 1,
+    startStep: plan.startStep,
+    endStep,
+    targets: cloneTargets(plan.targets),
+    finalEvaluation: cloneEvaluation(plan.currentEvaluation),
+    reviewHistory: cloneReviews(plan.reviewHistory),
+    finalBoardConfidence: plan.boardConfidence ?? DEFAULT_THREE_YEAR_PLAN_SETTINGS.initialBoardConfidence,
+  };
+};
+
+/**
+ * Starts the next 36-month cycle. The opening confidence is inherited solely from the
+ * completed predecessor plan, so renewal does not introduce any non-plan confidence input.
+ */
+export const renewThreeYearPlanState = (args: {
+  completedPlan: ThreeYearPlanState;
+  startStep: number;
+  targets: readonly ThreeYearPlanTarget[];
+}): ThreeYearPlanState => {
+  const archive = archiveCompletedThreeYearPlan(
+    args.completedPlan,
+    args.completedPlan.startStep + args.completedPlan.horizonMonths
+  );
+  const priorCycles = [...(args.completedPlan.priorCycles ?? []), archive];
+  return createThreeYearPlanState({
+    startStep: args.startStep,
+    targets: args.targets,
+    settings: {
+      enabled: true,
+      initialBoardConfidence: archive.finalBoardConfidence,
+      confidenceUpdateWeight: args.completedPlan.confidenceUpdateWeight,
+    },
+    cycleNumber: (args.completedPlan.cycleNumber ?? 1) + 1,
+    priorCycles,
+  });
 };

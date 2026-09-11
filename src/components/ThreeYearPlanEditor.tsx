@@ -1,10 +1,11 @@
-import type { BankState } from '../domain/bankState';
 import type { ThreeYearPlanTarget } from '../domain/threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from '../engine/threeYearPlanMetrics';
 
 interface Props {
-  state: BankState;
+  targets: readonly ThreeYearPlanTarget[];
   onChange: (targets: readonly ThreeYearPlanTarget[]) => void;
+  title?: string;
+  detail?: string;
 }
 
 type MetricFormat = 'money' | 'moneyPerShare' | 'ratio';
@@ -26,24 +27,27 @@ const parseDisplayValue = (raw: string, format: MetricFormat): number | undefine
   return parsed * scaleFor(format);
 };
 
-export default function ThreeYearPlanEditor({ state, onChange }: Props) {
-  const plan = state.threeYearPlan;
-  if (!plan?.enabled) return null;
-  const totalWeight = plan.targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0);
+export default function ThreeYearPlanEditor({
+  targets,
+  onChange,
+  title = 'Set opening board plan',
+  detail = 'Optional plan mode is still a management choice. These targets are locked after the first month. Board Confidence will be judged only against the plan you set here.',
+}: Props) {
+  const totalWeight = targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0);
 
   const updateWeight = (metricId: string, raw: string) => {
     const weight = Number(raw);
     if (!Number.isFinite(weight) || weight < 0) return;
-    const targets = plan.targets.map(target => target.metricId === metricId ? { ...target, weight } : target);
-    if (targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0) <= 0) return;
-    onChange(targets);
+    const nextTargets = targets.map(target => target.metricId === metricId ? { ...target, weight } : target);
+    if (nextTargets.reduce((sum, target) => sum + Math.max(0, target.weight), 0) <= 0) return;
+    onChange(nextTargets);
   };
 
   const updateMilestone = (metricId: string, month: 12 | 24 | 36, raw: string) => {
     const definition = bankThreeYearPlanMetricRegistry.get(metricId);
     const lower = parseDisplayValue(raw, definition.format);
     if (lower === undefined) return;
-    onChange(plan.targets.map(target => target.metricId === metricId
+    onChange(targets.map(target => target.metricId === metricId
       ? {
           ...target,
           milestones: target.milestones.map(milestone => milestone.month === month
@@ -54,11 +58,11 @@ export default function ThreeYearPlanEditor({ state, onChange }: Props) {
   };
 
   return <details className="policy-disclosure" open>
-    <summary>Set opening board plan</summary>
-    <p className="muted">Optional plan mode is still a management choice. These targets are locked after the first month. Board Confidence will be judged only against the plan you set here.</p>
+    <summary>{title}</summary>
+    <p className="muted">{detail}</p>
     <table className="data-table">
       <thead><tr><th>Measure</th><th className="numeric">Weight</th><th className="numeric">FY1</th><th className="numeric">FY2</th><th className="numeric">FY3</th></tr></thead>
-      <tbody>{plan.targets.map(target => {
+      <tbody>{targets.map(target => {
         const definition = bankThreeYearPlanMetricRegistry.get(target.metricId);
         return <tr key={target.metricId}>
           <td>{definition.label}<div className="muted">{unitFor(definition.format)}</div></td>

@@ -29,6 +29,7 @@ import {
   IssueEquityAction,
   IssueTier2Action,
   LaunchCapitalMarketsTransactionAction,
+  RenewThreeYearPlanAction,
   DrawBoeFundingAction,
   SetMortgagePolicyAction,
   SetTreasuryPolicyAction,
@@ -73,6 +74,7 @@ import { createEmptyStepExecutionResult, type AssetTradeExecution, type StepExec
 import { applyFeatureFlagsToConfig, resolveFeatureFlags } from './featureFlags';
 import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from './contractualAssetLifecycle';
 import { reviewThreeYearPlan } from './threeYearPlan';
+import { renewThreeYearPlanState } from '../domain/threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
@@ -161,6 +163,35 @@ const actionHandlers: ActionHandlerMap = {
     });
     settleCapitalMarketsBookbuild(ctx.state, ctx.config, book, ctx.events);
     ctx.executions.capitalMarkets.push({ kind: 'capitalMarkets', ...book });
+  },
+  renewThreeYearPlan: (action: RenewThreeYearPlanAction, ctx) => {
+    const plan = ctx.state.threeYearPlan;
+    if (!resolveFeatureFlags(ctx.config).threeYearPlan || !plan?.enabled || !plan.completed || !plan.currentEvaluation) {
+      ctx.events.push(createEvent('warning', 'Three-Year Plan renewal requires a completed active plan.'));
+      return;
+    }
+    const weightTotal = action.targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0);
+    const milestonesValid = action.targets.every(target =>
+      target.milestones.length === 3 &&
+      target.milestones.map(milestone => milestone.month).join(',') === '12,24,36' &&
+      target.milestones.every(milestone => Number.isFinite(milestone.lower) && (milestone.upper === undefined || Number.isFinite(milestone.upper)))
+    );
+    const metricsValid = action.targets.length > 0 && action.targets.every(target =>
+      bankThreeYearPlanMetricRegistry.has(target.metricId) && Number.isFinite(target.weight) && target.weight >= 0
+    );
+    if (!(weightTotal > 0) || !milestonesValid || !metricsValid) {
+      ctx.events.push(createEvent('warning', 'Three-Year Plan renewal rejected: targets and weights are invalid.'));
+      return;
+    }
+    ctx.state.threeYearPlan = renewThreeYearPlanState({
+      completedPlan: plan,
+      startStep: ctx.state.time.step,
+      targets: action.targets,
+    });
+    ctx.events.push(createEvent(
+      'info',
+      `Three-Year Plan Cycle ${ctx.state.threeYearPlan.cycleNumber ?? 2} agreed. Board Confidence carried forward at ${(ctx.state.threeYearPlan.boardConfidence ?? 70).toFixed(0)}/100.`
+    ));
   },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },

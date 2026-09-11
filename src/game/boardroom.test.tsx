@@ -72,6 +72,62 @@ describe('board management', () => {
     expect(markup).toContain('CET1 ratio weight');
   });
 
+  it('offers a successor plan after the current 36-month cycle completes', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    planned.time.step = 36;
+    planned.threeYearPlan.completed = true;
+    planned.threeYearPlan.boardConfidence = 78;
+    const markup = renderToStaticMarkup(
+      <Boardroom
+        state={planned}
+        history={[planned]}
+        department={null}
+        hasErrors={false}
+        onDepartment={noop}
+        onClose={noop}
+        canRenewPlan
+        onBeginPlanRenewal={noop}
+      />
+    );
+    expect(markup).toContain('Three-Year Plan · Cycle 1');
+    expect(markup).toContain('Final plan result');
+    expect(markup).toContain('Agree next Three-Year Plan');
+    expect(markup).toContain('carries forward Board Confidence');
+  });
+
+  it('shows the queued successor targets without replacing the completed scorecard early', () => {
+    const noop = () => {};
+    const planned = structuredClone(initialState);
+    planned.threeYearPlan = createDefaultThreeYearPlan(planned);
+    planned.time.step = 36;
+    planned.threeYearPlan.completed = true;
+    planned.threeYearPlan.boardConfidence = 78;
+    const draft = planned.threeYearPlan.targets.map(target => ({
+      ...target,
+      milestones: target.milestones.map(milestone => ({ ...milestone })),
+    }));
+    const markup = renderToStaticMarkup(
+      <Boardroom
+        state={planned}
+        history={[planned]}
+        department={null}
+        hasErrors={false}
+        onDepartment={noop}
+        onClose={noop}
+        canRenewPlan
+        planRenewalDraft={draft}
+        onPlanRenewalTargetsChange={noop}
+        onCancelPlanRenewal={noop}
+      />
+    );
+    expect(markup).toContain('Agree Cycle 2 plan');
+    expect(markup).toContain('Cycle 2 is queued');
+    expect(markup).toContain('opens at 78/100');
+    expect(markup).toContain('Final Cycle 1 scorecard');
+  });
+
   it('explains the latest Board Confidence movement using reviewed plan metrics', () => {
     const noop = () => {};
     const planned = structuredClone(initialState);

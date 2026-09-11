@@ -15,7 +15,7 @@ import { IncomeStatement } from '../domain/pnl';
 import { ComplianceStatus, LeverageFrameworkAssessmentState, OsiiAssessmentState, Pillar2AAssessmentState, RiskMetrics } from '../domain/risks';
 import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
 import { ProductType } from '../domain/enums';
-import type { ThreeYearPlanState } from '../domain/threeYearPlan';
+import type { ThreeYearPlanEvaluation, ThreeYearPlanReviewRecord, ThreeYearPlanState, ThreeYearPlanTarget } from '../domain/threeYearPlan';
 
 const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
   items: bs.items.map((item) => ({
@@ -63,11 +63,29 @@ const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   treasuryPolicy: b.treasuryPolicy ? { ...b.treasuryPolicy } : undefined,
 });
 
+const clonePlanTarget = (target: ThreeYearPlanTarget): ThreeYearPlanTarget => ({
+  ...target,
+  milestones: target.milestones.map(milestone => ({ ...milestone })),
+});
+const clonePlanEvaluation = (evaluation: ThreeYearPlanEvaluation): ThreeYearPlanEvaluation => ({
+  ...evaluation,
+  metrics: evaluation.metrics.map(metric => ({ ...metric })),
+});
+const clonePlanReview = (review: ThreeYearPlanReviewRecord): ThreeYearPlanReviewRecord => ({
+  ...review,
+  evaluation: clonePlanEvaluation(review.evaluation),
+});
 const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlanState | undefined => plan ? ({
   ...plan,
-  targets: plan.targets.map(target => ({ ...target, milestones: target.milestones.map(m => ({ ...m })) })),
-  currentEvaluation: plan.currentEvaluation ? { ...plan.currentEvaluation, metrics: plan.currentEvaluation.metrics.map(metric => ({ ...metric })) } : undefined,
-  reviewHistory: plan.reviewHistory?.map(review => ({ ...review, evaluation: { ...review.evaluation, metrics: review.evaluation.metrics.map(metric => ({ ...metric })) } })),
+  targets: plan.targets.map(clonePlanTarget),
+  currentEvaluation: plan.currentEvaluation ? clonePlanEvaluation(plan.currentEvaluation) : undefined,
+  reviewHistory: plan.reviewHistory?.map(clonePlanReview),
+  priorCycles: plan.priorCycles?.map(cycle => ({
+    ...cycle,
+    targets: cycle.targets.map(clonePlanTarget),
+    finalEvaluation: clonePlanEvaluation(cycle.finalEvaluation),
+    reviewHistory: cycle.reviewHistory.map(clonePlanReview),
+  })),
 }) : undefined;
 
 const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
