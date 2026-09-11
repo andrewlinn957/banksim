@@ -28,6 +28,7 @@ import {
   IssueDebtAction,
   IssueEquityAction,
   IssueTier2Action,
+  LaunchCapitalMarketsTransactionAction,
   DrawBoeFundingAction,
   SetMortgagePolicyAction,
   SetTreasuryPolicyAction,
@@ -69,6 +70,8 @@ import { applyFeatureFlagsToConfig, resolveFeatureFlags } from './featureFlags';
 import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from './contractualAssetLifecycle';
 import { reviewThreeYearPlan } from './threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
+import { buildCapitalMarketsBook } from './capitalMarkets';
+import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 
 // Tiny "by-reference" wrapper so shocks can compound multipliers in-place.
 type Ref<T> = { value: T };
@@ -144,6 +147,17 @@ const actionHandlers: ActionHandlerMap = {
     if (execution) ctx.executions.assetTrades.push(execution);
   },
   issueTier2: (action: IssueTier2Action, ctx) => { applyIssueTier2(ctx.state,ctx.config,action.amount,action.maturityMonths,ctx.events); },
+  launchCapitalMarketsTransaction: (action: LaunchCapitalMarketsTransactionAction, ctx) => {
+    const book = buildCapitalMarketsBook(ctx.state, ctx.config, {
+      instrument: action.instrument,
+      targetAmount: action.targetAmount,
+      maxDiscount: action.maxDiscount,
+      maxSpreadBps: action.maxSpreadBps,
+      tenorMonths: action.tenorMonths,
+    });
+    settleCapitalMarketsBookbuild(ctx.state, ctx.config, book, ctx.events);
+    ctx.executions.capitalMarkets.push({ kind: 'capitalMarkets', ...book });
+  },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
   setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => {
@@ -818,6 +832,72 @@ const applyIssueTier2 = (state: BankState, config: SimulationConfig, amount: num
   genericFundingBuckets(state,LiabilityProductType.Tier2Debt).push({tenorMonths:tenor,monthsToMaturity:tenor,notional:issued,rate});
   line.balance+=issued; line.interestRate=blendRate(Math.max(0,line.balance-issued),line.interestRate,issued,rate); state.financial.capital.tier2=(state.financial.capital.tier2??0)+issued; cash.balance+=issued;
   events.push(createEvent('info',`Issued Tier 2 ${issued.toFixed(2)} at ${(rate*100).toFixed(2)}% for ${tenor}m`,['capital','funding']));
+};
+
+const capitalMarketsPricingLabel = (book: CapitalMarketsBookbuildResult): string =>
+  book.pricingKind === 'discount'
+    ? `${((book.clearingDiscount ?? 0) * 100).toFixed(1)}% discount`
+    : `${(book.clearingSpreadBps ?? 0).toFixed(0)}bp spread`;
+
+const settleCapitalMarketsBookbuild = (
+  state: BankState,
+  config: SimulationConfig,
+  book: CapitalMarketsBookbuildResult,
+  events: SimulationEvent[]
+): void => {
+  state.capitalMarkets ??= { transactions: [] };
+  state.capitalMarkets.transactions.push({
+    ...book,
+    step: state.time.step,
+    date: state.time.date.toISOString(),
+  });
+
+  const instrumentLabel = book.instrument === 'cet1' ? 'CET1 equity' : book.instrument === 'at1' ? 'AT1' : book.instrument === 'tier2' ? 'Tier 2' : 'senior unsecured';
+  if (book.executedAmount <= 0) {
+    const reason = book.status === 'failed-price' ? 'management price limit was inside the clearing level' : 'insufficient market demand';
+    events.push(createEvent('warning', `${instrumentLabel} bookbuild failed: ${reason}; demand ${(book.demandAmount / 1e6).toFixed(0)}m for target ${(book.targetAmount / 1e6).toFixed(0)}m`, ['capital','funding','market']));
+    return;
+  }
+
+  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
+  if (!cash) return;
+
+  if (book.instrument === 'cet1') {
+    ensureEquityMarketState(state, config);
+    state.financial.capital.cet1 += book.netProceeds;
+    cash.balance += book.netProceeds;
+    const issuePrice = Math.max(1e-6, book.issuePrice ?? state.equityMarket.sharePrice);
+    state.equityMarket.sharesOutstanding += book.grossProceeds / issuePrice;
+    state.equityMarket.marketCap = state.equityMarket.sharePrice * state.equityMarket.sharesOutstanding;
+  } else if (book.instrument === 'at1') {
+    const oldBalance = Math.max(0, state.financial.capital.at1);
+    const oldCoupon = state.capitalMarkets.at1CouponRateAnnual ?? config.riskLimits.capitalPolicy.at1CouponRateAnnual;
+    const newCoupon = Math.max(0, (book.marketReferenceRate ?? state.market.riskFreeLong) + (book.clearingSpreadBps ?? 0) / 10000);
+    state.financial.capital.at1 += book.netProceeds;
+    cash.balance += book.netProceeds;
+    state.capitalMarkets.at1CouponRateAnnual = blendRate(oldBalance, oldCoupon, book.netProceeds, newCoupon);
+  } else if (book.instrument === 'tier2') {
+    const rate = Math.max(0, (book.marketReferenceRate ?? state.market.riskFreeLong) + (book.clearingSpreadBps ?? 0) / 10000);
+    const tenor = Math.max(60, Math.round(book.tenorMonths ?? 60));
+    const line = ensureLineItem(state, BalanceSheetSide.Liability, LiabilityProductType.Tier2Debt, 'Tier 2 Subordinated Debt', rate, config);
+    genericFundingBuckets(state, LiabilityProductType.Tier2Debt).push({ tenorMonths: tenor, monthsToMaturity: tenor, notional: book.executedAmount, rate });
+    line.balance += book.executedAmount;
+    line.interestRate = blendRate(Math.max(0, line.balance - book.executedAmount), line.interestRate, book.executedAmount, rate);
+    state.financial.capital.tier2 = (state.financial.capital.tier2 ?? 0) + book.executedAmount;
+    cash.balance += book.executedAmount;
+  } else {
+    const rate = Math.max(0, (book.marketReferenceRate ?? state.market.riskFreeLong) + (book.clearingSpreadBps ?? 0) / 10000);
+    const tenor = getDefaultRefinanceTenorMonths(config, LiabilityProductType.WholesaleFundingLT, book.tenorMonths);
+    addFundingBucket(state, LiabilityProductType.WholesaleFundingLT, book.executedAmount, rate, tenor);
+    syncFundingLineFromLadder(state, config, LiabilityProductType.WholesaleFundingLT);
+    cash.balance += book.executedAmount;
+  }
+
+  events.push(createEvent(
+    book.status === 'partial' ? 'warning' : 'info',
+    `${instrumentLabel} bookbuild ${book.status}: target ${(book.targetAmount / 1e6).toFixed(0)}m, demand ${(book.demandAmount / 1e6).toFixed(0)}m (${book.coverageRatio.toFixed(2)}x), executed ${(book.executedAmount / 1e6).toFixed(0)}m at ${capitalMarketsPricingLabel(book)}`,
+    ['capital','funding','market']
+  ));
 };
 
 const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: 'STR'|'ILTR', amount: number, events: SimulationEvent[]): void => {
@@ -2548,7 +2628,7 @@ export const applyCapitalPolicyDistributions = (
 
   const at1CouponDue = Math.max(
     0,
-    state.financial.capital.at1 * config.riskLimits.capitalPolicy.at1CouponRateAnnual * dtYears
+    state.financial.capital.at1 * (state.capitalMarkets?.at1CouponRateAnnual ?? config.riskLimits.capitalPolicy.at1CouponRateAnnual) * dtYears
   );
   const autoAllowsAt1 =
     !metrics.mdaTriggered &&
