@@ -25,6 +25,30 @@ export type LiquidityRegulatoryClass =
   | 'centralBankSecuredFunding'
   | 'tier2Funding';
 
+/**
+ * NSFR classifications are independent of the broader liquidity class so a new
+ * product can reuse an existing LCR treatment while declaring its own C80/C81
+ * treatment. Factor schedules live in products/nsfr.ts.
+ */
+export type NsfrAsfRegulatoryClass =
+  | 'none'
+  | 'retail'
+  | 'nonFinancialCorporate'
+  | 'centralBank'
+  | 'counterpartyUnknown'
+  | 'tier2Capital'
+  | 'derivativeLiability'
+  | 'otherLiabilities';
+
+export type NsfrRsfRegulatoryClass =
+  | 'none'
+  | 'centralBankReserve'
+  | 'level1Sovereign'
+  | 'mortgage'
+  | 'otherLoan'
+  | 'derivativeAsset'
+  | 'derivativeLiability';
+
 export type CreditRiskRegulatoryClass =
   | 'derivativeCounterparty'
   | 'centralBank'
@@ -39,6 +63,8 @@ export type LeverageRegulatoryClass = 'standard' | 'derivativeAssetReplacement' 
 
 export interface ProductRegulatoryClassification {
   liquidity: LiquidityRegulatoryClass;
+  nsfrAsf: NsfrAsfRegulatoryClass;
+  nsfrRsf: NsfrRsfRegulatoryClass;
   creditRisk: CreditRiskRegulatoryClass;
   capital: CapitalRegulatoryClass;
   leverage: LeverageRegulatoryClass;
@@ -141,6 +167,8 @@ export const ASSET_PRODUCTS = defineProducts({
     capabilities: {},
     regulatory: {
       liquidity: 'derivativeAsset',
+      nsfrAsf: 'none',
+      nsfrRsf: 'derivativeAsset',
       creditRisk: 'derivativeCounterparty',
       capital: 'none',
       leverage: 'derivativeAssetReplacement',
@@ -155,6 +183,8 @@ export const ASSET_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'centralBankReserve',
+      nsfrAsf: 'none',
+      nsfrRsf: 'centralBankReserve',
       creditRisk: 'centralBank',
       capital: 'none',
       leverage: 'centralBankReserve',
@@ -174,6 +204,8 @@ export const ASSET_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'level1Sovereign',
+      nsfrAsf: 'none',
+      nsfrRsf: 'level1Sovereign',
       creditRisk: 'sovereign',
       capital: 'none',
       leverage: 'standard',
@@ -192,6 +224,8 @@ export const ASSET_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'residentialMortgage',
+      nsfrAsf: 'none',
+      nsfrRsf: 'mortgage',
       creditRisk: 'residentialMortgage',
       capital: 'none',
       leverage: 'standard',
@@ -210,6 +244,8 @@ export const ASSET_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'consumerLoan',
+      nsfrAsf: 'none',
+      nsfrRsf: 'otherLoan',
       creditRisk: 'retailUnsecured',
       capital: 'none',
       leverage: 'standard',
@@ -228,6 +264,8 @@ export const ASSET_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'corporateLoan',
+      nsfrAsf: 'none',
+      nsfrRsf: 'otherLoan',
       creditRisk: 'corporate',
       capital: 'none',
       leverage: 'standard',
@@ -243,6 +281,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     capabilities: {},
     regulatory: {
       liquidity: 'derivativeLiability',
+      nsfrAsf: 'derivativeLiability',
+      nsfrRsf: 'derivativeLiability',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -255,6 +295,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     capabilities: {},
     regulatory: {
       liquidity: 'creditProvision',
+      nsfrAsf: 'otherLiabilities',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -273,6 +315,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'retailSightDeposit',
+      nsfrAsf: 'retail',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -292,6 +336,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'retailTermDeposit',
+      nsfrAsf: 'retail',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -310,6 +356,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'corporateOperatingDeposit',
+      nsfrAsf: 'nonFinancialCorporate',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -328,6 +376,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'corporateNonOperatingDeposit',
+      nsfrAsf: 'nonFinancialCorporate',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -345,6 +395,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'wholesaleFundingShort',
+      nsfrAsf: 'counterpartyUnknown',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -367,6 +419,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'wholesaleFundingLong',
+      nsfrAsf: 'counterpartyUnknown',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -379,6 +433,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     capabilities: {},
     regulatory: {
       liquidity: 'centralBankSecuredFunding',
+      nsfrAsf: 'centralBank',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'none',
       leverage: 'standard',
@@ -397,6 +453,8 @@ export const LIABILITY_PRODUCTS = defineProducts({
     },
     regulatory: {
       liquidity: 'tier2Funding',
+      nsfrAsf: 'tier2Capital',
+      nsfrRsf: 'none',
       creditRisk: 'none',
       capital: 'tier2OwnFunds',
       leverage: 'standard',

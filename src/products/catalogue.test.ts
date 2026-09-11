@@ -103,6 +103,8 @@ describe('product catalogue', () => {
     [...assetProducts(), ...liabilityProducts()].forEach(product => {
       expect(product.regulatory).toEqual({
         liquidity: expect.any(String),
+        nsfrAsf: expect.any(String),
+        nsfrRsf: expect.any(String),
         creditRisk: expect.any(String),
         capital: expect.any(String),
         leverage: expect.any(String),
@@ -110,11 +112,26 @@ describe('product catalogue', () => {
     });
     expect(getProduct(AssetProductType.Mortgages).regulatory).toMatchObject({
       liquidity: 'residentialMortgage',
+      nsfrAsf: 'none',
+      nsfrRsf: 'mortgage',
       creditRisk: 'residentialMortgage',
     });
     expect(getProduct(LiabilityProductType.Tier2Debt).regulatory).toMatchObject({
       liquidity: 'tier2Funding',
+      nsfrAsf: 'tier2Capital',
+      nsfrRsf: 'none',
       capital: 'tier2OwnFunds',
+    });
+  });
+
+  it('keeps NSFR treatment independent from the broader liquidity class', () => {
+    expect(getProduct(LiabilityProductType.WholesaleFundingLT).regulatory).toMatchObject({
+      liquidity: 'wholesaleFundingLong',
+      nsfrAsf: 'counterpartyUnknown',
+    });
+    expect(getProduct(LiabilityProductType.Tier2Debt).regulatory).toMatchObject({
+      liquidity: 'tier2Funding',
+      nsfrAsf: 'tier2Capital',
     });
   });
 

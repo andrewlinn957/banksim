@@ -35,14 +35,17 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     const retail = lines.find(x => x.productType === L.RetailCurrentAccounts)!;
     expect(retail.outflow / retail.balance).toBeCloseTo(0.055);
     expect(retail.asf / retail.balance).toBeCloseTo(0.945);
+    expect(retail.asfContributions.map(c => c.category)).toEqual(['stableRetail', 'otherRetail']);
+    expect(retail.asfContributions.map(c => c.corep)).toEqual(['C81 2.2.1', 'C81 2.2.2']);
     const operating = lines.find(x => x.productType === L.CorporateOperatingDeposits)!;
     const otherBusiness = lines.find(x => x.productType === L.CorporateNonOperatingDeposits)!;
     expect(operating.outflow / operating.balance).toBeCloseTo(0.25);
     expect(operating.asf / operating.balance).toBeCloseTo(0.5);
+    expect(operating.asfContributions[0].corep).toBe('C81 2.3.5');
     expect(otherBusiness.outflow / otherBusiness.balance).toBeCloseTo(0.4);
     expect(otherBusiness.asf / otherBusiness.balance).toBeCloseTo(0.5);
   });
-  it('uses retail runoff inside 30 days and maturity-based NSFR factors for fixed-term savings', () => {
+  it('uses stable/other retail factors and maturity-based NSFR treatment for fixed-term savings', () => {
     const s = cloneBankState(initialState);
     s.fundingLadders[L.RetailTermDeposits] = [
       { monthsToMaturity: 1, tenorMonths: 12, notional: 100, rate: .04 },
@@ -51,7 +54,10 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     line(s,L.RetailTermDeposits).balance=200;
     const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.RetailTermDeposits)!;
     expect(l.outflow).toBeCloseTo(10);
-    expect(l.asf).toBeCloseTo(190);
+    expect(l.asf).toBeCloseTo(194.5);
+    expect(l.asfContributions.reduce((sum,c)=>sum+c.weighted,0)).toBeCloseTo(l.asf);
+    expect(l.asfContributions.filter(c=>c.maturityBand==='under6m').map(c=>c.factor).sort()).toEqual([0.9,0.95]);
+    expect(l.asfContributions.filter(c=>c.maturityBand==='oneYearPlus').every(c=>c.factor===1)).toBe(true);
   });
   it('uses contractual wholesale maturities at 1, 6 and 12 months', () => {
     const s = cloneBankState(initialState);
@@ -59,14 +65,30 @@ describe('2026 prudential rules under documented portfolio assumptions', () => {
     line(s,L.WholesaleFundingLT).balance=500;
     const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.WholesaleFundingLT)!;
     expect(l.outflow).toBe(100);expect(l.asf).toBe(200);
+    expect(l.asfContributions.every(c=>c.corep==='C81 2.6')).toBe(true);
+  });
+  it('uses the Tier 2 capital-instrument ASF schedule rather than generic wholesale treatment', () => {
+    const s=cloneBankState(initialState);
+    s.financial.balanceSheet.items.push({ ...line(s,L.WholesaleFundingLT), productType:L.Tier2Debt, label:'Tier 2 subordinated debt', balance:200 });
+    s.fundingLadders[L.Tier2Debt]=[
+      { monthsToMaturity:11, tenorMonths:60, notional:100, rate:.06 },
+      { monthsToMaturity:12, tenorMonths:60, notional:100, rate:.06 },
+    ];
+    const l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===L.Tier2Debt)!;
+    expect(l.asf).toBe(100);
+    expect(l.asfContributions.map(c=>c.factor)).toEqual([0,1]);
+    expect(l.asfContributions.every(c=>c.corep==='C81 2.1.3')).toBe(true);
   });
   it('excludes defaulted loan inflows and uses qualifying mortgage maturity RSF', () => {
     const s=cloneBankState(initialState), c=s.loanCohorts[A.Mortgages]![0];
     s.loanCohorts[A.Mortgages]=[{...c,outstandingPrincipal:100,annualInterestRate:0,termMonths:12,ageMonths:0,stage:'stage1'}];s.workoutPipelines[A.Mortgages]=[];line(s,A.Mortgages).balance=100;
     let l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===A.Mortgages)!;
     expect(l.inflow).toBeCloseTo(100/12*.5);expect(l.rsf).toBeCloseTo(100 * (11 / 12 * .5 + 1 / 12 * .65));
+    expect(l.rsfContributions.map(c=>c.category)).toEqual(['mortgageShort','mortgageLong']);
     s.loanCohorts[A.Mortgages]![0].stage='stage3';l=prudentialLiquidityLines(s,baseConfig).find(l=>l.productType===A.Mortgages)!;
     expect(l.inflow).toBe(0);expect(l.rsf).toBe(100);
+    expect(l.rsfContributions).toHaveLength(1);
+    expect(l.rsfContributions[0]).toMatchObject({ category:'nonPerforming', corep:'C80 1.9.3', factor:1 });
   });
   it('limits reserve exclusion to deposit-matched reserves and includes commitments', () => {
     const s=cloneBankState(initialState);
