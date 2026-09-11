@@ -53,11 +53,13 @@ jobs:
           PY
       - name: Apply cleanup
         run: python3 scripts/remove_low_value_soft_state.py
-      - name: Fix generated help copy quoting
+      - name: Fix generated help copy and test fallout
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
+          # Generated help copy: use double quotes around the apostrophe.
           p=Path('src/content/mechanicsRegistry.ts')
           s=p.read_text()
           bad="      'Management chooses the bank's internal prudential targets.',"
@@ -65,6 +67,38 @@ jobs:
           if bad not in s:
               raise SystemExit('Expected generated risk-appetite help line not found')
           p.write_text(s.replace(bad,good))
+
+          # Removed mechanics are no longer valid contextual-help anchors.
+          p=Path('src/content/mechanicsRegistry.test.ts')
+          s=p.read_text()
+          for line in ["      'conduct-risk',\n", "      'board-pressure',\n"]:
+              if line not in s:
+                  raise SystemExit(f'Expected obsolete mechanics-registry anchor not found: {line!r}')
+              s=s.replace(line,'')
+          p.write_text(s)
+
+          # closeCapital no longer accepts the removed conduct-cost argument.
+          for filename in ['src/engine/costModel.test.ts','src/engine/loanCohorts.test.ts']:
+              p=Path(filename)
+              s=p.read_text()
+              old=s
+              s=s.replace('    defaultedPrincipal,\n    0,\n    []\n', '    defaultedPrincipal,\n    []\n')
+              s=s.replace('      cohortRes.defaultedPrincipal,\n      0,\n      []\n', '      cohortRes.defaultedPrincipal,\n      []\n')
+              if s == old:
+                  raise SystemExit(f'Expected closeCapital conduct-cost test argument not found in {filename}')
+              p.write_text(s)
+
+          # The internal-target test now isolates the two retained dynamic channels:
+          # funding stress and the funding-confidence state.
+          p=Path('src/engine/internalCapitalTarget.test.ts')
+          s=p.read_text()
+          anchor='    const config = structuredClone(baseConfig);\n'
+          if anchor not in s:
+              raise SystemExit('Internal-capital-target config anchor not found')
+          s=s.replace(anchor, anchor +
+              '    config.riskLimits.capitalPolicy.internalTargetStressSensitivity = .02;\n' +
+              '    config.riskLimits.capitalPolicy.internalTargetConfidenceSensitivity = .015;\n')
+          p.write_text(s)
           PY
       - name: Install dependencies
         run: npm ci
