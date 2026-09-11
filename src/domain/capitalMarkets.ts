@@ -36,4 +36,6 @@ export interface CapitalMarketsTransactionRecord extends CapitalMarketsBookbuild
 
 export interface CapitalMarketsState {
   transactions: CapitalMarketsTransactionRecord[];
+  /** Weighted coupon on outstanding AT1 issued through the market engine. */
+  at1CouponRateAnnual?: number;
 }
