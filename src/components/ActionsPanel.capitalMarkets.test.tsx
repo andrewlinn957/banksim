@@ -25,10 +25,11 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).toContain('issue price');
   });
 
-  it('shows spread and tenor controls for a Tier 2 book', () => {
+  it('shows spread and tenor controls for a Tier 2 book on the Treasury & Funding desk', () => {
     const state=form({capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});
-    const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
+    const markup=renderToStaticMarkup(<ActionsPanel department="Treasury" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
+    expect(markup).toContain('Wholesale funding markets');
     expect(markup).toContain('Tier 2');
     expect(markup).toContain('Maximum acceptable spread');
     expect(markup).toContain('7 years');
