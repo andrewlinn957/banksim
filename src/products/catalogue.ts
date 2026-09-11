@@ -37,6 +37,7 @@ export type NsfrAsfRegulatoryClass =
   | 'centralBank'
   | 'counterpartyUnknown'
   | 'tier2Capital'
+  | 'derivativeLiability'
   | 'otherLiabilities';
 
 export type NsfrRsfRegulatoryClass =
@@ -280,7 +281,7 @@ export const LIABILITY_PRODUCTS = defineProducts({
     capabilities: {},
     regulatory: {
       liquidity: 'derivativeLiability',
-      nsfrAsf: 'otherLiabilities',
+      nsfrAsf: 'derivativeLiability',
       nsfrRsf: 'derivativeLiability',
       creditRisk: 'none',
       capital: 'none',
