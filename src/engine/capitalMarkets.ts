@@ -8,6 +8,8 @@ import {
   type CapitalMarketsReferenceSize,
 } from '../capitalMarkets/catalogue';
 import { nelsonSiegelYield } from './ukMarketModel';
+import { calculateFundingMarket } from './fundingMarket';
+import { buildFundingMarketFundamentals } from './fundingMarketAdapter';
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 const safeRatio = (num: number, den: number): number => den > 1e-9 ? num / den : 0;
@@ -26,12 +28,6 @@ const referenceSize = (state: BankState, reference: CapitalMarketsReferenceSize)
   }
   if (reference === 'ownFunds') return Math.max(1, ownFunds(state));
   return Math.max(1, totalAssets(state));
-};
-
-const confidenceImpact = (state: BankState, config: SimulationConfig) => {
-  const confidenceState = state.behaviour.fundingConfidenceState ?? state.risk.riskMetrics.fundingConfidenceState ?? 'stable';
-  const fallback = { spreadPenaltyBps: 0, accessMultiplier: 1, equityIssuanceMultiplier: 1, equityIssuanceFeeRate: 0 };
-  return config.behaviour.confidenceStateMachine?.impacts?.[confidenceState] ?? fallback;
 };
 
 const recentIssuanceRatio = (state: BankState, instrument: CapitalMarketsOrder['instrument'], reference: number): number => {
@@ -86,43 +82,29 @@ export const buildCapitalMarketsBook = (
   const targetAmount = Number.isFinite(order.targetAmount) ? Math.max(0, order.targetAmount) : 0;
   const reference = referenceSize(state, definition.referenceSize);
   const recentRatio = recentIssuanceRatio(state, order.instrument, reference);
-  const confidence = clamp(
-    state.risk.riskMetrics.fundingConfidenceScore ?? state.behaviour.fundingConfidenceScore ?? 0.75,
-    0,
-    1
-  );
-  const impact = confidenceImpact(state, config);
   const sizeRatio = clamp(safeRatio(targetAmount, reference), 0, 2);
   const repeatCapacityFactor = 1 / (1 + recentRatio * 1.75);
-  const confidenceCapacity = definition.confidenceChannel === 'equity'
-    ? clamp(impact.equityIssuanceMultiplier, 0, 1)
-    : clamp(impact.accessMultiplier, 0, 1);
-  const capitalCondition = definition.applyCapitalCondition
-    ? clamp(0.65 + Math.max(-0.15, state.risk.riskMetrics.internalCet1Headroom ?? 0) * 7, 0.25, 1.15)
-    : 1;
-  const rawCapacity =
-    reference *
-    definition.baseCapacityMultiple *
-    confidenceCapacity *
-    repeatCapacityFactor *
-    capitalCondition;
-  const demandAmount = Math.max(0, rawCapacity);
-  const coverageRatio = targetAmount > 0 ? demandAmount / targetAmount : 0;
   const tenorMonths = normaliseTenor(definition, order.tenorMonths);
 
+  let demandAmount = 0;
   let clearingDiscount: number | undefined;
   let clearingSpreadBps: number | undefined;
   let marketReferenceRate: number | undefined;
   let issuePrice: number | undefined;
   let failedPrice = false;
+  let failedDemand = false;
+  let fundingMarketAssessment: CapitalMarketsBookbuildResult['fundingMarketAssessment'];
 
   if (definition.pricingKind === 'discount') {
+    // Equity capacity already falls when the bank's market capitalisation falls. Keep the
+    // bookbuild tied to observable valuation and recent issuance rather than a confidence state.
+    const rawCapacity = reference * definition.baseCapacityMultiple * repeatCapacityFactor;
+    demandAmount = Math.max(0, rawCapacity);
     const fairValue = Math.max(1e-6, state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice);
     const valuationRatio = clamp(state.equityMarket.sharePrice / fairValue, 0.4, 1.4);
     clearingDiscount = clamp(
       (definition.baseDiscount ?? 0.03)
       + 0.16 * Math.min(1, sizeRatio)
-      + 0.08 * (1 - confidence)
       + 0.06 * recentRatio
       + 0.05 * Math.max(0, 1 - valuationRatio),
       0,
@@ -134,35 +116,48 @@ export const buildCapitalMarketsBook = (
     );
     failedPrice = order.maxDiscount !== undefined && clearingDiscount > Math.max(0, order.maxDiscount) + 1e-12;
   } else {
-    const sensitivity = definition.spreadSensitivity ?? 1;
-    const seniorMarketSpreadBps = Math.max(0, state.market.seniorDebtSpread * 10000);
-    const capitalPenaltyBps =
-      Math.max(0, -(state.risk.riskMetrics.internalCet1Headroom ?? 0)) * 10000 * 1.5 * sensitivity;
-    clearingSpreadBps = Math.max(
-      0,
-      seniorMarketSpreadBps
-        + (definition.basePremiumBps ?? 0)
-        + impact.spreadPenaltyBps * sensitivity
-        + 140 * Math.min(1.5, sizeRatio) * sensitivity
-        + 180 * recentRatio * sensitivity
-        + capitalPenaltyBps
-    );
+    const marketTerms = definition.fundingMarket;
+    if (!marketTerms) {
+      throw new Error(`Missing funding-market calibration for ${definition.instrument}`);
+    }
+    fundingMarketAssessment = calculateFundingMarket({
+      referenceAmount: reference,
+      targetAmount,
+      maxSpreadBps: order.maxSpreadBps,
+      requestedTenorMonths: tenorMonths,
+      recentIssuanceRatio: recentRatio,
+      fundamentals: buildFundingMarketFundamentals(state, config),
+      instrument: {
+        basePremiumBps: definition.basePremiumBps ?? 0,
+        spreadSensitivity: definition.spreadSensitivity ?? 1,
+        baseCapacityMultiple: definition.baseCapacityMultiple,
+        newIssueConcessionBps: marketTerms.newIssueConcessionBps,
+        demandSlopeBps: marketTerms.demandSlopeBps,
+        hardCapacityMultiple: marketTerms.hardCapacityMultiple,
+        tenorSpreadBpsPerYear: marketTerms.tenorSpreadBpsPerYear,
+        defaultTenorMonths: definition.defaultTenorMonths,
+        permittedTenorMonths: definition.permittedTenorMonths,
+      },
+    });
+    demandAmount = fundingMarketAssessment.demandAtPrice;
+    clearingSpreadBps = fundingMarketAssessment.clearingSpreadBps;
     marketReferenceRate = benchmarkRate(state, definition, tenorMonths);
-    failedPrice = order.maxSpreadBps !== undefined && clearingSpreadBps > Math.max(0, order.maxSpreadBps) + 1e-9;
+    failedPrice =
+      order.maxSpreadBps !== undefined &&
+      order.maxSpreadBps + 1e-9 < fundingMarketAssessment.fairSpreadBps;
+    failedDemand = !fundingMarketAssessment.tenorAvailable || fundingMarketAssessment.hardCapacity <= 1e-6;
   }
 
-  const executable = failedPrice ? 0 : Math.min(targetAmount, demandAmount);
+  const executable = failedPrice || failedDemand ? 0 : Math.min(targetAmount, demandAmount);
+  const coverageRatio = targetAmount > 0 ? demandAmount / targetAmount : 0;
   const status: CapitalMarketsBookbuildResult['status'] = failedPrice
     ? 'failed-price'
-    : executable <= 1e-6
+    : failedDemand || executable <= 1e-6
       ? 'failed-demand'
       : executable + 1e-6 < targetAmount
         ? 'partial'
         : 'filled';
-  const feeRate = definition.confidenceChannel === 'equity'
-    ? clamp(definition.baseFeeRate + impact.equityIssuanceFeeRate, 0, 0.5)
-    : definition.baseFeeRate;
-  const fees = executable * feeRate;
+  const fees = executable * definition.baseFeeRate;
 
   return {
     instrument: order.instrument,
@@ -181,5 +176,6 @@ export const buildCapitalMarketsBook = (
     fees,
     netProceeds: Math.max(0, executable - fees),
     recentIssuanceRatio: recentRatio,
+    fundingMarketAssessment,
   };
 };
