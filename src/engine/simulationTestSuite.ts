@@ -290,7 +290,7 @@ export const simulationTestCases: SimulationTestCase[] = [
       assertAccountingOk(baseline, 'baseline');
 
       const stressed = step(ctx, ctx.createState(), [
-        { type: 'issueDebt', productType: LiabilityProductType.WholesaleFundingST, amount: 20e9, rate: 0.055 },
+        { type: 'launchCapitalMarketsTransaction', instrument: 'senior', targetAmount: 20e9, maxSpreadBps: 2500, tenorMonths: 24 },
         { type: 'buySellAsset', productType: AssetProductType.Mortgages, amountDelta: 20e9 },
       ]);
       assertAccountingOk(stressed, 'stressed');

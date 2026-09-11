@@ -83,7 +83,7 @@ export const buildCapitalMarketsBook = (
   order: CapitalMarketsOrder
 ): CapitalMarketsBookbuildResult => {
   const definition = getCapitalMarketsInstrument(order.instrument);
-  const targetAmount = Math.max(0, order.targetAmount);
+  const targetAmount = Number.isFinite(order.targetAmount) ? Math.max(0, order.targetAmount) : 0;
   const reference = referenceSize(state, definition.referenceSize);
   const recentRatio = recentIssuanceRatio(state, order.instrument, reference);
   const confidence = clamp(

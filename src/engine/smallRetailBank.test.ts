@@ -51,12 +51,13 @@ describe('small UK retail-bank model', () => {
       state,
       config: baseConfig,
       shocks: [],
-      actions: [{ type: 'setTreasuryPolicy', giltShareOfHqla: 0.4, giltDurationYears: 2 }],
+      actions: [{ type: 'buySellAsset', productType: A.Gilts, amountDelta: 100e6, tenorMonths: 24 }],
     }).nextState;
     const liquid0 = cash0 + gilts0;
     const liquid1 = balance(out, A.CashReserves) + balance(out, A.Gilts);
     expect(Math.abs(liquid1 - liquid0)).toBeLessThan(200e6); // normal monthly customer/business flows can move cash; Treasury policy must not manufacture a material balance sheet.
-    expect(out.behaviour.treasuryPolicy?.giltDurationYears).toBe(2);
+    expect(balance(out, A.Gilts)).toBeGreaterThan(gilts0);
+    expect((out.assetMaturityLadders?.[A.Gilts] ?? []).some(bucket => bucket.tenorMonths === 24)).toBe(true);
   });
 
   it('uses BoE secured funding as collateralised liquidity', () => {
@@ -80,7 +81,7 @@ describe('small UK retail-bank model', () => {
       state: cloneBankState(initialState),
       config: baseConfig,
       shocks: [],
-      actions: [{ type: 'issueTier2', amount: 150e6, maturityMonths: 60 }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: 150e6, maxSpreadBps: 2500, tenorMonths: 60 }],
     }).nextState;
     expect(out.financial.capital.tier2).toBeGreaterThan(0);
     expect(out.risk.riskMetrics.totalCapitalRatio).toBeGreaterThan(before.totalCapitalRatio ?? 0);

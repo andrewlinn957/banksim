@@ -11,7 +11,7 @@ import { commitmentEcl } from './impairment';
  *
  * Most helpers in this file mutate `state` in-place and append human-readable `SimulationEvent`s.
  */
-import { BankState, FundingMaturityBucket, InterestRateHedge } from '../domain/bankState';
+import { BankState, ContractualMaturityBucket, InterestRateHedge } from '../domain/bankState';
 import { BalanceSheet, BalanceSheetItem } from '../domain/balanceSheet';
 import {
   AssetProductType,
@@ -25,13 +25,9 @@ import {
   PlayerAction,
   AdjustRateAction,
   BuySellAssetAction,
-  IssueDebtAction,
-  IssueEquityAction,
-  IssueTier2Action,
   LaunchCapitalMarketsTransactionAction,
   DrawBoeFundingAction,
   SetMortgagePolicyAction,
-  SetTreasuryPolicyAction,
   SetTermDepositPolicyAction,
   SetUnderwritingAction,
   EnterHedgeAction,
@@ -131,26 +127,10 @@ const actionHandlers: ActionHandlerMap = {
     adjustInterestRate(findItem(ctx.state.financial.balanceSheet, action.productType), action.newRate);
     ctx.events.push(createEvent('info', `Adjusted rate for ${action.productType} to ${action.newRate.toFixed(4)}`));
   },
-  issueEquity: (action: IssueEquityAction, ctx) => {
-    applyIssueEquity(ctx.state, ctx.config, action.amount, ctx.events);
-  },
-  issueDebt: (action: IssueDebtAction, ctx) => {
-    applyIssueDebt(
-      ctx.state,
-      ctx.config,
-      action.productType,
-      action.amount,
-      action.rate,
-      action.maturityMonths,
-      ctx.events
-    );
-  },
   buySellAsset: (action: BuySellAssetAction, ctx) => {
-    const tenorMonths = action.tenorMonths ?? (action.maturityYears !== undefined ? Math.round(action.maturityYears * 12) : undefined);
-    const execution = applyBuySellAsset(ctx.state, ctx.config, action.productType, action.amountDelta, ctx.events, tenorMonths);
+    const execution = applyBuySellAsset(ctx.state, ctx.config, action.productType, action.amountDelta, ctx.events, action.tenorMonths);
     if (execution) ctx.executions.assetTrades.push(execution);
   },
-  issueTier2: (action: IssueTier2Action, ctx) => { applyIssueTier2(ctx.state,ctx.config,action.amount,action.maturityMonths,ctx.events); },
   launchCapitalMarketsTransaction: (action: LaunchCapitalMarketsTransactionAction, ctx) => {
     const book = buildCapitalMarketsBook(ctx.state, ctx.config, {
       instrument: action.instrument,
@@ -164,24 +144,6 @@ const actionHandlers: ActionHandlerMap = {
   },
   drawBoeFunding: (action: DrawBoeFundingAction, ctx) => { applyBoeFunding(ctx.state,ctx.config,action.facility,action.amount,ctx.events); },
   setMortgagePolicy: (action: SetMortgagePolicyAction, ctx) => { ctx.state.behaviour.mortgagePolicy={maxLtv:clamp(action.maxLtv,.5,.95),fixedPeriodMonths:Math.max(12,Math.round(action.fixedPeriodMonths))}; ctx.events.push(createEvent('info',`Mortgage policy: max LTV ${(ctx.state.behaviour.mortgagePolicy.maxLtv*100).toFixed(0)}%, fixed ${ctx.state.behaviour.mortgagePolicy.fixedPeriodMonths}m`)); },
-  setTreasuryPolicy: (action: SetTreasuryPolicyAction, ctx) => {
-    const nextPolicy = {
-      giltShareOfHqla: clamp(action.giltShareOfHqla, 0, 1),
-      giltDurationYears: clamp(action.giltDurationYears, .25, 15),
-    };
-    const previous = ctx.state.behaviour.treasuryPolicy;
-    const changed =
-      !previous ||
-      Math.abs(previous.giltShareOfHqla - nextPolicy.giltShareOfHqla) > 1e-9 ||
-      Math.abs(previous.giltDurationYears - nextPolicy.giltDurationYears) > 1e-9;
-    ctx.state.behaviour.treasuryPolicy = nextPolicy;
-    // Treasury allocation changes are player actions. A standing policy is not silently
-    // re-applied every month, preserving the consequences of choosing to do nothing.
-    if (changed) {
-      const execution = applyTreasuryPolicy(ctx.state, ctx.config, ctx.events);
-      if (execution) ctx.executions.assetTrades.push(execution);
-    }
-  },
   setTermDepositPolicy: (action: SetTermDepositPolicyAction, ctx) => { ctx.state.behaviour.termDepositTenorMonths=Math.max(6,Math.round(action.tenorMonths)); },
   setUnderwriting: (action: SetUnderwritingAction, ctx) => {
     if (!ctx.state.behaviour.underwritingTightness) {
@@ -465,9 +427,6 @@ const findItem = (bs: BalanceSheet, productType: ProductType): BalanceSheetItem 
   bs.items.find((i) => i.productType === productType);
 
 const ensureLoanPipelineState = (state: BankState, productType: AssetProductType) => {
-  if (!state.loanPipelines) {
-    state.loanPipelines = {};
-  }
   const existing = state.loanPipelines[productType];
   if (existing) {
     return existing;
@@ -559,65 +518,6 @@ const adjustInterestRate = (item: BalanceSheetItem | undefined, newRate: number)
   item.interestRate = newRate;
 };
 
-const applyIssueEquity = (
-  state: BankState,
-  config: SimulationConfig,
-  amount: number,
-  events: SimulationEvent[]
-): void => {
-  ensureEquityMarketState(state, config);
-  const requested = Math.max(0, amount);
-  if (requested <= 0) return;
-  const confidenceImpact = getConfidenceStateImpact(state, config);
-  const executable = requested * confidenceImpact.equityIssuanceMultiplier;
-  const issuanceFee = executable * confidenceImpact.equityIssuanceFeeRate;
-  const netProceeds = Math.max(0, executable - issuanceFee);
-  if (netProceeds <= 0) {
-    events.push(
-      createEvent(
-        'warning',
-        `Equity issuance failed in ${confidenceImpact.state} confidence state: requested ${requested.toFixed(2)} but no executable proceeds`,
-        ['capital', 'funding']
-      )
-    );
-    return;
-  }
-
-  // New equity increases CET1 capital and provides fresh cash funding.
-  state.financial.capital.cet1 += netProceeds;
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (cash) {
-    cash.balance += netProceeds;
-  }
-  const issuanceDiscount = clamp(config.behaviour.sharePriceModel?.equityIssuanceDiscount ?? 0.1, 0, 0.5);
-  const issuePrice = Math.max(
-    config.behaviour.sharePriceModel?.priceFloor ?? 0.05,
-    state.equityMarket.sharePrice * (1 - issuanceDiscount)
-  );
-  const issuedShares = executable / Math.max(1e-6, issuePrice);
-  state.equityMarket.sharesOutstanding += issuedShares;
-  state.equityMarket.marketCap = state.equityMarket.sharePrice * state.equityMarket.sharesOutstanding;
-
-  events.push(
-    createEvent(
-      'info',
-      `Issued equity (${confidenceImpact.state}): requested ${requested.toFixed(2)}, raised ${netProceeds.toFixed(
-        2
-      )}, issuance costs ${issuanceFee.toFixed(2)}, new shares ${(issuedShares / 1e6).toFixed(2)}m`,
-      ['capital', 'funding']
-    )
-  );
-  if (netProceeds + 1e-9 < requested) {
-    events.push(
-      createEvent(
-        'warning',
-        `Equity issuance haircut due to confidence state: executable ${(confidenceImpact.equityIssuanceMultiplier * 100).toFixed(0)}%`,
-        ['capital', 'funding']
-      )
-    );
-  }
-};
-
 // Weighted-average rate when adding to an existing position.
 const blendRate = (existingBalance: number, existingRate: number, newAmount: number, newRate: number): number => {
   if (existingBalance + newAmount === 0) return newRate;
@@ -652,21 +552,18 @@ const getDefaultRefinanceTenorMonths = (
   return Math.max(1, Math.round(raw));
 };
 
-const getFundingLadderBuckets = (state: BankState, productType: FundingProduct): FundingMaturityBucket[] => {
-  if (!state.fundingLadders) {
-    state.fundingLadders = {};
-  }
+const getFundingLadderBuckets = (state: BankState, productType: FundingProduct): ContractualMaturityBucket[] => {
   const existing = state.fundingLadders[productType];
   if (existing) return existing;
-  const created: FundingMaturityBucket[] = [];
+  const created: ContractualMaturityBucket[] = [];
   state.fundingLadders[productType] = created;
   return created;
 };
 
-const sumFundingNotional = (buckets: FundingMaturityBucket[]): number =>
+const sumFundingNotional = (buckets: ContractualMaturityBucket[]): number =>
   buckets.reduce((sum, bucket) => sum + Math.max(0, bucket.notional), 0);
 
-const weightedFundingRateFromBuckets = (buckets: FundingMaturityBucket[], fallbackRate: number): number => {
+const weightedFundingRateFromBuckets = (buckets: ContractualMaturityBucket[], fallbackRate: number): number => {
   const total = sumFundingNotional(buckets);
   if (total <= 0) return fallbackRate;
   const weighted = buckets.reduce(
@@ -702,7 +599,7 @@ const syncFundingLineFromLadder = (
   const buckets = getFundingLadderBuckets(state, productType);
   const existingLine = findItem(state.financial.balanceSheet, productType);
   // Do not manufacture dormant wholesale products merely because the lifecycle loop knows about them.
-  // Legacy saved games with an existing line, or products with real maturity buckets, still work normally.
+  // Existing positions or products with real maturity buckets are synchronized normally.
   if (!existingLine && buckets.length === 0) return;
   const line = existingLine ?? ensureLineItem(
     state,
@@ -761,71 +658,7 @@ const ensureFundingLadders = (state: BankState, config: SimulationConfig): void 
   FUNDING_PRODUCTS.forEach((productType) => ensureFundingLadderCoverage(state, config, productType));
 };
 
-const applyIssueDebt = (
-  state: BankState,
-  config: SimulationConfig,
-  productType: FundingProduct,
-  amount: number,
-  rateOverride: number | undefined,
-  maturityMonths: number | undefined,
-  events: SimulationEvent[]
-): void => {
-  const requestedAmount = Math.max(0, amount);
-  if (requestedAmount <= 0) return;
-  ensureFundingLadders(state, config);
-  const confidenceImpact = getConfidenceStateImpact(state, config);
-  const issuedAmount = requestedAmount * confidenceImpact.accessMultiplier;
-  if (issuedAmount <= 0) {
-    events.push(
-      createEvent(
-        'warning',
-        `Debt issuance blocked in ${confidenceImpact.state} confidence state: requested ${requestedAmount.toFixed(2)} but no executable size`,
-        ['funding', 'capital']
-      )
-    );
-    return;
-  }
-
-  // Issue unsecured wholesale funding. Pricing defaults to market risk-free + spread unless overridden.
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-  const explicitRate =
-    rateOverride !== undefined && Number.isFinite(rateOverride) ? Math.max(0, rateOverride) : undefined;
-  const pricingRateBase =
-    explicitRate ??
-    (productType === LiabilityProductType.WholesaleFundingST
-      ? state.market.riskFreeShort + state.market.wholesaleFundingSpread
-      : state.market.riskFreeLong + state.market.seniorDebtSpread);
-  // Respect explicit deal pricing override; only apply endogenous confidence penalty on model-default pricing.
-  const confidenceSpreadPenalty = explicitRate === undefined ? confidenceImpact.spreadPenaltyBps / 10000 : 0;
-  const pricingRate = Math.max(0, pricingRateBase + confidenceSpreadPenalty);
-  const tenorMonths = getDefaultRefinanceTenorMonths(config, productType, maturityMonths);
-
-  addFundingBucket(state, productType, issuedAmount, pricingRate, tenorMonths);
-  syncFundingLineFromLadder(state, config, productType);
-  cash.balance += issuedAmount;
-  const line = findItem(state.financial.balanceSheet, productType);
-  events.push(
-    createEvent(
-      'info',
-      `Issued debt ${productType} (${confidenceImpact.state}): requested ${requestedAmount.toFixed(
-        2
-      )}, executed ${issuedAmount.toFixed(2)} at ${pricingRate.toFixed(4)} for ${tenorMonths}m (blended ${line?.interestRate.toFixed(4) ?? pricingRate.toFixed(4)})`
-    )
-  );
-  if (issuedAmount + 1e-9 < requestedAmount) {
-    events.push(
-      createEvent(
-        'warning',
-        `Debt issuance clipped by market confidence: access ${(confidenceImpact.accessMultiplier * 100).toFixed(0)}%`,
-        ['funding']
-      )
-    );
-  }
-};
-
-const genericFundingBuckets = (state: BankState, productType: ProductType): FundingMaturityBucket[] => {
-  state.fundingLadders ??= {};
+const genericFundingBuckets = (state: BankState, productType: ProductType): ContractualMaturityBucket[] => {
   return state.fundingLadders[productType] ?? (state.fundingLadders[productType] = []);
 };
 
@@ -868,18 +701,6 @@ const addContractualFundingPosition = (
   if (PRODUCTS[productType].regulatory.capital === 'tier2OwnFunds') {
     state.financial.capital.tier2 = (state.financial.capital.tier2 ?? 0) + issued;
   }
-};
-
-const applyIssueTier2 = (state: BankState, config: SimulationConfig, amount: number, maturityMonths: number | undefined, events: SimulationEvent[]): void => {
-  const issued = Math.max(0, amount);
-  if (!issued) return;
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  if (!cash) return;
-  const tenor = Math.max(60, Math.round(maturityMonths ?? 60));
-  const rate = Math.max(0, state.market.riskFreeLong + state.market.seniorDebtSpread + .015);
-  addContractualFundingPosition(state, config, LiabilityProductType.Tier2Debt, issued, rate, tenor);
-  cash.balance += issued;
-  events.push(createEvent('info', `Issued Tier 2 ${issued.toFixed(2)} at ${(rate * 100).toFixed(2)}% for ${tenor}m`, ['capital','funding']));
 };
 
 const capitalMarketsPricingLabel = (book: CapitalMarketsBookbuildResult): string =>
@@ -968,27 +789,6 @@ const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: '
   events.push(createEvent('info',`${facility} drawing ${executable.toFixed(2)} at ${(rate*100).toFixed(2)}%, secured on gilts`,['funding','liquidity']));
 };
 
-const applyTreasuryPolicy = (state: BankState, config: SimulationConfig, events: SimulationEvent[]): AssetTradeExecution | undefined => {
-  const policy = state.behaviour.treasuryPolicy;
-  if (!policy) return undefined;
-  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
-  const gilts = findItem(state.financial.balanceSheet, AssetProductType.Gilts);
-  if (!cash || !gilts) return undefined;
-  const total = Math.max(0, cash.balance) + Math.max(0, gilts.balance);
-  const targetShare = clamp(policy.giltShareOfHqla, 0, 1);
-  const currentShare = total > 0 ? Math.max(0, gilts.balance) / total : 0;
-  const tolerance = 0.05;
-  let desiredShare = currentShare;
-  if (currentShare < targetShare - tolerance) desiredShare = targetShare - tolerance;
-  if (currentShare > targetShare + tolerance) desiredShare = targetShare + tolerance;
-  const delta = total * desiredShare - gilts.balance;
-  const execution = Math.abs(delta) > 1e4
-    ? applyBuySellAsset(state, config, AssetProductType.Gilts, delta, events, Math.round(policy.giltDurationYears * 12))
-    : undefined;
-  if (gilts.security) gilts.security.effectiveDurationYears = clamp(policy.giltDurationYears, .25, 15);
-  return execution;
-};
-
 const stepContractualRetailFunding = (state: BankState, config: SimulationConfig, dtMonths: number, events: SimulationEvent[]): void => {
   const capitalMarketsContractualProducts = productTypesWithCapability('capitalMarketsFunding')
     .filter(productType => !hasCapability(productType, 'wholesaleFunding'));
@@ -1002,7 +802,7 @@ const stepContractualRetailFunding = (state: BankState, config: SimulationConfig
     if (!buckets.length) continue;
     let matured = 0;
     const before = buckets.reduce((sum, bucket) => sum + bucket.notional, 0);
-    const keep: FundingMaturityBucket[] = [];
+    const keep: ContractualMaturityBucket[] = [];
     for (const bucket of buckets) {
       const monthsToMaturity = bucket.monthsToMaturity - dtMonths;
       if (monthsToMaturity <= 0) matured += Math.max(0, bucket.notional);
@@ -1040,7 +840,7 @@ const applyEnterHedge = (
   if (notional <= 0) return;
   const maturityMonths = Math.max(1, Math.round(action.maturityMonths ?? 24));
   const fixedRate = Math.max(0, action.fixedRate);
-  const nextIndex = (state.financial.hedges?.length ?? 0) + 1;
+  const nextIndex = state.financial.hedges.length + 1;
   const hedge: InterestRateHedge = {
     id: `hedge-${state.time.step}-${nextIndex}`,
     direction: action.direction,
@@ -1049,9 +849,6 @@ const applyEnterHedge = (
     maturityMonths,
     monthsRemaining: maturityMonths,
   };
-  if (!state.financial.hedges) {
-    state.financial.hedges = [];
-  }
   // Off-market fixed rates require fair-value upfront payment, not a free asset.
   hedge.fairValue = hedgeFairValue(hedge, state.market.riskFreeShort);
   const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
@@ -1098,7 +895,7 @@ const stepHedges = (
   dtYears: number,
   events: SimulationEvent[]
 ): number => {
-  const hedges = state.financial.hedges ?? [];
+  const hedges = state.financial.hedges;
   if (hedges.length === 0 || dtMonths <= 0 || dtYears <= 0) return 0;
 
   const floatRate = state.market.riskFreeShort;
@@ -1461,7 +1258,7 @@ export const stepFundingLadders = (
 
   FUNDING_PRODUCTS.forEach((productType) => {
     const buckets = getFundingLadderBuckets(state, productType);
-    const surviving: FundingMaturityBucket[] = [];
+    const surviving: ContractualMaturityBucket[] = [];
     let productMaturing = 0;
 
     buckets.forEach((bucket) => {
@@ -2398,7 +2195,7 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
     .filter((a) => !PRODUCTS[a.productType]?.behaviour?.isLoan)
     .reduce((sum, a) => sum + (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears, 0);
   const interestExpense = liabilities.reduce((sum, liability) => {
-    const buckets = state.fundingLadders?.[liability.productType] ?? [];
+    const buckets = state.fundingLadders[liability.productType] ?? [];
     if (buckets.length === 0) {
       return sum + liability.balance * liability.interestRate * dtYears;
     }
@@ -2574,7 +2371,7 @@ export const closeCapital = (
     const basePd = config.productParameters[item.productType]?.baseDefaultRate ?? 0;
     return sum + item.balance * clamp(basePd, 0, 1);
   }, 0);
-  const workoutPipelineStock = Object.values(state.workoutPipelines ?? {}).reduce(
+  const workoutPipelineStock = Object.values(state.workoutPipelines).reduce(
     (sum, buckets) =>
       sum +
       (buckets ?? []).reduce(

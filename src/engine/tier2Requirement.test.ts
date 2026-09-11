@@ -45,12 +45,14 @@ describe('Tier 2 substitution in effective Tier 1 requirement', () => {
     const engine = createSimulationEngine();
     const amount = 500e6;
 
-    const result = engine.step({
+    const issuance = engine.step({
       state: cloneBankState(initialState),
       config: quietConfig,
-      actions: [{ type: 'issueTier2', amount, maturityMonths: 60 }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: amount, maxSpreadBps: 2500, tenorMonths: 60 }],
       shocks: [],
-    }).nextState;
+    });
+    const result = issuance.nextState;
+    const executedAmount = issuance.executions.capitalMarkets[0].executedAmount;
 
     const metrics = result.risk.riskMetrics;
     const eligibleTier2 = eligibleTier2OwnFunds(result);
@@ -59,7 +61,8 @@ describe('Tier 2 substitution in effective Tier 1 requirement', () => {
       metrics.minimumTotalCapitalRatio ?? quietConfig.riskLimits.minTotalCapitalRatio
     ) + (metrics.combinedBufferRate ?? 0);
 
-    expect(eligibleTier2).toBeCloseTo(amount, 2);
+    expect(executedAmount).toBeGreaterThan(0);
+    expect(eligibleTier2).toBeCloseTo(executedAmount, 2);
     expect(metrics.tier1Requirement).toBeCloseTo(expectedTier1Requirement(result), 12);
     expect(metrics.tier1Requirement ?? Infinity).toBeLessThan(oldWrongRequirement);
     expect(dashboardTier1Requirement(result)).toBeCloseTo(metrics.tier1Requirement ?? NaN, 12);
@@ -91,7 +94,7 @@ describe('Tier 2 substitution in effective Tier 1 requirement', () => {
     const issued = engine.step({
       state: cloneBankState(initialState),
       config: quietConfig,
-      actions: [{ type: 'issueTier2', amount: 500e6, maturityMonths: 60 }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'tier2', targetAmount: 500e6, maxSpreadBps: 2500, tenorMonths: 60 }],
       shocks: [],
     }).nextState;
 

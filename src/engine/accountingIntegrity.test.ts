@@ -67,7 +67,7 @@ describe('Loan accounting identities', () => {
   });
   it('rejects non-finite transactions and fails invariant checks on non-finite books', () => {
     const s = cloneBankState(initialState);
-    applyActions(s, baseConfig, [{ type: 'issueEquity', amount: Infinity }], []);
+    applyActions(s, baseConfig, [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: Infinity, maxDiscount: 0.5 }], []);
     expect(s.financial.capital.cet1).toBe(initialState.financial.capital.cet1);
     item(s).balance = NaN;
     expect(checkInvariants(s).some(e => e.includes('Non-finite'))).toBe(true);

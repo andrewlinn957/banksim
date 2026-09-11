@@ -1,7 +1,7 @@
 import { PlayerAction } from '../domain/actions';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { AssetProductType, LiabilityProductType } from '../domain/enums';
+import { AssetProductType } from '../domain/enums';
 import { createSimulationEngine } from './simulation';
 
 type Confidence = 'high' | 'medium' | 'low';
@@ -60,7 +60,7 @@ const candidateSet = (state: BankState, config: SimulationConfig): Recommendatio
       title: 'Raise fresh equity',
       rationale: 'Direct CET1 uplift creates immediate headroom over requirements.',
       caveat: 'Dilution pressure and weaker ROE in the short run.',
-      actions: [{ type: 'issueEquity', amount: 2e9 }],
+      actions: [{ type: 'launchCapitalMarketsTransaction', instrument: 'cet1', targetAmount: 2e9, maxDiscount: 0.5 }],
     });
   }
 
@@ -72,10 +72,11 @@ const candidateSet = (state: BankState, config: SimulationConfig): Recommendatio
       caveat: 'Funding cost rises and can compress NIM.',
       actions: [
         {
-          type: 'issueDebt',
-          productType: LiabilityProductType.WholesaleFundingLT,
-          amount: 5e9,
-          maturityMonths: 36,
+          type: 'launchCapitalMarketsTransaction',
+          instrument: 'senior',
+          targetAmount: 5e9,
+          maxSpreadBps: 2500,
+          tenorMonths: 36,
         },
       ],
     });
