@@ -26,8 +26,6 @@ export interface ContractualMaturityBucket {
   rate: number;
 }
 
-/** @deprecated Compatibility name for liability funding code and existing saves. */
-export type FundingMaturityBucket = ContractualMaturityBucket;
 export type FundingLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
 export type AssetMaturityLadderMap = Partial<Record<ProductType, ContractualMaturityBucket[]>>;
 
@@ -58,13 +56,6 @@ export interface MortgagePolicyState {
   maxLtv: number;
   /** Representative initial fixed-rate period on new mortgages. */
   fixedPeriodMonths: number;
-}
-
-export interface TreasuryPolicyState {
-  /** @deprecated Legacy descriptive target retained for save/replay compatibility. */
-  giltShareOfHqla: number;
-  /** @deprecated Legacy/default duration retained for old treasury-policy actions. */
-  giltDurationYears: number;
 }
 
 export interface BoardPressureState {
@@ -103,7 +94,6 @@ export interface BehaviouralState {
   underwritingTightness?: Partial<Record<ProductType, number>>;
   capitalPolicy?: CapitalPolicyState;
   mortgagePolicy?: MortgagePolicyState;
-  treasuryPolicy?: TreasuryPolicyState;
   termDepositTenorMonths?: number;
   /** Approximate share of retail deposits protected by FSCS limits. */
   insuredRetailDepositShare?: number;
@@ -143,7 +133,6 @@ export interface SimulationStatus {
 }
 
 export interface BankState {
-  version: string;
   time: SimulationTime;
   financial: FinancialState;
   risk: RiskState;
@@ -160,6 +149,6 @@ export interface BankState {
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;
   /** Contractual maturity ladders for assets; separated from liability funding ladders. */
-  assetMaturityLadders?: AssetMaturityLadderMap;
+  assetMaturityLadders: AssetMaturityLadderMap;
   status: SimulationStatus;
 }
