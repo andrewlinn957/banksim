@@ -47,7 +47,7 @@ import { AttributionLineSelection, StepAttribution } from './domain/attribution'
 import SharePricePanel from './components/SharePricePanel';
 import HelpCenterPanel from './components/HelpCenterPanel';
 import AttributionMechanicExplainer from './components/AttributionMechanicExplainer';
-import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets } from './config/threeYearPlan';
+import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets, validateThreeYearPlanAgreement } from './config/threeYearPlan';
 import { buildCapitalMarketsBook } from './engine/capitalMarkets';
 import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
@@ -155,7 +155,7 @@ const App = () => {
   const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
   const openReport = (tab: string) => { setIsActionsOpen(false); setActiveTab(tab); };
 
-  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors) return; setPauseReason(''); setAutoRemaining(months); };
+  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors || hasPlanAgreementErrors) return; setPauseReason(''); setAutoRemaining(months); };
   const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
@@ -171,6 +171,9 @@ const App = () => {
   const canToggleThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;
   const canEditThreeYearPlan = activeScenarioId === null && Boolean(bankState.threeYearPlan?.enabled) && !bankState.threeYearPlan?.completed && bankState.time.step === bankState.threeYearPlan?.startStep;
   const canRenewThreeYearPlan = activeScenarioId === null && Boolean(bankState.threeYearPlan?.enabled && bankState.threeYearPlan?.completed);
+  const planTargetsAwaitingAgreement = pendingThreeYearPlanRenewal ?? (canEditThreeYearPlan ? bankState.threeYearPlan?.targets ?? null : null);
+  const threeYearPlanAgreementIssues = activeScenarioId === null && planTargetsAwaitingAgreement ? validateThreeYearPlanAgreement(bankState, planTargetsAwaitingAgreement) : [];
+  const hasPlanAgreementErrors = threeYearPlanAgreementIssues.length > 0;
   const setThreeYearPlanMode = (enabled: boolean) => {
     if (!canToggleThreeYearPlan) return;
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
@@ -273,7 +276,7 @@ const App = () => {
   }, [theme]);
 
   const preview = useMemo<StepPreview | null>(() => {
-    if (parsedActionForm.hasErrors || clockRunning || !(isActionsOpen && activeTab==='Boardroom')) return null;
+    if (parsedActionForm.hasErrors || hasPlanAgreementErrors || clockRunning || !(isActionsOpen && activeTab==='Boardroom')) return null;
     const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
     if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     if(pendingThreeYearPlanRenewal) actions.push({type:'renewThreeYearPlan',targets:pendingThreeYearPlanRenewal.map(target=>({...target,milestones:target.milestones.map(milestone=>({...milestone}))}))});
@@ -301,7 +304,7 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite, pendingThreeYearPlanRenewal]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite, pendingThreeYearPlanRenewal, hasPlanAgreementErrors]);
   const capitalMarketsPlanImpact = useMemo<CapitalMarketsPlanImpact | undefined>(() => {
     if(!bankState.threeYearPlan?.enabled||actionForm.capitalMarketsInstrument==='none'||!preview?.baseline) return undefined;
     return {
@@ -362,13 +365,13 @@ const App = () => {
   const handleRunNextMonth = (automatic = false) => {
     if (!automatic) setAutoRemaining(null);
     if (bankState.status.hasFailed) return;
-    if (parsedActionForm.hasErrors) {
+    if (parsedActionForm.hasErrors || hasPlanAgreementErrors) {
       setEventLog((prev) => [
         ...prev,
         {
           id: `ui-${Date.now()}`,
           severity: 'error',
-          message: 'Cannot run step: fix action input validation errors first.',
+          message: hasPlanAgreementErrors ? `Cannot run step: the board has not agreed the Three-Year Plan. ${threeYearPlanAgreementIssues[0]}` : 'Cannot run step: fix action input validation errors first.',
           timestamp: Date.now(),
         },
       ]);
@@ -408,10 +411,10 @@ const App = () => {
   };
 
   useEffect(() => {
-    if (!clockRunning || bankState.status.hasFailed || parsedActionForm.hasErrors) return;
+    if (!clockRunning || bankState.status.hasFailed || parsedActionForm.hasErrors || hasPlanAgreementErrors) return;
     const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
     return () => window.clearTimeout(timer);
-  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite, pendingThreeYearPlanRenewal]);
+  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite, pendingThreeYearPlanRenewal, hasPlanAgreementErrors]);
 
   // Leave the bank paused when returning from another tab or opening a modal.
   useEffect(() => {
@@ -535,7 +538,7 @@ const App = () => {
       </nav>
       <section className="time-console compact-clock" aria-label="Simulation time controls">
        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{bankState.time.date.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'})}</span></div>
-       <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
+       <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||hasPlanAgreementErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
        <div className="clock-status" role="status">{clockRunning?Number.isFinite(autoRemaining)?`Running · ${autoRemaining} months remaining`:'Running continuously':pauseReason}</div>
       </section>
       {attentionReason(bankState,simConfig)&&!bankState.status.hasFailed&&<div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={()=>openDepartment(responsibleDepartment)}>Manage {responsibleDepartment.toLowerCase()} →</button></div>}
@@ -562,7 +565,7 @@ const App = () => {
       {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
 
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canEditThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets} canRenewPlan={canRenewThreeYearPlan} planRenewalDraft={pendingThreeYearPlanRenewal} onBeginPlanRenewal={beginThreeYearPlanRenewal} onPlanRenewalTargetsChange={updateThreeYearPlanRenewalDraft} onCancelPlanRenewal={()=>setPendingThreeYearPlanRenewal(null)}>
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canEditThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets} canRenewPlan={canRenewThreeYearPlan} planRenewalDraft={pendingThreeYearPlanRenewal} planAgreementIssues={threeYearPlanAgreementIssues} onBeginPlanRenewal={beginThreeYearPlanRenewal} onPlanRenewalTargetsChange={updateThreeYearPlanRenewalDraft} onCancelPlanRenewal={()=>setPendingThreeYearPlanRenewal(null)}>
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} selected={selectedDecisions} onChange={next=>{pauseClock();setActionForm(next);setSelectedDecisions([]);}} onDecision={backProposal} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}

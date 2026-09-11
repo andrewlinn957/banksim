@@ -4,6 +4,28 @@ import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets } from '.
 import { initialState } from '../config/initialState';
 import { cloneBankState } from './clone';
 import { createSimulationEngine } from './simulation';
+import { THREE_YEAR_PLAN_METRICS as M } from './threeYearPlanMetrics';
+
+const completedPlanState=()=>{
+  const state=cloneBankState(initialState);
+  state.threeYearPlan=createDefaultThreeYearPlan(state);
+  state.time.step=36;
+  state.threeYearPlan.completed=true;
+  state.threeYearPlan.boardConfidence=81;
+  state.threeYearPlan.currentEvaluation={
+    month:36,
+    score:76,
+    metrics:state.threeYearPlan.targets.map(target=>({metricId:target.metricId,actual:target.milestones[2].lower,targetLower:target.milestones[2].lower,targetUpper:target.milestones[2].upper,score:76,weight:target.weight})),
+  };
+  state.threeYearPlan.lastEvaluationStep=36;
+  state.threeYearPlan.reviewHistory=[{
+    month:36,
+    evaluation:state.threeYearPlan.currentEvaluation,
+    boardConfidenceBefore:82,
+    boardConfidenceAfter:81,
+  }];
+  return state;
+};
 
 describe('Three-Year Plan engine integration',()=>{
   it('reviews quarterly only when explicitly enabled and records the confidence movement',()=>{
@@ -35,23 +57,7 @@ describe('Three-Year Plan engine integration',()=>{
   });
 
   it('executes renewal as a normal player action before the first month of the successor plan',()=>{
-    const state=cloneBankState(initialState);
-    state.threeYearPlan=createDefaultThreeYearPlan(state);
-    state.time.step=36;
-    state.threeYearPlan.completed=true;
-    state.threeYearPlan.boardConfidence=81;
-    state.threeYearPlan.currentEvaluation={
-      month:36,
-      score:76,
-      metrics:state.threeYearPlan.targets.map(target=>({metricId:target.metricId,actual:target.milestones[2].lower,targetLower:target.milestones[2].lower,targetUpper:target.milestones[2].upper,score:76,weight:target.weight})),
-    };
-    state.threeYearPlan.lastEvaluationStep=36;
-    state.threeYearPlan.reviewHistory=[{
-      month:36,
-      evaluation:state.threeYearPlan.currentEvaluation,
-      boardConfidenceBefore:82,
-      boardConfidenceAfter:81,
-    }];
+    const state=completedPlanState();
     const targets=createDefaultThreeYearPlanTargets(state);
     const config={...baseConfig,featureFlags:{...baseConfig.featureFlags,threeYearPlan:true}};
     const result=createSimulationEngine().step({
@@ -72,5 +78,20 @@ describe('Three-Year Plan engine integration',()=>{
     expect(result.events.some(event=>event.message.includes('Cycle 2 agreed'))).toBe(true);
     expect(state.threeYearPlan?.cycleNumber).toBe(1);
     expect(state.threeYearPlan?.priorCycles).toHaveLength(0);
+  });
+
+  it('does not activate a successor plan the board would refuse to agree',()=>{
+    const state=completedPlanState();
+    const targets=createDefaultThreeYearPlanTargets(state).map(target=>({
+      ...target,
+      weight:target.metricId===M.lcr?70:5,
+      milestones:target.milestones.map(milestone=>({...milestone,lower:target.metricId===M.eps||target.metricId===M.rote?-1:.01})),
+    }));
+    const config={...baseConfig,featureFlags:{...baseConfig.featureFlags,threeYearPlan:true}};
+    const result=createSimulationEngine().step({state,config,actions:[{type:'renewThreeYearPlan',targets}],shocks:[]});
+
+    expect(result.nextState.threeYearPlan?.cycleNumber).toBe(1);
+    expect(result.nextState.threeYearPlan?.completed).toBe(true);
+    expect(result.events.some(event=>event.message.includes('renewal rejected'))).toBe(true);
   });
 });

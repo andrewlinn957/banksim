@@ -24,6 +24,7 @@ interface Props {
   onTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
   canRenew?: boolean;
   renewalDraft?: readonly ThreeYearPlanTarget[] | null;
+  agreementIssues?: readonly string[];
   onBeginRenewal?: () => void;
   onRenewalTargetsChange?: (targets: readonly ThreeYearPlanTarget[]) => void;
   onCancelRenewal?: () => void;
@@ -35,6 +36,7 @@ export default function ThreeYearPlanPanel({
   onTargetsChange,
   canRenew=false,
   renewalDraft=null,
+  agreementIssues=[],
   onBeginRenewal,
   onRenewalTargetsChange,
   onCancelRenewal,
@@ -54,6 +56,7 @@ export default function ThreeYearPlanPanel({
     <div className="section-heading"><div><div className="eyebrow">Three-Year Plan · Cycle {cycleNumber}</div><h2>Board mandate</h2></div><div><strong>{confidence.toFixed(0)}/100</strong><div className="muted">Board Confidence · {confidenceLabel(confidence)}</div></div></div>
 
     {canEdit&&onTargetsChange&&<ThreeYearPlanEditor targets={plan.targets} onChange={onTargetsChange} title={cycleNumber===1?'Set opening board plan':`Set Cycle ${cycleNumber} board plan`}/>} 
+    {agreementIssues.length>0&&<div className="alert warning" role="alert"><strong>The board will not agree this plan yet.</strong><ul className="help-list">{agreementIssues.map(issue=><li key={issue}>{issue}</li>)}</ul><div className="muted">These rules govern plan agreement only. Once agreed, Board Confidence still changes solely through performance against the plan.</div></div>}
 
     <div className="grid-two">
       <div><strong>{plan.completed?'Final plan result':'Live trajectory'} · {live.score.toFixed(0)}/100</strong><div className="muted">Month {month} of 36{plan.completed?' · plan complete':` · indicative until formal review month ${nextReview}`}</div></div>
@@ -78,7 +81,7 @@ export default function ThreeYearPlanPanel({
             <div className="muted">Cycle {cycleNumber+1} is queued. Edit the targets now, then run the next month to put the plan into force.</div>
             {onCancelRenewal&&<div><button className="button ghost" onClick={onCancelRenewal}>Cancel renewal</button></div>}
           </div>
-        : onBeginRenewal&&<div className="policy-disclosure"><strong>Continue the long-term mandate</strong><p className="muted">The completed plan stays frozen until you agree its successor. A new cycle carries forward Board Confidence and resets only the plan milestones.</p><button className="button" onClick={onBeginRenewal}>Agree next Three-Year Plan</button></div>
+        : onBeginRenewal&&<div className="policy-disclosure"><strong>Continue the long-term mandate</strong><p className="muted">The completed plan stays frozen until you agree its successor. A new cycle carries forward Board Confidence and resets the milestones, but missed customer-scale ambition is not automatically rebased away.</p><button className="button" onClick={onBeginRenewal}>Agree next Three-Year Plan</button></div>
     )}
 
     {!plan.completed&&<><div><strong>Live trajectory</strong><div className="muted">This updates every month. It affects Board Confidence only when the next formal quarterly review occurs.</div></div>
