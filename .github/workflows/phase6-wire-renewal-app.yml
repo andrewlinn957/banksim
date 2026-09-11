@@ -1,0 +1,104 @@
+name: Phase6 wire renewal app
+
+on:
+  push:
+    branches: [phase6-three-year-plan-renewal]
+    paths: [.github/workflows/phase6-wire-renewal-app.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase6-three-year-plan-renewal
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Wire renewal draft into app preview run and timeline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/App.tsx')
+          s = p.read_text()
+          old = "import { createDefaultThreeYearPlan } from './config/threeYearPlan';"
+          new = "import { createDefaultThreeYearPlan, createDefaultThreeYearPlanTargets } from './config/threeYearPlan';"
+          assert old in s, 'plan config import changed'
+          s = s.replace(old, new, 1)
+          old = "  const [selectedDecisions, setSelectedDecisions] = useState<string[]>([]);"
+          new = old + "\n  const [pendingThreeYearPlanRenewal, setPendingThreeYearPlanRenewal] = useState<readonly ThreeYearPlanTarget[] | null>(null);"
+          assert old in s, 'state anchor changed'
+          s = s.replace(old, new, 1)
+          old = "  const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);\n  const canConfigureThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;"
+          new = "\n".join([
+              "  const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);",
+              "  const canToggleThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;",
+              "  const canEditThreeYearPlan = activeScenarioId === null && Boolean(bankState.threeYearPlan?.enabled) && !bankState.threeYearPlan?.completed && bankState.time.step === bankState.threeYearPlan?.startStep;",
+              "  const canRenewThreeYearPlan = activeScenarioId === null && Boolean(bankState.threeYearPlan?.enabled && bankState.threeYearPlan?.completed);",
+          ])
+          assert old in s, 'plan configuration flags changed'
+          s = s.replace(old, new, 1)
+          s = s.replace("    if (!canConfigureThreeYearPlan) return;", "    if (!canToggleThreeYearPlan) return;", 1)
+          s = s.replace("    if (!canConfigureThreeYearPlan || !bankState.threeYearPlan?.enabled) return;", "    if (!canEditThreeYearPlan || !bankState.threeYearPlan?.enabled) return;", 1)
+          anchor = "  const totalEquity = useMemo("
+          lines = [
+              "  const beginThreeYearPlanRenewal = () => {",
+              "    if (!canRenewThreeYearPlan) return;",
+              "    pauseClock();",
+              "    setPendingThreeYearPlanRenewal(createDefaultThreeYearPlanTargets(bankState));",
+              "  };",
+              "  const updateThreeYearPlanRenewalDraft = (targets: readonly ThreeYearPlanTarget[]) => {",
+              "    if (!canRenewThreeYearPlan) return;",
+              "    setPendingThreeYearPlanRenewal(targets.map(target => ({ ...target, milestones: target.milestones.map(milestone => ({ ...milestone })) })));",
+              "  };",
+              "",
+          ]
+          assert anchor in s, 'renewal handler anchor changed'
+          s = s.replace(anchor, '\n'.join(lines) + anchor, 1)
+          action_line = "    if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});"
+          action_add = action_line + "\n    if(pendingThreeYearPlanRenewal) actions.push({type:'renewThreeYearPlan',targets:pendingThreeYearPlanRenewal.map(target=>({...target,milestones:target.milestones.map(milestone=>({...milestone}))}))});"
+          count = s.count(action_line)
+          assert count == 2, f'expected two action assembly points, found {count}'
+          s = s.replace(action_line, action_add)
+          old = "  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite]);"
+          new = "  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite, pendingThreeYearPlanRenewal]);"
+          assert old in s, 'preview dependency anchor changed'
+          s = s.replace(old, new, 1)
+          old = "  const clearTransactions = () => {\n    setPendingRiskAppetite(undefined);"
+          new = "  const clearTransactions = () => {\n    setPendingRiskAppetite(undefined);\n    setPendingThreeYearPlanRenewal(null);"
+          assert old in s, 'clear transaction anchor changed'
+          s = s.replace(old, new, 1)
+          old = "    setPendingRiskAppetite(undefined);\n    setBankState(scenarioState);"
+          new = "    setPendingRiskAppetite(undefined);\n    setPendingThreeYearPlanRenewal(null);\n    setBankState(scenarioState);"
+          assert old in s, 'fresh-bank reset anchor changed'
+          s = s.replace(old, new, 1)
+          old = "<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canConfigureThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets}>"
+          new = "<Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} onDecision={backProposal} selectedDecisions={selectedDecisions} canEditPlan={canEditThreeYearPlan && threeYearPlanEnabled} onPlanTargetsChange={updateThreeYearPlanTargets} canRenewPlan={canRenewThreeYearPlan} planRenewalDraft={pendingThreeYearPlanRenewal} onBeginPlanRenewal={beginThreeYearPlanRenewal} onPlanRenewalTargetsChange={updateThreeYearPlanRenewalDraft} onCancelPlanRenewal={()=>setPendingThreeYearPlanRenewal(null)}>"
+          assert old in s, 'Boardroom wiring anchor changed'
+          s = s.replace(old, new, 1)
+          old = "disabled={!canConfigureThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}"
+          new = "disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}"
+          assert old in s, 'game menu plan toggle anchor changed'
+          s = s.replace(old, new, 1)
+          old = "  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite]);"
+          new = "  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite, pendingThreeYearPlanRenewal]);"
+          assert old in s, 'clock dependency anchor changed'
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: git diff --check
+      - name: Commit app wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx
+          git commit -m "Queue Three-Year Plan renewal through run timeline"
+          git push origin HEAD:phase6-three-year-plan-renewal
