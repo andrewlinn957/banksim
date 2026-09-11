@@ -1,6 +1,14 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide } from '../domain/enums';
+import type {
+  LcrCalculationSummary,
+  LcrContribution,
+  LcrEngineResult,
+  LcrHqlaAdjustment,
+  LcrInflowCapClass,
+  LcrModel,
+} from '../domain/lcr';
 import { AssetProductType as A, LiabilityProductType as L, ProductType } from '../products/catalogue';
 import {
   getLcrProductRule,
@@ -8,54 +16,14 @@ import {
   LCR_INFLOW_CATEGORIES,
   LCR_OUTFLOW_CATEGORIES,
   LcrHqlaCategory,
-  LcrHqlaLevel,
-  LcrInflowCapClass,
   LcrInflowCategory,
   LcrOutflowCategory,
 } from '../products/lcr';
+import { calculateLcr, calculateLcrNetOutflow } from './lcrEngine';
 
-export interface LcrContribution {
-  template: 'C72' | 'C73' | 'C74';
-  corep: string;
-  label: string;
-  sourceLabel: string;
-  amount: number;
-  factor: number;
-  weighted: number;
-  capClass?: LcrInflowCapClass;
-  hqlaLevel?: LcrHqlaLevel;
-}
-
-export interface Cor011C76 {
-  unadjustedLevel1: number;
-  unadjustedLevel2A: number;
-  unadjustedLevel2B: number;
-  level1Collateral30dOutflows: number;
-  level1Collateral30dInflows: number;
-  securedCash30dOutflows: number;
-  securedCash30dInflows: number;
-  adjustedLevel1: number;
-  adjustedLevel2A: number;
-  adjustedLevel2B: number;
-  excessLiquidAssets: number;
-  liquidityBuffer: number;
-  totalOutflows: number;
-  fullyExemptInflows: number;
-  inflows90: number;
-  inflows75: number;
-  reductionFullyExempt: number;
-  reduction90: number;
-  reduction75: number;
-  netLiquidityOutflow: number;
-  lcr: number;
-}
-
-export interface Cor011Result {
-  liquidAssets: LcrContribution[];
-  outflows: LcrContribution[];
-  inflows: LcrContribution[];
-  c76: Cor011C76;
-}
+export type { LcrContribution } from '../domain/lcr';
+export type Cor011C76 = LcrCalculationSummary;
+export type Cor011Result = LcrEngineResult;
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
 
@@ -139,7 +107,10 @@ const retailDepositOutflows = (
   ].filter(contribution => contribution.amount > 0);
 };
 
-const derivativeCashFlows = (state: BankState, config: SimulationConfig): { receipts: number; payments: number; net: number } => {
+const derivativeCashFlows = (
+  state: BankState,
+  config: SimulationConfig
+): { receipts: number; payments: number; net: number } => {
   let receipts = 0;
   let payments = 0;
   for (const hedge of state.financial.hedges ?? []) {
@@ -147,7 +118,10 @@ const derivativeCashFlows = (state: BankState, config: SimulationConfig): { rece
     const spread = hedge.direction === 'payFixedReceiveFloat'
       ? state.market.riskFreeShort - hedge.fixedRate
       : hedge.fixedRate - state.market.riskFreeShort;
-    const coupon = (hedge.notional * (spread - Math.abs(config.behaviour.irrbb?.hedgeCarrySpread ?? 0))) / 12;
+    const coupon = (
+      hedge.notional *
+      (spread - Math.abs(config.behaviour.irrbb?.hedgeCarrySpread ?? 0))
+    ) / 12;
     receipts += Math.max(0, coupon);
     payments += Math.max(0, -coupon);
   }
@@ -157,29 +131,52 @@ const derivativeCashFlows = (state: BankState, config: SimulationConfig): { rece
 const derivativeTargetProduct = (state: BankState, net: number): ProductType => {
   const hasAsset = state.financial.balanceSheet.items.some(item => item.productType === A.DerivativeAssets);
   const hasLiability = state.financial.balanceSheet.items.some(item => item.productType === L.DerivativeLiabilities);
-  if (net >= 0) return hasAsset ? A.DerivativeAssets : L.DerivativeLiabilities;
-  return hasLiability ? L.DerivativeLiabilities : A.DerivativeAssets;
+  if (net >= 0) return hasAsset || !hasLiability ? A.DerivativeAssets : L.DerivativeLiabilities;
+  return hasLiability || !hasAsset ? L.DerivativeLiabilities : A.DerivativeAssets;
 };
 
+const isDerivativeProduct = (productType: ProductType): boolean =>
+  productType === A.DerivativeAssets || productType === L.DerivativeLiabilities;
+
+/**
+ * BankSim adapter for one product. It translates simulation state into C73/C74
+ * lines. The actual LCR arithmetic lives in lcrEngine.ts.
+ */
 export const lcrCashFlowContributionsForProduct = (
   state: BankState,
   config: SimulationConfig,
   productType: ProductType
 ): { outflows: LcrContribution[]; inflows: LcrContribution[] } => {
   const item = state.financial.balanceSheet.items.find(position => position.productType === productType);
-  if (!item) return { outflows: [], inflows: [] };
-  const balance = Math.max(0, item.balance);
+  const derivativeProduct = isDerivativeProduct(productType);
+  if (!item && !derivativeProduct) return { outflows: [], inflows: [] };
+
+  const balance = Math.max(0, item?.balance ?? 0);
+  const sourceLabel = item?.label ?? 'Derivative netting set';
   const rule = getLcrProductRule(productType);
   const outflows: LcrContribution[] = [];
   const inflows: LcrContribution[] = [];
 
+  if (derivativeProduct) {
+    const derivative = derivativeCashFlows(state, config);
+    if (productType === derivativeTargetProduct(state, derivative.net)) {
+      if (derivative.net < 0) {
+        outflows.push(outflowContribution('derivativeOutflow', -derivative.net, 'Derivative netting set'));
+      }
+      if (derivative.net > 0) {
+        inflows.push(inflowContribution('derivativeInflow', derivative.net, 'Derivative netting set'));
+      }
+    }
+    return { outflows, inflows };
+  }
+
   if (rule.outflow === 'retailSight') {
-    outflows.push(...retailDepositOutflows(state, balance, item.label));
+    outflows.push(...retailDepositOutflows(state, balance, sourceLabel));
   } else if (rule.outflow === 'retailTerm') {
     const buckets = state.fundingLadders?.[productType] ?? [];
     for (const bucket of buckets) {
       if (bucket.monthsToMaturity > 1) continue;
-      outflows.push(...retailDepositOutflows(state, Math.max(0, bucket.notional), item.label));
+      outflows.push(...retailDepositOutflows(state, Math.max(0, bucket.notional), sourceLabel));
     }
   } else if (rule.outflow === 'debtSecurity') {
     const buckets = state.fundingLadders?.[productType] ?? [];
@@ -188,19 +185,21 @@ export const lcrCashFlowContributionsForProduct = (
         if (bucket.monthsToMaturity > 1) continue;
         const principal = Math.max(0, bucket.notional);
         const due = principal * (1 + Math.max(0, bucket.rate) / 12);
-        outflows.push(outflowContribution('debtSecurity', due, item.label));
+        outflows.push(outflowContribution('debtSecurity', due, sourceLabel));
       }
     } else if (productType === L.WholesaleFundingST && balance > 0) {
-      outflows.push(outflowContribution('debtSecurity', balance, item.label));
+      outflows.push(outflowContribution('debtSecurity', balance, sourceLabel));
     }
   } else if (rule.outflow === 'centralBankSecuredLevel1') {
     const buckets = state.fundingLadders?.[productType] ?? [];
     for (const bucket of buckets) {
       if (bucket.monthsToMaturity > 1) continue;
-      outflows.push(outflowContribution('centralBankSecuredLevel1', Math.max(0, bucket.notional), item.label));
+      outflows.push(
+        outflowContribution('centralBankSecuredLevel1', Math.max(0, bucket.notional), sourceLabel)
+      );
     }
-  } else if (rule.outflow && rule.outflow !== 'derivativeOutflow') {
-    outflows.push(outflowContribution(rule.outflow, balance, item.label));
+  } else if (rule.outflow) {
+    outflows.push(outflowContribution(rule.outflow, balance, sourceLabel));
   }
 
   if (rule.inflow === 'retailLoan' || rule.inflow === 'corporateLoan') {
@@ -208,25 +207,31 @@ export const lcrCashFlowContributionsForProduct = (
     for (const loan of cohorts) {
       if (loan.stage === 'stage3' || loan.outstandingPrincipal <= 0) continue;
       const term = Math.max(1, loan.termMonths - loan.ageMonths);
-      const payment = contractualMonthlyPayment(loan.outstandingPrincipal, loan.annualInterestRate, term);
-      const interestDue = Math.min(payment, loan.outstandingPrincipal * Math.max(0, loan.annualInterestRate) / 12);
-      const principalDue = Math.min(loan.outstandingPrincipal, Math.max(0, payment - interestDue));
-      if (interestDue > 0) inflows.push(inflowContribution('loanInterest', interestDue, item.label));
+      const payment = contractualMonthlyPayment(
+        loan.outstandingPrincipal,
+        loan.annualInterestRate,
+        term
+      );
+      const interestDue = Math.min(
+        payment,
+        loan.outstandingPrincipal * Math.max(0, loan.annualInterestRate) / 12
+      );
+      const principalDue = Math.min(
+        loan.outstandingPrincipal,
+        Math.max(0, payment - interestDue)
+      );
+      if (interestDue > 0) {
+        inflows.push(inflowContribution('loanInterest', interestDue, sourceLabel));
+      }
       if (principalDue > 0) {
         inflows.push(inflowContribution(
-          rule.inflow === 'retailLoan' ? 'retailLoanPrincipal' : 'nonFinancialCorporateLoanPrincipal',
+          rule.inflow === 'retailLoan'
+            ? 'retailLoanPrincipal'
+            : 'nonFinancialCorporateLoanPrincipal',
           principalDue,
-          item.label
+          sourceLabel
         ));
       }
-    }
-  }
-
-  if (rule.outflow === 'derivativeOutflow' || rule.inflow === 'derivativeInflow') {
-    const derivative = derivativeCashFlows(state, config);
-    if (productType === derivativeTargetProduct(state, derivative.net)) {
-      if (derivative.net < 0) outflows.push(outflowContribution('derivativeOutflow', -derivative.net, 'Net derivative cash flows'));
-      if (derivative.net > 0) inflows.push(inflowContribution('derivativeInflow', derivative.net, 'Net derivative cash flows'));
     }
   }
 
@@ -240,7 +245,9 @@ export const lcrCommitmentContributions = (state: BankState): LcrContribution[] 
     const category = getLcrProductRule(productType).commitment;
     const amount = Math.max(0, pipeline?.committedNotional ?? 0);
     if (!category || amount <= 0) continue;
-    contributions.push(outflowContribution(category, amount, `${productType} undrawn commitments`));
+    contributions.push(
+      outflowContribution(category, amount, `${productType} undrawn commitments`)
+    );
   }
   return contributions;
 };
@@ -251,7 +258,10 @@ export const lcrLiquidAssetContributions = (state: BankState): LcrContribution[]
     if (item.side !== BalanceSheetSide.Asset) continue;
     const category = getLcrProductRule(item.productType).hqla;
     if (!category) continue;
-    const amount = Math.max(0, item.balance - Math.max(0, item.encumbrance?.encumberedAmount ?? 0));
+    const amount = Math.max(
+      0,
+      item.balance - Math.max(0, item.encumbrance?.encumberedAmount ?? 0)
+    );
     contributions.push(hqlaContribution(category, amount, item.label));
   }
   return contributions;
@@ -260,28 +270,14 @@ export const lcrLiquidAssetContributions = (state: BankState): LcrContribution[]
 export const cor011NetOutflow = (
   totalOutflows: number,
   inflows: { capClass: LcrInflowCapClass; amount: number }[]
-) => {
-  const fullyExemptInflows = inflows.filter(i => i.capClass === 'exempt').reduce((sum, i) => sum + Math.max(0, i.amount), 0);
-  const inflows90 = inflows.filter(i => i.capClass === '90').reduce((sum, i) => sum + Math.max(0, i.amount), 0);
-  const inflows75 = inflows.filter(i => i.capClass === '75').reduce((sum, i) => sum + Math.max(0, i.amount), 0);
-  const reductionFullyExempt = Math.min(fullyExemptInflows, totalOutflows);
-  const reduction90 = Math.min(inflows90, 0.90 * Math.max(totalOutflows - fullyExemptInflows, 0));
-  const reduction75 = Math.min(inflows75, 0.75 * Math.max(totalOutflows - fullyExemptInflows - inflows90 / 0.90, 0));
-  const netLiquidityOutflow = Math.max(0, totalOutflows - reductionFullyExempt - reduction90 - reduction75);
-  return {
-    fullyExemptInflows,
-    inflows90,
-    inflows75,
-    reductionFullyExempt,
-    reduction90,
-    reduction75,
-    netLiquidityOutflow,
-  };
-};
+) => calculateLcrNetOutflow(totalOutflows, inflows);
 
 const shortTermBoeUnwind = (state: BankState) => {
   const buckets = state.fundingLadders?.[L.BankOfEnglandFunding] ?? [];
-  const totalNotional = buckets.reduce((sum, bucket) => sum + Math.max(0, bucket.notional), 0);
+  const totalNotional = buckets.reduce(
+    (sum, bucket) => sum + Math.max(0, bucket.notional),
+    0
+  );
   const maturingNotional = buckets
     .filter(bucket => bucket.monthsToMaturity <= 1)
     .reduce((sum, bucket) => sum + Math.max(0, bucket.notional), 0);
@@ -290,70 +286,78 @@ const shortTermBoeUnwind = (state: BankState) => {
   const collateralInflow = totalNotional > 0
     ? encumberedGilts * Math.min(1, maturingNotional / totalNotional)
     : 0;
-  return { securedCashOutflow: maturingNotional, level1CollateralInflow: collateralInflow };
+  return {
+    securedCashOutflow: maturingNotional,
+    level1CollateralInflow: collateralInflow,
+  };
 };
 
-export const calculateCor011 = (state: BankState, config: SimulationConfig): Cor011Result => {
+/**
+ * Build the regulatory LCR model from the richer BankSim state.
+ *
+ * This is intentionally the integration boundary. Balance-sheet positions,
+ * contractual funding ladders, loan cohorts and hedge cash flows are translated
+ * here into 30-day regulatory lines. The LCR engine itself has no dependency on
+ * any of those simulation concepts.
+ */
+export const buildCor011Model = (
+  state: BankState,
+  config: SimulationConfig
+): LcrModel => {
   const liquidAssets = lcrLiquidAssetContributions(state);
   const outflows: LcrContribution[] = [...lcrCommitmentContributions(state)];
   const inflows: LcrContribution[] = [];
+
   for (const item of state.financial.balanceSheet.items) {
+    if (isDerivativeProduct(item.productType)) continue;
     const line = lcrCashFlowContributionsForProduct(state, config, item.productType);
     outflows.push(...line.outflows);
     inflows.push(...line.inflows);
   }
 
-  const unadjustedLevel1 = liquidAssets.filter(c => c.hqlaLevel === 'level1').reduce((sum, c) => sum + c.weighted, 0);
-  const unadjustedLevel2A = liquidAssets.filter(c => c.hqlaLevel === 'level2a').reduce((sum, c) => sum + c.weighted, 0);
-  const unadjustedLevel2B = liquidAssets.filter(c => c.hqlaLevel === 'level2b').reduce((sum, c) => sum + c.weighted, 0);
-  const unwind = shortTermBoeUnwind(state);
-  const level1Collateral30dOutflows = 0;
-  const level1Collateral30dInflows = unwind.level1CollateralInflow;
-  const securedCash30dOutflows = unwind.securedCashOutflow;
-  const securedCash30dInflows = 0;
-  const adjustedLevel1 = Math.max(0,
-    unadjustedLevel1 - level1Collateral30dOutflows + level1Collateral30dInflows - securedCash30dOutflows + securedCash30dInflows
-  );
-  const adjustedLevel2A = unadjustedLevel2A;
-  const adjustedLevel2B = unadjustedLevel2B;
-  const adjustedTotal = adjustedLevel1 + adjustedLevel2A + adjustedLevel2B;
-  const capBase = Math.min(
-    adjustedTotal,
-    (100 / 30) * adjustedLevel1,
-    (100 / 60) * adjustedLevel1,
-    (100 / 85) * (adjustedLevel1 + adjustedLevel2A)
-  );
-  const excessLiquidAssets = Math.max(0, adjustedTotal - capBase);
-  const unadjustedTotal = unadjustedLevel1 + unadjustedLevel2A + unadjustedLevel2B;
-  const liquidityBuffer = Math.max(0, unadjustedTotal - Math.min(unadjustedTotal, excessLiquidAssets));
+  // Current BankSim hedges form one modelled netting set. Keeping this outside
+  // the balance-sheet loop avoids tying regulatory derivative cash flows to the
+  // accounting sign of the derivative fair-value position.
+  if ((state.financial.hedges ?? []).length > 0) {
+    const derivative = derivativeCashFlows(state, config);
+    const target = derivativeTargetProduct(state, derivative.net);
+    const line = lcrCashFlowContributionsForProduct(state, config, target);
+    outflows.push(...line.outflows);
+    inflows.push(...line.inflows);
+  }
 
-  const totalOutflows = outflows.reduce((sum, contribution) => sum + contribution.weighted, 0);
-  const net = cor011NetOutflow(totalOutflows, inflows.map(contribution => ({
-    capClass: contribution.capClass ?? '75',
-    amount: contribution.weighted,
-  })));
-  const lcr = net.netLiquidityOutflow > 0 ? liquidityBuffer / net.netLiquidityOutflow : Infinity;
+  const unwind = shortTermBoeUnwind(state);
+  const hqlaAdjustments: LcrHqlaAdjustment[] = [];
+  if (unwind.level1CollateralInflow > 0) {
+    hqlaAdjustments.push({
+      id: 'boe-level1-collateral-return',
+      label: 'Level 1 collateral returned on central-bank secured funding unwind',
+      level: 'level1',
+      kind: 'collateral',
+      direction: 'inflow',
+      amount: unwind.level1CollateralInflow,
+    });
+  }
+  if (unwind.securedCashOutflow > 0) {
+    hqlaAdjustments.push({
+      id: 'boe-secured-cash-repayment',
+      label: 'Cash repayment on central-bank secured funding unwind',
+      level: 'level1',
+      kind: 'securedCash',
+      direction: 'outflow',
+      amount: unwind.securedCashOutflow,
+    });
+  }
 
   return {
     liquidAssets,
     outflows,
     inflows,
-    c76: {
-      unadjustedLevel1,
-      unadjustedLevel2A,
-      unadjustedLevel2B,
-      level1Collateral30dOutflows,
-      level1Collateral30dInflows,
-      securedCash30dOutflows,
-      securedCash30dInflows,
-      adjustedLevel1,
-      adjustedLevel2A,
-      adjustedLevel2B,
-      excessLiquidAssets,
-      liquidityBuffer,
-      totalOutflows,
-      ...net,
-      lcr,
-    },
+    hqlaAdjustments,
   };
 };
+
+export const calculateCor011 = (
+  state: BankState,
+  config: SimulationConfig
+): Cor011Result => calculateLcr(buildCor011Model(state, config));
