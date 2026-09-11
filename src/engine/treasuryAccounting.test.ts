@@ -62,12 +62,12 @@ describe('Treasury accounting without free profits', () => {
 });
 
 import { prudentialLiquidityLines } from './prudential';
-it('funds net derivative assets plus 5% negative fair values and counts due coupons', () => {
+it('funds net derivative assets plus 5% negative fair values and nets due LCR coupons', () => {
   const s=cloneBankState(initialState);
   applyActions(s,baseConfig,[{type:'enterHedge',direction:'payFixedReceiveFloat',notional:1e8,fixedRate:0,maturityMonths:12},{type:'enterHedge',direction:'receiveFixedPayFloat',notional:1e8,fixedRate:0,maturityMonths:12}],[]);
   const rows=prudentialLiquidityLines(s,baseConfig),a=rows.find(i=>i.productType===A.DerivativeAssets)!,l=rows.find(i=>i.productType===L.DerivativeLiabilities)!;
   expect(a.rsf).toBeCloseTo(0,6);expect(l.rsf).toBeCloseTo(l.balance*.05,6);
-  expect(a.inflow).toBeGreaterThan(0);expect(l.outflow).toBeGreaterThan(0);
+  expect(a.inflow).toBeCloseTo(0,6);expect(l.outflow).toBeGreaterThan(0);
 });
 
 import { hedgeExposures } from './hedgeValuation';
