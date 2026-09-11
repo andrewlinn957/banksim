@@ -1,33 +1,54 @@
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { AssetProductType as A, LiabilityProductType as L } from '../domain/enums';
-import { computeHqlaComposition } from '../engine/metrics';
-import { prudentialLiquidityLines, commitmentLiquidity } from '../engine/prudential';
+import { calculateCor011, LcrContribution } from '../engine/cor011';
+import { prudentialLiquidityLines } from '../engine/prudential';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import TimeSeriesChart from './TimeSeriesChart';
 
-const colors=['#15578d','#149ed5','#7753be','#b398e3','#208674','#67c3a2'];
+const colors=['#15578d','#149ed5','#7753be','#b398e3','#208674','#67c3a2','#8560b9','#57bce4'];
 type Part={label:string;value:number;color:string};
+
+const aggregateParts=(contributions:LcrContribution[]):Part[]=>{
+ const grouped=new Map<string,number>();
+ contributions.forEach(c=>{
+  const label=`${c.corep} · ${c.label}`;
+  grouped.set(label,(grouped.get(label)??0)+c.weighted);
+ });
+ return [...grouped.entries()].map(([label,value],i)=>({label,value,color:colors[i%colors.length]}));
+};
+
+const contributionRows=(contributions:LcrContribution[]):[string,string][]=>contributions.map(c=>[
+ `${c.corep} · ${c.label}${c.capClass?` · ${c.capClass}% cap`:''}`,
+ `${formatCurrency(c.amount)} × ${formatPct(c.factor,0)} = ${formatCurrency(c.weighted)}`,
+]);
+
 export function lcrDashboardData(state:BankState,config:SimulationConfig) {
+ const report=calculateCor011(state,config);
+ const c76=report.c76;
  const lines=prudentialLiquidityLines(state,config);
- const hqla=computeHqlaComposition(state.financial.balanceSheet.items);
- const commitments=commitmentLiquidity(state).outflow;
- const outGroups:Record<string,number>={'Retail deposits':0,'Business deposits':0,'Wholesale funding':0,'Secured funding':0,'Committed facilities':commitments,'Derivatives & other':0};
- const inGroups:Record<string,number>={'Loan repayments':0,'Derivatives & other':0};
- for(const l of lines){
-  const p=l.productType;
-  const outKey=([L.RetailCurrentAccounts,L.RetailTermDeposits] as string[]).includes(p)?'Retail deposits':([L.CorporateOperatingDeposits,L.CorporateNonOperatingDeposits] as string[]).includes(p)?'Business deposits':([L.WholesaleFundingST,L.WholesaleFundingLT] as string[]).includes(p)?'Wholesale funding':p===L.BankOfEnglandFunding?'Secured funding':'Derivatives & other';
-  outGroups[outKey]+=l.outflow;
-  inGroups[p===A.Mortgages||p===A.ConsumerLoans||p===A.CorporateLoans?'Loan repayments':'Derivatives & other']+=l.inflow;
- }
- const outgoing=Object.values(outGroups).reduce((a,b)=>a+b,0),incoming=Object.values(inGroups).reduce((a,b)=>a+b,0);
- const cap=outgoing*.75,recognised=Math.min(incoming,cap),net=outgoing-recognised;
+ const outgoing=c76.totalOutflows;
+ const incoming=report.inflows.reduce((sum,c)=>sum+c.weighted,0);
+ const recognised=c76.reductionFullyExempt+c76.reduction90+c76.reduction75;
+ const net=c76.netLiquidityOutflow;
  const requirement=config.riskLimits.minLcr;
  const target=Math.max(requirement,state.behaviour.riskAppetite?.lcr??requirement*1.1);
- return {lines,hqla,commitments,outgoing,incoming,cap,recognised,net,requirement,target,ratio:net>0?hqla.total/net:Infinity,required:net*requirement,surplus:hqla.total-net*requirement,
-  outParts:Object.entries(outGroups).map(([label,value],i)=>({label,value,color:colors[i]})),
-  inParts:Object.entries(inGroups).map(([label,value],i)=>({label,value,color:['#159765','#68c49a','#b1e8d0'][i]})),
-  hqlaParts:[{label:'Level 1',value:hqla.level1,color:colors[0]},{label:'Level 2A',value:hqla.eligibleLevel2a,color:colors[1]},{label:'Level 2B',value:hqla.eligibleLevel2b,color:colors[2]}],
+ const hqla={
+  level1:c76.unadjustedLevel1,
+  level2a:c76.unadjustedLevel2A,
+  level2b:c76.unadjustedLevel2B,
+  eligibleLevel2a:c76.unadjustedLevel2A,
+  eligibleLevel2b:Math.max(0,c76.liquidityBuffer-c76.unadjustedLevel1-c76.unadjustedLevel2A),
+  capDeduction:Math.max(0,c76.unadjustedLevel1+c76.unadjustedLevel2A+c76.unadjustedLevel2B-c76.liquidityBuffer),
+  total:c76.liquidityBuffer,
+ };
+ return {
+  report,c76,lines,hqla,
+  commitments:report.outflows.filter(c=>c.corep.startsWith('C73 1.1.6')).reduce((sum,c)=>sum+c.weighted,0),
+  outgoing,incoming,cap:outgoing*.75,recognised,net,requirement,target,ratio:c76.lcr,
+  required:net*requirement,surplus:hqla.total-net*requirement,
+  outParts:aggregateParts(report.outflows),
+  inParts:aggregateParts(report.inflows),
+  hqlaParts:aggregateParts(report.liquidAssets),
  };
 }
 const ratioText=(r:number)=>r===Infinity?'No net outflows':formatPct(r);
@@ -44,35 +65,35 @@ function Bars({bars,reference}:{bars:{label:string;parts:Part[]}[];reference?:{v
   {reference&&<path d={`M55 ${y(reference.value)}H425`} stroke="#8560b9" strokeWidth="2" strokeDasharray="6 4"/>}
  </svg>;
 }
-function DetailTable({title,rows}:{title:string;rows:[string,string][]}) {return <section className="lcr-detail-group"><h4>{title}</h4><table><tbody>{rows.map(([label,value])=><tr key={label}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>;}
+function DetailTable({title,rows}:{title:string;rows:[string,string][]}) {return <section className="lcr-detail-group"><h4>{title}</h4><table><tbody>{rows.map(([label,value],i)=><tr key={`${label}-${i}`}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>;}
 export default function LcrDashboard({state,config,history}:{state:BankState;config:SimulationConfig;history:BankState[]}) {
  const d=lcrDashboardData(state,config);
  const maxRatio=Math.max(2,d.requirement*1.2,d.target*1.2,Number.isFinite(d.ratio)?d.ratio*1.1:0);
  const pp=Number.isFinite(d.ratio)?`${d.ratio>=d.requirement?'+':''}${((d.ratio-d.requirement)*100).toFixed(1)}pp`:'N/A';
- const summary=[{label:'Outflows',value:d.outgoing,color:colors[0]},{label:'Inflows',value:d.incoming,color:colors[1]},{label:'Recognised|inflows',value:d.recognised,color:'#57bce4'},{label:'Net cash|outflows',value:d.net,color:'#30ba80'}];
+ const summary=[{label:'C73 outflows',value:d.outgoing,color:colors[0]},{label:'C74 inflows',value:d.incoming,color:colors[1]},{label:'Recognised|inflows',value:d.recognised,color:'#57bce4'},{label:'C76 net|outflows',value:d.net,color:'#30ba80'}];
  return <div className="lcr-dashboard">
  <div className="lcr-working-grid">
   <section className={`capital-card lcr-headline ${d.ratio<d.requirement?'shortfall':''}`}><header><h3>LCR</h3><span className="capital-status">{d.net===0?'No net outflows':d.ratio>=d.requirement?'Compliant':'Below minimum'}</span></header>
    <div className="capital-ratios"><div><strong>{ratioText(d.ratio)}</strong><span>Actual LCR</span></div><div><span>Requirement</span><b>{formatPct(d.requirement,0)}</b></div><div><span>Headroom</span><b className="capital-gap">{pp}</b></div></div>
    <svg className="capital-bullet" viewBox="0 0 400 65" role="img" aria-label={`LCR ${ratioText(d.ratio)}, minimum ${formatPct(d.requirement)}, internal target ${formatPct(d.target)}`}><rect x="8" y="12" width="384" height="18" rx="5" fill="var(--border)"/><rect x="8" y="12" width={d.net>0?384*d.ratio/maxRatio:0} height="18" rx="5" fill="currentColor"/><path d={`M${8+384*d.requirement/maxRatio} 7v28`} stroke="var(--text)" strokeWidth="3"/><path d={`M${8+384*d.target/maxRatio} 7v28`} stroke="#b24b92" strokeWidth="2" strokeDasharray="2 3"/>{[0,1,2,3,4].map(i=><text key={i} x={8+i*96} y="55" textAnchor={i===0?'start':i===4?'end':'middle'}>{formatPct(maxRatio*i/4,0)}</text>)}</svg>
    <p className="lcr-target">Dotted marker: internal target {formatPct(d.target)} · {formatCurrency(d.target*d.net)}</p>
-   <div className="capital-amounts"><div><b>{formatCurrency(d.hqla.total)}</b><span>HQLA actual</span></div><div><b>{formatCurrency(d.required)}</b><span>HQLA required</span></div><div><b className="capital-gap">{signed(d.surplus)}</b><span>Liquidity surplus</span></div></div><p className="muted">HQLA required = 30-day net cash outflows × LCR requirement.</p>
+   <div className="capital-amounts"><div><b>{formatCurrency(d.hqla.total)}</b><span>C76 liquidity buffer</span></div><div><b>{formatCurrency(d.required)}</b><span>HQLA required</span></div><div><b className="capital-gap">{signed(d.surplus)}</b><span>Liquidity surplus</span></div></div><p className="muted">Liquidity buffer ÷ C76 30-day net liquidity outflow.</p>
   </section>
-  <section className="capital-card"><h3>Cash outflows summary</h3><div className="lcr-summary-numbers">{summary.map(s=><div key={s.label}><strong>{formatCurrency(s.value)}</strong><span>{s.label.replace('|',' ')}</span></div>)}</div><Bars bars={summary.map(s=>({label:s.label,parts:[s]}))}/></section>
-  <section className="capital-card"><h3>HQLA composition</h3><p className="capital-total">Total eligible HQLA <strong>{formatCurrency(d.hqla.total)}</strong></p><Bars bars={[{label:'High quality liquid assets',parts:d.hqlaParts}]} reference={{value:d.required,label:'HQLA required'}}/><p className="lcr-reference">Dashed line: HQLA required {formatCurrency(d.required)} ({formatPct(d.requirement,0)} of net outflows)</p><Legend parts={d.hqlaParts}/><p className="muted">After encumbrance, haircuts and composition caps. Cap deduction: {formatCurrency(d.hqla.capDeduction)}.</p></section>
-  <section className="capital-card"><h3>30-day cash flows</h3><Bars bars={[{label:'Outflows',parts:d.outParts},{label:'Inflows',parts:d.inParts}]}/><p className="lcr-net">Net cash outflows <strong>{formatCurrency(d.net)}</strong></p><h4>Outflow drivers</h4><Legend parts={d.outParts}/><h4>Inflow drivers</h4><Legend parts={d.inParts}/></section>
+  <section className="capital-card"><h3>COR011 cash-flow summary</h3><div className="lcr-summary-numbers">{summary.map(s=><div key={s.label}><strong>{formatCurrency(s.value)}</strong><span>{s.label.replace('|',' ')}</span></div>)}</div><Bars bars={summary.map(s=>({label:s.label,parts:[s]}))}/></section>
+  <section className="capital-card"><h3>C72 liquid assets</h3><p className="capital-total">C76 liquidity buffer <strong>{formatCurrency(d.hqla.total)}</strong></p><Bars bars={[{label:'Liquid assets',parts:d.hqlaParts}]} reference={{value:d.required,label:'HQLA required'}}/><p className="lcr-reference">Dashed line: HQLA required {formatCurrency(d.required)} ({formatPct(d.requirement,0)} of net outflows)</p><Legend parts={d.hqlaParts}/><p className="muted">C72 amounts are after eligibility, encumbrance and haircut treatment. C76 then applies composition-cap calculations using adjusted amounts.</p></section>
+  <section className="capital-card"><h3>C73 outflows vs C74 inflows</h3><Bars bars={[{label:'C73 outflows',parts:d.outParts},{label:'C74 inflows',parts:d.inParts}]}/><p className="lcr-net">C76 net liquidity outflow <strong>{formatCurrency(d.net)}</strong></p><h4>C73 outflow rows</h4><Legend parts={d.outParts}/><h4>C74 inflow rows</h4><Legend parts={d.inParts}/></section>
  </div>
- <aside className="capital-card lcr-detail"><h3>LCR detail</h3>
-  <DetailTable title="Summary" rows={[
-   ['Total eligible HQLA',formatCurrency(d.hqla.total)],['Total expected outflows',formatCurrency(d.outgoing)],['Total expected inflows',formatCurrency(d.incoming)],['Inflows recognised after cap',formatCurrency(d.recognised)],['30-day net cash outflows',formatCurrency(d.net)],['LCR actual',ratioText(d.ratio)],['LCR minimum',formatPct(d.requirement)],['HQLA required',formatCurrency(d.required)],['Liquidity surplus',signed(d.surplus)],
+ <aside className="capital-card lcr-detail"><h3>COR011 detail</h3>
+  <DetailTable title="C76 — Calculations" rows={[
+   ['Liquidity buffer',formatCurrency(d.c76.liquidityBuffer)],['Total C73 outflows',formatCurrency(d.c76.totalOutflows)],['Fully exempt inflows',formatCurrency(d.c76.fullyExemptInflows)],['90% cap inflows',formatCurrency(d.c76.inflows90)],['75% cap inflows',formatCurrency(d.c76.inflows75)],['Reduction: fully exempt',formatCurrency(d.c76.reductionFullyExempt)],['Reduction: 90% cap',formatCurrency(d.c76.reduction90)],['Reduction: 75% cap',formatCurrency(d.c76.reduction75)],['Net liquidity outflow',formatCurrency(d.c76.netLiquidityOutflow)],['LCR actual',ratioText(d.ratio)],
   ]}/>
-  <DetailTable title="HQLA composition" rows={[...d.hqlaParts.map(p=>[p.label+' eligible',formatCurrency(p.value)] as [string,string]),['Level 2A before cap',formatCurrency(d.hqla.level2a)],['Level 2B before cap',formatCurrency(d.hqla.level2b)],['Composition cap deduction',formatCurrency(d.hqla.capDeduction)]]}/>
-  <DetailTable title="Outflow drivers" rows={[...d.lines.filter(l=>l.outflow>0).map(l=>[l.label,formatCurrency(l.outflow)] as [string,string]),['Committed facilities',formatCurrency(d.commitments)],['Total outflows',formatCurrency(d.outgoing)]]}/>
-  <DetailTable title="Inflow drivers" rows={[...d.lines.filter(l=>l.inflow>0).map(l=>[l.label,formatCurrency(l.inflow)] as [string,string]),['Total inflows',formatCurrency(d.incoming)]]}/>
-  <DetailTable title="Inflow cap treatment" rows={[
-   ['Inflows before cap',formatCurrency(d.incoming)],['Cap: 75% of outflows',formatCurrency(d.cap)],['Recognised after cap',formatCurrency(d.recognised)],['Excluded inflows',formatCurrency(d.incoming-d.recognised)],['Cap binding?',d.incoming>d.cap?'Yes':'No'],
+  <DetailTable title="C72 — Liquid assets" rows={contributionRows(d.report.liquidAssets)}/>
+  <DetailTable title="C73 — Outflows" rows={[...contributionRows(d.report.outflows),['Total weighted outflows',formatCurrency(d.outgoing)]]}/>
+  <DetailTable title="C74 — Inflows" rows={[...contributionRows(d.report.inflows),['Total weighted inflows',formatCurrency(d.incoming)]]}/>
+  <DetailTable title="C76 — Adjusted Level 1 / composition cap" rows={[
+   ['L1 unadjusted',formatCurrency(d.c76.unadjustedLevel1)],['L1 collateral 30-day outflows',formatCurrency(d.c76.level1Collateral30dOutflows)],['L1 collateral 30-day inflows',formatCurrency(d.c76.level1Collateral30dInflows)],['Secured cash 30-day outflows',formatCurrency(d.c76.securedCash30dOutflows)],['Secured cash 30-day inflows',formatCurrency(d.c76.securedCash30dInflows)],['L1 adjusted',formatCurrency(d.c76.adjustedLevel1)],['Excess liquid assets',formatCurrency(d.c76.excessLiquidAssets)],['Liquidity buffer',formatCurrency(d.c76.liquidityBuffer)],
   ]}/>
  </aside>
- <section className="capital-card lcr-history"><h3>LCR over time</h3><div style={{height:270}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.lcr}))} xLabel="Month" yLabel="LCR (%)"/></div><p className="muted">Management stress estimate: {ratioText(state.risk.riskMetrics.managementLcr??state.risk.riskMetrics.lcr)}. This uses behavioural stress assumptions and is separate from the reported LCR.</p></section>
+ <section className="capital-card lcr-history"><h3>LCR over time</h3><div style={{height:270}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.lcr}))} xLabel="Month" yLabel="LCR (%)"/></div><p className="muted">Management stress estimate: {ratioText(state.risk.riskMetrics.managementLcr??state.risk.riskMetrics.lcr)}. This uses behavioural stress assumptions and is separate from the reported COR011 LCR.</p></section>
  </div>;
 }
