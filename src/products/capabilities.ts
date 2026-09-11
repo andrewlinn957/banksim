@@ -23,6 +23,7 @@ export type ProductWithCapability<C extends ProductCapability> =
 export type CustomerDepositProductType = ProductWithCapability<'customerDeposit'>;
 export type LoanProductType = ProductWithCapability<'loan'>;
 export type WholesaleFundingProductType = ProductWithCapability<'wholesaleFunding'>;
+export type CapitalMarketsFundingProductType = ProductWithCapability<'capitalMarketsFunding'>;
 export type TreasuryAssetProductType = ProductWithCapability<'treasuryAsset'>;
 
 export const getCapability = <C extends ProductCapability>(
