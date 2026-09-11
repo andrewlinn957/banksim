@@ -63,7 +63,12 @@ const cloneBehaviour = (b: BehaviouralState): BehaviouralState => ({
   treasuryPolicy: b.treasuryPolicy ? { ...b.treasuryPolicy } : undefined,
 });
 
-const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlanState | undefined => plan ? ({ ...plan, targets: plan.targets.map(target => ({ ...target, milestones: target.milestones.map(m => ({ ...m })) })), currentEvaluation: plan.currentEvaluation ? { ...plan.currentEvaluation, metrics: plan.currentEvaluation.metrics.map(metric => ({ ...metric })) } : undefined, reviews: plan.reviews?.map(review => ({ ...review, evaluation: { ...review.evaluation, metrics: review.evaluation.metrics.map(metric => ({ ...metric })) } })) }) : undefined;
+const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlanState | undefined => plan ? ({
+  ...plan,
+  targets: plan.targets.map(target => ({ ...target, milestones: target.milestones.map(m => ({ ...m })) })),
+  currentEvaluation: plan.currentEvaluation ? { ...plan.currentEvaluation, metrics: plan.currentEvaluation.metrics.map(metric => ({ ...metric })) } : undefined,
+  reviewHistory: plan.reviewHistory?.map(review => ({ ...review, evaluation: { ...review.evaluation, metrics: review.evaluation.metrics.map(metric => ({ ...metric })) } })),
+}) : undefined;
 
 const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
 
