@@ -4,6 +4,7 @@ import {
   DEFAULT_THREE_YEAR_PLAN_SETTINGS,
   THREE_YEAR_PLAN_HORIZON_MONTHS,
   createThreeYearPlanState,
+  renewThreeYearPlanState,
   type ThreeYearPlanTarget,
 } from '../domain/threeYearPlan';
 import { resolveFeatureFlags } from './featureFlags';
@@ -98,6 +99,62 @@ describe('Three-Year Plan', () => {
     expect(missesPlan.score).toBeLessThan(onPlan.score);
     expect(updateBoardConfidenceFromPlan(70, missesPlan.score)).toBeLessThan(
       updateBoardConfidenceFromPlan(70, onPlan.score)
+    );
+  });
+
+  it('renews a completed plan into a fresh 36-month cycle carrying only plan-derived confidence', () => {
+    const completed = createThreeYearPlanState({
+      startStep: 0,
+      targets: [epsTarget],
+      settings: { enabled: true, initialBoardConfidence: 70, confidenceUpdateWeight: 0.25 },
+    });
+    completed.completed = true;
+    completed.boardConfidence = 82;
+    completed.currentEvaluation = {
+      month: 36,
+      score: 77,
+      metrics: [{ metricId: 'eps', actual: 10.5, targetLower: 11, score: 77, weight: 1 }],
+    };
+    completed.reviewHistory = [{
+      month: 36,
+      evaluation: completed.currentEvaluation,
+      boardConfidenceBefore: 83,
+      boardConfidenceAfter: 82,
+    }];
+
+    const successorTarget: ThreeYearPlanTarget = {
+      ...epsTarget,
+      baseline: 10.5,
+      milestones: [
+        { month: 12, lower: 11.5 },
+        { month: 24, lower: 12.5 },
+        { month: 36, lower: 13.5 },
+      ],
+    };
+    const renewed = renewThreeYearPlanState({ completedPlan: completed, startStep: 36, targets: [successorTarget] });
+
+    expect(renewed.cycleNumber).toBe(2);
+    expect(renewed.startStep).toBe(36);
+    expect(renewed.completed).toBe(false);
+    expect(renewed.boardConfidence).toBe(82);
+    expect(renewed.reviewHistory).toHaveLength(0);
+    expect(renewed.currentEvaluation).toBeUndefined();
+    expect(renewed.priorCycles).toHaveLength(1);
+    expect(renewed.priorCycles?.[0].finalEvaluation.score).toBe(77);
+    expect(renewed.priorCycles?.[0].finalBoardConfidence).toBe(82);
+
+    (renewed.targets[0].milestones[0] as { lower: number }).lower = 99;
+    expect(renewed.priorCycles?.[0].targets[0].milestones[0].lower).toBe(9);
+  });
+
+  it('rejects renewal before a plan has completed', () => {
+    const active = createThreeYearPlanState({
+      startStep: 0,
+      targets: [epsTarget],
+      settings: { enabled: true, initialBoardConfidence: 70, confidenceUpdateWeight: 0.25 },
+    });
+    expect(() => renewThreeYearPlanState({ completedPlan: active, startStep: 12, targets: [epsTarget] })).toThrow(
+      'Only a completed Three-Year Plan can be archived'
     );
   });
 });
