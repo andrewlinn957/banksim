@@ -1,5 +1,5 @@
 name: Phase5 wire board agenda
-# rerun after isolating the plan-priority fixture from capital stress
+# rerun after setting the plan before advancing the test clock
 
 on:
   push:
