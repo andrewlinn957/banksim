@@ -2,10 +2,7 @@ import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide, MaturityBucket, ProductType } from '../domain/enums';
 import { hasCapability } from '../products/capabilities';
-import {
-  getLiquidityRule,
-  liquidityTagForProduct,
-} from '../products/regulatory';
+import { getLiquidityRule } from '../products/regulatory';
 import {
   getNsfrProductRule,
   NSFR_ASF_CATEGORIES,
@@ -18,6 +15,10 @@ import {
   nsfrMaturityBand,
   nsfrRsfFactor,
 } from '../products/nsfr';
+import {
+  lcrCashFlowContributionsForProduct,
+  lcrCommitmentContributions,
+} from './cor011';
 
 // 2026 UK standardised portfolio assumptions: docs/model-basis.md.
 
@@ -140,18 +141,16 @@ export const committedExposure = (s: BankState, product?: ProductType): number =
     0
   );
 
-export const commitmentLiquidity = (s: BankState) =>
-  Object.entries(s.loanPipelines ?? {}).reduce(
-    (totals, [rawProductType, pipeline]) => {
-      const productType = rawProductType as ProductType;
-      const committed = Math.max(0, pipeline?.committedNotional ?? 0);
-      const rule = getLiquidityRule(productType);
-      totals.outflow += committed * Math.max(0, rule.commitmentOutflowFactor ?? 0);
-      totals.rsf += committed * Math.max(0, rule.commitmentRsfFactor ?? 0);
-      return totals;
-    },
-    { outflow: 0, rsf: 0 }
-  );
+export const commitmentLiquidity = (s: BankState) => {
+  const outflow = lcrCommitmentContributions(s).reduce((sum, contribution) => sum + contribution.weighted, 0);
+  const rsf = Object.entries(s.loanPipelines ?? {}).reduce((sum, [rawProductType, pipeline]) => {
+    const productType = rawProductType as ProductType;
+    const committed = Math.max(0, pipeline?.committedNotional ?? 0);
+    const rule = getLiquidityRule(productType);
+    return sum + committed * Math.max(0, rule.commitmentRsfFactor ?? 0);
+  }, 0);
+  return { outflow, rsf };
+};
 
 export const commitmentNsfrContribution = (s: BankState): NsfrContribution =>
   rsfContribution('undrawnCommitment', committedExposure(s), 'Undrawn commitments');
@@ -223,13 +222,12 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
   return s.financial.balanceSheet.items.map(i => {
     const p = i.productType;
     const b = Math.max(0, i.balance);
-    const tag = liquidityTagForProduct(p);
     const rule = getLiquidityRule(p);
     const nsfrRule = getNsfrProductRule(p);
     const asset = i.side === BalanceSheetSide.Asset;
-
-    let outflow = asset ? 0 : b * Math.min(1, Math.max(0, tag.lcrOutflowRate ?? 0));
-    let inflow = asset ? b * Math.min(1, Math.max(0, tag.lcrInflowRate ?? 0)) : 0;
+    const lcr = lcrCashFlowContributionsForProduct(s, c, p);
+    const outflow = lcr.outflows.reduce((sum, contribution) => sum + contribution.weighted, 0);
+    const inflow = lcr.inflows.reduce((sum, contribution) => sum + contribution.weighted, 0);
     let asfContributions: NsfrContribution[] = [];
     let rsfContributions: NsfrContribution[] = [];
 
@@ -257,14 +255,7 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
       }
     }
 
-    if (rule.dynamicRetailSight) {
-      const retail = retailCurrentAccountRegulatoryFactors(s);
-      outflow = b * retail.lcrOutflowFactor;
-    }
-
     if (rule.derivativeTreatment) {
-      inflow = rule.derivativeTreatment === 'asset' ? derivatives.receipts : 0;
-      outflow = rule.derivativeTreatment === 'liability' ? derivatives.payments : 0;
       if (rule.derivativeTreatment === 'asset') {
         rsfContributions = [rsfContribution('derivativeAsset', Math.max(0, derivatives.derivativeAssets - derivatives.derivativeLiabilities), i.label)];
       } else {
@@ -276,24 +267,6 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
       rsfContributions = [rsfContribution('level1Sovereign', b, i.label)];
     }
 
-    if (rule.fundingMaturityTreatment) {
-      const buckets = s.fundingLadders?.[p];
-      if (buckets?.length) {
-        if (rule.fundingMaturityTreatment === 'retailTerm') {
-          outflow = buckets.reduce(
-            (sum, f) =>
-              f.monthsToMaturity <= 1 ? sum + Math.max(0, f.notional) * 0.10 : sum,
-            0
-          );
-        } else {
-          outflow = buckets.reduce((sum, f) => {
-            if (f.monthsToMaturity > 1) return sum;
-            return sum + Math.max(0, f.notional) * (1 + Math.max(0, f.rate) / 12);
-          }, 0);
-        }
-      }
-    }
-
     if (hasCapability(p, 'loan')) {
       if (nsfrRule.rsf !== 'mortgage' && nsfrRule.rsf !== 'otherLoan') {
         throw new Error(`Loan product ${p} must declare mortgage or otherLoan NSFR RSF treatment`);
@@ -301,19 +274,6 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
       const loanCategory: NsfrRsfCategory = nsfrRule.rsf;
       const cohorts = s.loanCohorts?.[p] ?? [];
       const workouts = s.workoutPipelines?.[p] ?? [];
-      inflow = cohorts.reduce(
-        (sum, loan) =>
-          sum +
-          (loan.stage === 'stage3'
-            ? 0
-            : 0.5 *
-              contractualLoanPayment(
-                loan.outstandingPrincipal,
-                loan.annualInterestRate,
-                loan.termMonths - loan.ageMonths
-              )),
-        0
-      );
       const gross =
         cohorts.reduce((sum, l) => sum + l.outstandingPrincipal, 0) +
         workouts.reduce((sum, w) => sum + w.defaultedPrincipal, 0);
@@ -373,7 +333,20 @@ export const prudentialLiquidityLines = (s: BankState, c: SimulationConfig) => {
     const asf = asfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
     const rsf = rsfContributions.reduce((sum, contribution) => sum + contribution.weighted, 0);
 
-    return { productType: p, label: i.label, balance: b, asset, outflow, inflow, asf, rsf, asfContributions, rsfContributions };
+    return {
+      productType: p,
+      label: i.label,
+      balance: b,
+      asset,
+      outflow,
+      inflow,
+      lcrOutflowContributions: lcr.outflows,
+      lcrInflowContributions: lcr.inflows,
+      asf,
+      rsf,
+      asfContributions,
+      rsfContributions,
+    };
   });
 };
 
