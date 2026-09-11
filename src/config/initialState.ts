@@ -281,7 +281,7 @@ const behaviour: BehaviouralState = {
     [AssetProductType.CorporateLoans]: 0.25,
   },
   mortgagePolicy: { maxLtv: 0.85, fixedPeriodMonths: 24 },
-  // This is descriptive legacy UI state, not an instruction to rebalance every month. It matches
+  // This is descriptive UI state, not an instruction to rebalance every month. It matches
   // the physical opening 50/50 reserves/gilt mix so the first no-change UI step does not trade.
   treasuryPolicy: { giltShareOfHqla: 0.5, giltDurationYears: 5 },
   termDepositTenorMonths: 12,
@@ -352,7 +352,6 @@ const time: SimulationTime = {
 };
 
 const seedState: BankState = {
-  version: 'v1',
   time,
   financial,
   risk,
