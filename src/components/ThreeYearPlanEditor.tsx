@@ -31,7 +31,7 @@ export default function ThreeYearPlanEditor({
   targets,
   onChange,
   title = 'Set opening board plan',
-  detail = 'These targets are locked after the next month starts. Board Confidence will be judged only against the plan you set here.',
+  detail = 'Optional plan mode is still a management choice. These targets are locked after the first month. Board Confidence will be judged only against the plan you set here.',
 }: Props) {
   const totalWeight = targets.reduce((sum, target) => sum + Math.max(0, target.weight), 0);
 
