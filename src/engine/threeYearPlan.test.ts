@@ -140,11 +140,34 @@ describe('Three-Year Plan', () => {
     expect(renewed.reviewHistory).toHaveLength(0);
     expect(renewed.currentEvaluation).toBeUndefined();
     expect(renewed.priorCycles).toHaveLength(1);
+    expect(renewed.priorCycles?.[0].endStep).toBe(36);
     expect(renewed.priorCycles?.[0].finalEvaluation.score).toBe(77);
     expect(renewed.priorCycles?.[0].finalBoardConfidence).toBe(82);
 
     (renewed.targets[0].milestones[0] as { lower: number }).lower = 99;
     expect(renewed.priorCycles?.[0].targets[0].milestones[0].lower).toBe(9);
+  });
+
+  it('keeps the predecessor at its contractual month 36 end when renewal is delayed', () => {
+    const completed = createThreeYearPlanState({
+      startStep: 0,
+      targets: [epsTarget],
+      settings: { enabled: true, initialBoardConfidence: 70, confidenceUpdateWeight: 0.25 },
+    });
+    completed.completed = true;
+    completed.boardConfidence = 80;
+    completed.currentEvaluation = {
+      month: 36,
+      score: 75,
+      metrics: [{ metricId: 'eps', actual: 10, targetLower: 11, score: 75, weight: 1 }],
+    };
+
+    const renewed = renewThreeYearPlanState({ completedPlan: completed, startStep: 40, targets: [epsTarget] });
+
+    expect(renewed.startStep).toBe(40);
+    expect(renewed.priorCycles?.[0].startStep).toBe(0);
+    expect(renewed.priorCycles?.[0].endStep).toBe(36);
+    expect(renewed.boardConfidence).toBe(80);
   });
 
   it('rejects renewal before a plan has completed', () => {
