@@ -4,26 +4,29 @@ export type NsfrMaturityBand = 'under6m' | 'sixTo12m' | 'oneYearPlus' | 'none';
 
 export type NsfrAsfCategory = Exclude<NsfrAsfRegulatoryClass, 'none' | 'retail'> | 'stableRetail' | 'otherRetail';
 
+// C80 is two-dimensional for several asset classes: the row identifies the
+// asset/encumbrance treatment while the maturity column determines the factor.
+// Keep those dimensions separate rather than inventing pseudo-rows for short
+// and long contractual amounts.
 export type NsfrRsfCategory =
-  | Exclude<NsfrRsfRegulatoryClass, 'none' | 'mortgage' | 'otherLoan'>
-  | 'mortgageShort'
-  | 'mortgageLong'
-  | 'otherLoanShort'
-  | 'otherLoanLong'
+  | Exclude<NsfrRsfRegulatoryClass, 'none'>
   | 'nonPerforming'
   | 'undrawnCommitment';
 
-export interface NsfrCategoryDefinition {
+export interface NsfrCorepReference {
   corep: string;
   label: string;
-  group: string;
-  factors: Record<NsfrMaturityBand, number>;
 }
 
-export interface NsfrEncumbranceTreatment {
-  corep: string;
-  label: string;
-  factor: number;
+export interface NsfrCategoryDefinition extends NsfrCorepReference {
+  group: string;
+  factors: Record<NsfrMaturityBand, number>;
+  parent?: NsfrCorepReference;
+  ofWhich?: NsfrCorepReference;
+}
+
+export interface NsfrEncumbranceTreatment extends NsfrCorepReference {
+  factors: Record<NsfrMaturityBand, number>;
 }
 
 export interface NsfrRsfCategoryDefinition extends NsfrCategoryDefinition {
@@ -85,79 +88,111 @@ export const NSFR_ASF_CATEGORIES: Record<NsfrAsfCategory, NsfrCategoryDefinition
 export const NSFR_RSF_CATEGORIES: Record<NsfrRsfCategory, NsfrRsfCategoryDefinition> = {
   centralBankReserve: {
     corep: 'C80 1.1.1.1',
-    label: 'Cash, reserves and HQLA central bank exposures: unencumbered / <6m encumbrance',
+    label: 'Unencumbered or encumbered for a residual maturity of less than six months',
     group: 'Cash & central bank',
+    parent: { corep: 'C80 1.1.1', label: 'Cash, reserves and HQLA exposures to central banks' },
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
-    encumberedSixTo12m: { corep: 'C80 1.1.1.2', label: 'Cash, reserves and HQLA central bank exposures: encumbered 6–12m', factor: 0.50 },
-    encumberedOneYearPlus: { corep: 'C80 1.1.1.3', label: 'Cash, reserves and HQLA central bank exposures: encumbered ≥1y', factor: 1 },
+    encumberedSixTo12m: {
+      corep: 'C80 1.1.1.2',
+      label: 'Encumbered for a residual maturity of at least six months but less than one year',
+      factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
+    },
+    encumberedOneYearPlus: {
+      corep: 'C80 1.1.1.3',
+      label: 'Encumbered for a residual maturity of one year or more',
+      factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
+    },
   },
   level1Sovereign: {
     corep: 'C80 1.2.1.1',
-    label: 'Level 1 assets eligible for 0% LCR haircut: unencumbered / <6m encumbrance',
+    label: 'Unencumbered or encumbered for a residual maturity of less than six months',
     group: 'Level 1 securities',
+    parent: { corep: 'C80 1.2.1', label: 'Level 1 assets eligible for 0% LCR haircut' },
     factors: { under6m: 0, sixTo12m: 0, oneYearPlus: 0, none: 0 },
-    encumberedSixTo12m: { corep: 'C80 1.2.1.2', label: 'Level 1 assets eligible for 0% LCR haircut: encumbered 6–12m', factor: 0.50 },
-    encumberedOneYearPlus: { corep: 'C80 1.2.1.3', label: 'Level 1 assets eligible for 0% LCR haircut: encumbered ≥1y', factor: 1 },
+    encumberedSixTo12m: {
+      corep: 'C80 1.2.1.2',
+      label: 'Encumbered for a residual maturity of at least six months but less than one year',
+      factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
+    },
+    encumberedOneYearPlus: {
+      corep: 'C80 1.2.1.3',
+      label: 'Encumbered for a residual maturity of one year or more',
+      factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
+    },
   },
-  mortgageShort: {
+  mortgage: {
     corep: 'C80 1.4.5.1',
-    label: 'Low-risk non-financial customer loans: <1y contractual amount',
+    label: 'Unencumbered or encumbered for a residual maturity of less than six months',
     group: 'Residential mortgages',
-    factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
-    encumberedSixTo12m: { corep: 'C80 1.4.5.2', label: 'Low-risk non-financial customer loans: encumbered 6–12m', factor: 0.50 },
-    encumberedOneYearPlus: { corep: 'C80 1.4.5.3', label: 'Low-risk non-financial customer loans: encumbered ≥1y', factor: 1 },
+    parent: {
+      corep: 'C80 1.4.5',
+      label: 'Loans to non-financial customers other than central banks assigned a risk weight of 35% or less',
+    },
+    ofWhich: { corep: 'C80 1.4.5.0.1', label: 'Of which, residential mortgages' },
+    // C80 columns apply 50% below one year and 65% from one year for this row.
+    factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.65, none: 0.65 },
+    encumberedSixTo12m: {
+      corep: 'C80 1.4.5.2',
+      label: 'Encumbered for a residual maturity of at least six months but less than one year',
+      factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.65, none: 0.65 },
+    },
+    encumberedOneYearPlus: {
+      corep: 'C80 1.4.5.3',
+      label: 'Encumbered for a residual maturity of one year or more',
+      factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
+    },
   },
-  mortgageLong: {
-    corep: 'C80 1.4.5.1',
-    label: 'Low-risk non-financial customer loans: ≥1y contractual amount',
-    group: 'Residential mortgages',
-    factors: { under6m: 0.65, sixTo12m: 0.65, oneYearPlus: 0.65, none: 0.65 },
-    encumberedSixTo12m: { corep: 'C80 1.4.5.2', label: 'Low-risk non-financial customer loans: encumbered 6–12m', factor: 0.65 },
-    encumberedOneYearPlus: { corep: 'C80 1.4.5.3', label: 'Low-risk non-financial customer loans: encumbered ≥1y', factor: 1 },
-  },
-  otherLoanShort: {
+  otherLoan: {
     corep: 'C80 1.4.6.1',
-    label: 'Other loans to non-financial customers: <1y contractual amount',
+    label: 'Unencumbered or encumbered for a residual maturity of less than one year',
     group: 'Other customer loans',
-    factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.50, none: 0.50 },
-    encumberedOneYearPlus: { corep: 'C80 1.4.6.2', label: 'Other loans to non-financial customers: encumbered ≥1y', factor: 1 },
-  },
-  otherLoanLong: {
-    corep: 'C80 1.4.6.1',
-    label: 'Other performing loans to non-financial customers: ≥1y contractual amount',
-    group: 'Other customer loans',
-    factors: { under6m: 0.85, sixTo12m: 0.85, oneYearPlus: 0.85, none: 0.85 },
-    encumberedOneYearPlus: { corep: 'C80 1.4.6.2', label: 'Other loans to non-financial customers: encumbered ≥1y', factor: 1 },
+    parent: {
+      corep: 'C80 1.4.6',
+      label: 'Other loans to non-financial customers other than central banks',
+    },
+    // C80 columns apply 50% below one year and 85% from one year for this row.
+    factors: { under6m: 0.50, sixTo12m: 0.50, oneYearPlus: 0.85, none: 0.85 },
+    // There is deliberately no separate 6–12m encumbrance row for 1.4.6:
+    // row 1.4.6.1 already covers encumbrance of less than one year.
+    encumberedOneYearPlus: {
+      corep: 'C80 1.4.6.2',
+      label: 'Encumbered for a residual maturity of one year or more',
+      factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
+    },
   },
   nonPerforming: {
     corep: 'C80 1.9.3',
     label: 'Non-performing assets',
     group: 'Non-performing assets',
+    parent: { corep: 'C80 1.9', label: 'RSF from other assets' },
     factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
   },
   derivativeAsset: {
     corep: 'C80 1.7.2',
     label: 'NSFR derivative assets',
     group: 'Derivatives',
+    parent: { corep: 'C80 1.7', label: 'RSF from derivatives' },
     factors: { under6m: 1, sixTo12m: 1, oneYearPlus: 1, none: 1 },
   },
   derivativeLiability: {
     corep: 'C80 1.7.1',
     label: 'Required stable funding for derivative liabilities',
     group: 'Derivatives',
+    parent: { corep: 'C80 1.7', label: 'RSF from derivatives' },
     factors: { under6m: 0.05, sixTo12m: 0.05, oneYearPlus: 0.05, none: 0.05 },
   },
   undrawnCommitment: {
     corep: 'C80 1.10.2',
     label: 'Committed facilities',
     group: 'Undrawn commitments',
+    parent: { corep: 'C80 1.10', label: 'RSF from OBS items' },
     factors: { under6m: 0.05, sixTo12m: 0.05, oneYearPlus: 0.05, none: 0.05 },
   },
 };
 
 export interface NsfrProductRule {
   asf?: 'retail' | NsfrAsfCategory;
-  rsf?: 'mortgage' | 'otherLoan' | NsfrRsfCategory;
+  rsf?: Exclude<NsfrRsfRegulatoryClass, 'none'>;
 }
 
 export const nsfrMaturityBand = (monthsToMaturity?: number | null): NsfrMaturityBand => {
@@ -170,8 +205,10 @@ export const nsfrMaturityBand = (monthsToMaturity?: number | null): NsfrMaturity
 export const nsfrAsfFactor = (category: NsfrAsfCategory, monthsToMaturity?: number | null): number =>
   NSFR_ASF_CATEGORIES[category].factors[nsfrMaturityBand(monthsToMaturity)];
 
-export const nsfrRsfFactor = (category: NsfrRsfCategory): number =>
-  NSFR_RSF_CATEGORIES[category].factors.none;
+export const nsfrRsfFactor = (
+  category: NsfrRsfCategory,
+  maturityBand: NsfrMaturityBand = 'none'
+): number => NSFR_RSF_CATEGORIES[category].factors[maturityBand];
 
 export const nsfrEncumbranceTreatment = (
   category: NsfrRsfCategory,
