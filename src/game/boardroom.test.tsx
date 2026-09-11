@@ -75,7 +75,8 @@ describe('board management', () => {
     const stressed = structuredClone(initialState);
     stressed.risk.riskMetrics.internalCet1Headroom = -.01;
     const rescue = boardDecisions(stressed).find((decision) => decision.id === 'capital');
-    expect(Number(rescue?.changes.issueEquityAmount)).toBeGreaterThan(0);
+    expect(rescue?.changes.capitalMarketsInstrument).toBe('cet1');
+    expect(Number(rescue?.changes.capitalMarketsTargetAmount)).toBeGreaterThan(0);
     expect(boardDecisions(stressed).some((decision) => decision.id === 'growth')).toBe(false);
   });
 });
