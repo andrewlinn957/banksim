@@ -4,6 +4,8 @@ import PerformanceReport from './components/PerformanceReport';
 import { Department } from './game/departments';
 import { attentionReason, clockAfterStep, monthsToPeriodEnd } from './game/management';
 import Boardroom from './components/Boardroom';
+import FunctionalNavigation from './components/FunctionalNavigation';
+import FunctionalReportNavigation from './components/FunctionalReportNavigation';
 import { useEffect, useMemo, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
@@ -50,29 +52,14 @@ import { buildCapitalMarketsBook } from './engine/capitalMarkets';
 import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
 const controller = new SimulationController(baseConfig);
-const tabs = [
-  'Boardroom',
-  'Performance',
-  'Overview',
-  'Share Price',
-  'Accounts',
-  'Regulatory',
-  'Loans',
-  'Costs',
-  'Events',
-  'Reconciliations',
-  'Past games',
-  'Help',
-];
-
 const tabLabels: Record<string, string> = {
   Boardroom: 'Bank',
   Performance: 'Performance',
-  Overview: 'Risk dashboard',
+  Overview: 'Risk overview',
   'Share Price': 'Share price',
   Scenarios: 'Scenarios',
   Accounts: 'Accounts',
-  Regulatory: 'Regulatory metrics',
+  Regulatory: 'Regulatory detail',
   Loans: 'Loans',
   Costs: 'Costs',
   Events: 'Events',
@@ -474,11 +461,15 @@ const App = () => {
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
-        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
+        <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
-      <nav className="tabs report-navigation" aria-label="Bank reports and tools">
-        {tabs.map(tab=><button key={tab} className={`tab-button ${activeTab===tab?'active':''}`} aria-current={activeTab===tab?'page':undefined} onClick={()=>tab==='Boardroom'?setActiveTab('Boardroom'):openReport(tab)}>{tabLabels[tab]??tab}</button>)}
-      </nav>
+      <FunctionalNavigation
+        activeTab={activeTab}
+        activeDepartment={activeTab==='Boardroom'&&isActionsOpen?activeDepartment:null}
+        onBoardroom={()=>{setIsActionsOpen(false);setActiveTab('Boardroom');}}
+        onDepartment={openDepartment}
+        onReport={openReport}
+      />
       <section className="time-console compact-clock" aria-label="Simulation time controls">
        <div className="clock-date"><strong>Year {Math.floor((bankState.time.step-stateHistory[0].time.step)/12)+1} · Q{Math.floor((bankState.time.step-stateHistory[0].time.step)%12/3)+1}</strong><span>{bankState.time.date.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'})}</span></div>
        <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
@@ -505,10 +496,11 @@ const App = () => {
         </div>
       )}
 
-      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>setActiveTab('Boardroom')}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span>{['Loans','Regulatory','Accounts'].includes(activeTab)&&<button className="button" onClick={()=>openDepartment(activeTab==='Loans'?'Lending':activeTab==='Costs'?'Treasury':'Capital')}>Manage {activeTab==='Loans'?'lending':activeTab==='Costs'?'treasury':'capital'} →</button>}</div>}
+      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>{setIsActionsOpen(false);setActiveTab('Boardroom');}}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span></div>}
+      <FunctionalReportNavigation activeTab={activeTab} onReport={openReport} onManage={openDepartment}/>
 
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onClose={()=>setIsActionsOpen(false)} >
+      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();setActionForm(next);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}
