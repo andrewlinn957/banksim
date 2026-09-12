@@ -1,8 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ReactElement, ReactNode } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import FunctionalNavigation from '../components/FunctionalNavigation';
 import FunctionalReportNavigation from '../components/FunctionalReportNavigation';
+
+const textContent = (node: ReactNode): string => {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textContent).join('');
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  if (typeof element.type === 'function') {
+    const expanded = (element.type as (props: typeof element.props) => ReactNode)(element.props);
+    return textContent(expanded);
+  }
+  return textContent(element.props.children);
+};
 
 const findButton = (node: ReactNode, text: string): ReactElement<{ children?: ReactNode; onClick?: () => void }> | null => {
   if (!node || typeof node === 'string' || typeof node === 'number' || typeof node === 'boolean') return null;
@@ -18,8 +29,7 @@ const findButton = (node: ReactNode, text: string): ReactElement<{ children?: Re
     const expanded = (element.type as (props: typeof element.props) => ReactNode)(element.props);
     return findButton(expanded, text);
   }
-  const label = renderToStaticMarkup(element).replace(/<[^>]+>/g, '');
-  if (element.type === 'button' && label.includes(text)) return element;
+  if (element.type === 'button' && textContent(element.props.children).includes(text)) return element;
   return findButton(element.props.children, text);
 };
 
