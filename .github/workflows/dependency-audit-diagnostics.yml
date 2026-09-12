@@ -28,7 +28,9 @@ jobs:
           node-version: 20.20.2
           cache: npm
       - name: Upgrade vulnerable build and test toolchain
-        run: npm install --save-dev vite@7 vitest@4.1.11 @vitejs/plugin-react@5
+        run: |
+          npm install --save-dev vite@7 vitest@4.1.11 @vitejs/plugin-react@5
+          npm audit fix
       - name: Make intentional long-test timeouts explicit
         run: |
           python - <<'PY'
