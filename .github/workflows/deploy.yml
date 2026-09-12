@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - uses: actions/configure-pages@v5
       - run: npm ci
+      - name: Audit high and critical dependency vulnerabilities
+        run: npm audit --audit-level=high
       - run: npm run test
       - run: npm run typecheck
       - run: npm run build
