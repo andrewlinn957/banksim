@@ -14,6 +14,10 @@ const findButton = (node: ReactNode, text: string): ReactElement<{ children?: Re
     return null;
   }
   const element = node as ReactElement<{ children?: ReactNode; onClick?: () => void }>;
+  if (typeof element.type === 'function') {
+    const expanded = (element.type as (props: typeof element.props) => ReactNode)(element.props);
+    return findButton(expanded, text);
+  }
   const label = renderToStaticMarkup(element).replace(/<[^>]+>/g, '');
   if (element.type === 'button' && label.includes(text)) return element;
   return findButton(element.props.children, text);
