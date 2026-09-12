@@ -1,3 +1,4 @@
+# Temporary workflow used only on the review implementation branch.
 name: Apply review recommendations
 
 on:
