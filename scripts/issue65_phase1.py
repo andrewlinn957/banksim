@@ -68,37 +68,19 @@ app.write_text(text)
 
 reg = Path('src/components/RegMetricsPanel.tsx')
 r = reg.read_text()
-component = r.index("export default function RegMetricsPanel")
-imports = """import { useState } from 'react';
-import { BankState } from '../domain/bankState';
-import { SimulationConfig } from '../domain/config';
-import { AttributionLineSelection, StepAttribution } from '../domain/attribution';
-import CapitalDashboard from './CapitalDashboard';
-import LcrDashboard from './LcrDashboard';
-import NsfrDashboard from './NsfrDashboard';
-import LeverageDashboard from './LeverageDashboard';
-import RwaDashboard from './RwaDashboard';
-import CapitalHistory from './CapitalHistory';
-import RiskAppetiteEditor, { RiskAppetite } from './RiskAppetiteEditor';
-
-export type RegulatoryMetric = 'capital' | 'rwa' | 'leverage' | 'lcr' | 'nsfr';
-interface Props { state: BankState; history: BankState[]; config: SimulationConfig; metric?:RegulatoryMetric; onMetricChange?:(metric:RegulatoryMetric)=>void; pendingRiskAppetite?:RiskAppetite|null; onRiskAppetite?:(t:RiskAppetite|null)=>void; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; }
-
-"""
-r = imports + r[component:]
 r = r.replace(
-    "  const labels: Record<RegulatoryMetric, string> = { capital: 'Capital', rwa: 'Risk-weighted assets', leverage: 'Leverage', lcr: 'Liquidity coverage', nsfr: 'Stable funding' };\n  const fields = { capital: 'cet1Ratio', rwa: 'rwa', leverage: 'leverageRatio', lcr: 'lcr', nsfr: 'nsfr' } as const;\n  return <section className=\"card regulatory-detail\">",
-    "  const labels: Record<RegulatoryMetric, string> = { capital: 'Capital', rwa: 'Risk-weighted assets', leverage: 'Leverage', lcr: 'Liquidity coverage', nsfr: 'Stable funding' };\n  const dashboard = metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : metric === 'lcr' ? <LcrDashboard state={state} config={config} history={history}/> : metric === 'nsfr' ? <NsfrDashboard state={state} config={config} history={history}/> : metric === 'leverage' ? <LeverageDashboard state={state} config={config} history={history}/> : <RwaDashboard state={state} config={config} history={history}/>;\n  return <section className=\"card regulatory-detail\">",
+    "  const fields = { capital: 'cet1Ratio', rwa: 'rwa', leverage: 'leverageRatio', lcr: 'lcr', nsfr: 'nsfr' } as const;\n",
+    "",
 )
 r, n = re.subn(
-    r"    \{metric === 'capital' \? <CapitalDashboard.*?\n    \}\n    \{metric === 'capital'",
-    "    {dashboard}\n    {metric === 'capital'",
+    r"    \{metric === 'capital' \? <CapitalDashboard state=\{state\} config=\{config\}/> : metric === 'lcr' \? <LcrDashboard state=\{state\} config=\{config\} history=\{history\}/> : metric === 'nsfr' \? <NsfrDashboard state=\{state\} config=\{config\} history=\{history\}/> : metric === 'leverage' \? <LeverageDashboard state=\{state\} config=\{config\} history=\{history\}/> : metric === 'rwa' \? <RwaDashboard state=\{state\} config=\{config\} history=\{history\}/> : <div className=\"regulatory-grid\">.*?\n    \}\n    \{metric === 'capital'",
+    "    {metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : metric === 'lcr' ? <LcrDashboard state={state} config={config} history={history}/> : metric === 'nsfr' ? <NsfrDashboard state={state} config={config} history={history}/> : metric === 'leverage' ? <LeverageDashboard state={state} config={config} history={history}/> : <RwaDashboard state={state} config={config} history={history}/>}\n    {metric === 'capital'",
     r,
     count=1,
     flags=re.S,
 )
 if n != 1:
-    raise SystemExit('Could not replace unreachable regulatory fallback')
+    raise SystemExit('Could not replace unreachable regulatory rendering fallback')
 reg.write_text(r)
 
 Path('src/ui/actionFormState.ts').write_text("""import { ActionFormState } from '../components/ActionsPanel';
@@ -189,16 +171,16 @@ describe('action form state', () => {
 
   it('clears one-off transactions without changing recurring policy settings', () => {
     const base = createActionFormState(initialState, baseConfig);
-    const queued = {
+    const queued: typeof base = {
       ...base,
       retailCurrentAccountRate: '2.25%',
-      capitalMarketsInstrument: 'cet1' as const,
+      capitalMarketsInstrument: 'cet1',
       capitalMarketsTargetAmount: '250m',
-      giltTradeDirection: 'buy' as const,
+      giltTradeDirection: 'buy',
       giltTradeAmount: '50m',
-      boeFacility: 'tfsm' as const,
+      boeFacility: 'indexedLtRepo',
       boeFundingAmount: '100m',
-      hedgeDirection: 'payFixed' as const,
+      hedgeDirection: 'payFixed',
       hedgeNotional: '75m',
     };
     const cleared = clearOneOffTransactions(queued);
