@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { calculateCor011, LcrContribution } from '../engine/cor011';
@@ -17,9 +18,32 @@ const aggregateParts=(contributions:LcrContribution[]):Part[]=>{
  return [...grouped.entries()].map(([label,value],i)=>({label,value,color:colors[i%colors.length]}));
 };
 
-const contributionRows=(contributions:LcrContribution[]):[string,string][]=>contributions.map(c=>[
- `${c.corep} · ${c.label}${c.capClass?` · ${c.capClass}% cap`:''}`,
- `${formatCurrency(c.amount)} × ${formatPct(c.factor,0)} = ${formatCurrency(c.weighted)}`,
+type ContributionAggregate={label:string;amount:number;factor:number;weighted:number;count:number};
+const detailCurrency=(value:number):string=>{
+ const abs=Math.abs(value);
+ if(abs>=1e9)return `£${(value/1e9).toFixed(2)}bn`;
+ if(abs>=1e6)return `£${(value/1e6).toFixed(abs>=1e8?0:1)}m`;
+ if(abs>=1e3)return `£${(value/1e3).toFixed(abs>=1e5?0:1)}k`;
+ return `£${value.toFixed(0)}`;
+};
+export const aggregateContributions=(contributions:LcrContribution[]):ContributionAggregate[]=>{
+ const grouped=new Map<string,ContributionAggregate>();
+ contributions.forEach(c=>{
+  const label=`${c.corep} · ${c.label}${c.capClass?` · ${c.capClass}% cap`:''}`;
+  const key=`${label}|${c.factor}`;
+  const row=grouped.get(key);
+  if(row){row.amount+=c.amount;row.weighted+=c.weighted;row.count+=1;}
+  else grouped.set(key,{label,amount:c.amount,factor:c.factor,weighted:c.weighted,count:1});
+ });
+ return [...grouped.values()];
+};
+const contributionRows=(contributions:LcrContribution[]):[string,string][]=>aggregateContributions(contributions).map(c=>[
+ `${c.label}${c.count>1?` · ${c.count} contributions`:''}`,
+ `${detailCurrency(c.amount)} × ${formatPct(c.factor,0)} = ${detailCurrency(c.weighted)}`,
+]);
+const underlyingContributionRows=(contributions:LcrContribution[]):[string,string][]=>contributions.map(c=>[
+ `${c.corep} · ${c.label} · ${c.sourceLabel}${c.capClass?` · ${c.capClass}% cap`:''}`,
+ `${detailCurrency(c.amount)} × ${formatPct(c.factor,0)} = ${detailCurrency(c.weighted)}`,
 ]);
 
 export function lcrDashboardData(state:BankState,config:SimulationConfig) {
@@ -66,6 +90,12 @@ function Bars({bars,reference}:{bars:{label:string;parts:Part[]}[];reference?:{v
  </svg>;
 }
 function DetailTable({title,rows}:{title:string;rows:[string,string][]}) {return <section className="lcr-detail-group"><h4>{title}</h4><table><tbody>{rows.map(([label,value],i)=><tr key={`${label}-${i}`}><th scope="row">{label}</th><td>{value}</td></tr>)}</tbody></table></section>;}
+function ContributionDetailTable({title,contributions,totalLabel,totalValue}:{title:string;contributions:LcrContribution[];totalLabel?:string;totalValue?:number}) {
+ const [expanded,setExpanded]=useState(false);
+ const rows=contributionRows(contributions);
+ if(totalLabel&&totalValue!==undefined)rows.push([totalLabel,detailCurrency(totalValue)]);
+ return <section className="lcr-contribution-detail"><DetailTable title={title} rows={rows}/><details onToggle={event=>setExpanded(event.currentTarget.open)}><summary>Show {contributions.length} underlying contributions</summary>{expanded&&<DetailTable title={`${title} — underlying contributions`} rows={underlyingContributionRows(contributions)}/>}</details></section>;
+}
 export default function LcrDashboard({state,config,history}:{state:BankState;config:SimulationConfig;history:BankState[]}) {
  const d=lcrDashboardData(state,config);
  const maxRatio=Math.max(2,d.requirement*1.2,d.target*1.2,Number.isFinite(d.ratio)?d.ratio*1.1:0);
@@ -77,7 +107,7 @@ export default function LcrDashboard({state,config,history}:{state:BankState;con
    <div className="capital-ratios"><div><strong>{ratioText(d.ratio)}</strong><span>Actual LCR</span></div><div><span>Requirement</span><b>{formatPct(d.requirement,0)}</b></div><div><span>Headroom</span><b className="capital-gap">{pp}</b></div></div>
    <svg className="capital-bullet" viewBox="0 0 400 65" role="img" aria-label={`LCR ${ratioText(d.ratio)}, minimum ${formatPct(d.requirement)}, internal target ${formatPct(d.target)}`}><rect x="8" y="12" width="384" height="18" rx="5" fill="var(--border)"/><rect x="8" y="12" width={d.net>0?384*d.ratio/maxRatio:0} height="18" rx="5" fill="currentColor"/><path d={`M${8+384*d.requirement/maxRatio} 7v28`} stroke="var(--text)" strokeWidth="3"/><path d={`M${8+384*d.target/maxRatio} 7v28`} stroke="#b24b92" strokeWidth="2" strokeDasharray="2 3"/>{[0,1,2,3,4].map(i=><text key={i} x={8+i*96} y="55" textAnchor={i===0?'start':i===4?'end':'middle'}>{formatPct(maxRatio*i/4,0)}</text>)}</svg>
    <p className="lcr-target">Dotted marker: internal target {formatPct(d.target)} · {formatCurrency(d.target*d.net)}</p>
-   <div className="capital-amounts"><div><b>{formatCurrency(d.hqla.total)}</b><span>C76 liquidity buffer</span></div><div><b>{formatCurrency(d.required)}</b><span>HQLA required</span></div><div><b className="capital-gap">{signed(d.surplus)}</b><span>Liquidity surplus</span></div></div><p className="muted">Liquidity buffer ÷ C76 30-day net liquidity outflow.</p>
+   <div className="capital-amounts"><div><b>{formatCurrency(d.hqla.total)}</b><span>C76 liquidity buffer</span></div><div><b>{formatCurrency(d.required)}</b><span>HQLA required</span></div><div><b className="capital-gap">{signed(d.surplus)}</b><span>Liquidity surplus</span></div></div><div className="lcr-headline-history"><h4>LCR over time</h4><div style={{height:180}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.lcr}))} xLabel="Month" yLabel="LCR (%)"/></div></div><p className="muted">Liquidity buffer ÷ C76 30-day net liquidity outflow.</p>
   </section>
   <section className="capital-card"><h3>COR011 cash-flow summary</h3><div className="lcr-summary-numbers">{summary.map(s=><div key={s.label}><strong>{formatCurrency(s.value)}</strong><span>{s.label.replace('|',' ')}</span></div>)}</div><Bars bars={summary.map(s=>({label:s.label,parts:[s]}))}/></section>
   <section className="capital-card"><h3>C72 liquid assets</h3><p className="capital-total">C76 liquidity buffer <strong>{formatCurrency(d.hqla.total)}</strong></p><Bars bars={[{label:'Liquid assets',parts:d.hqlaParts}]} reference={{value:d.required,label:'HQLA required'}}/><p className="lcr-reference">Dashed line: HQLA required {formatCurrency(d.required)} ({formatPct(d.requirement,0)} of net outflows)</p><Legend parts={d.hqlaParts}/><p className="muted">C72 amounts are after eligibility, encumbrance and haircut treatment. C76 then applies composition-cap calculations using adjusted amounts.</p></section>
@@ -87,13 +117,13 @@ export default function LcrDashboard({state,config,history}:{state:BankState;con
   <DetailTable title="C76 — Calculations" rows={[
    ['Liquidity buffer',formatCurrency(d.c76.liquidityBuffer)],['Total C73 outflows',formatCurrency(d.c76.totalOutflows)],['Fully exempt inflows',formatCurrency(d.c76.fullyExemptInflows)],['90% cap inflows',formatCurrency(d.c76.inflows90)],['75% cap inflows',formatCurrency(d.c76.inflows75)],['Reduction: fully exempt',formatCurrency(d.c76.reductionFullyExempt)],['Reduction: 90% cap',formatCurrency(d.c76.reduction90)],['Reduction: 75% cap',formatCurrency(d.c76.reduction75)],['Net liquidity outflow',formatCurrency(d.c76.netLiquidityOutflow)],['LCR actual',ratioText(d.ratio)],
   ]}/>
-  <DetailTable title="C72 — Liquid assets" rows={contributionRows(d.report.liquidAssets)}/>
-  <DetailTable title="C73 — Outflows" rows={[...contributionRows(d.report.outflows),['Total weighted outflows',formatCurrency(d.outgoing)]]}/>
-  <DetailTable title="C74 — Inflows" rows={[...contributionRows(d.report.inflows),['Total weighted inflows',formatCurrency(d.incoming)]]}/>
+  <ContributionDetailTable title="C72 — Liquid assets" contributions={d.report.liquidAssets}/>
+  <ContributionDetailTable title="C73 — Outflows" contributions={d.report.outflows} totalLabel="Total weighted outflows" totalValue={d.outgoing}/>
+  <ContributionDetailTable title="C74 — Inflows" contributions={d.report.inflows} totalLabel="Total weighted inflows" totalValue={d.incoming}/>
   <DetailTable title="C76 — Adjusted Level 1 / composition cap" rows={[
    ['L1 unadjusted',formatCurrency(d.c76.unadjustedLevel1)],['L1 collateral 30-day outflows',formatCurrency(d.c76.level1Collateral30dOutflows)],['L1 collateral 30-day inflows',formatCurrency(d.c76.level1Collateral30dInflows)],['Secured cash 30-day outflows',formatCurrency(d.c76.securedCash30dOutflows)],['Secured cash 30-day inflows',formatCurrency(d.c76.securedCash30dInflows)],['L1 adjusted',formatCurrency(d.c76.adjustedLevel1)],['Excess liquid assets',formatCurrency(d.c76.excessLiquidAssets)],['Liquidity buffer',formatCurrency(d.c76.liquidityBuffer)],
   ]}/>
  </aside>
- <section className="capital-card lcr-history"><h3>LCR over time</h3><div style={{height:270}}><TimeSeriesChart data={history.map(s=>({step:s.time.step,value:s.risk.riskMetrics.lcr}))} xLabel="Month" yLabel="LCR (%)"/></div><p className="muted">Management stress estimate: {ratioText(state.risk.riskMetrics.managementLcr??state.risk.riskMetrics.lcr)}. This uses behavioural stress assumptions and is separate from the reported COR011 LCR.</p></section>
+ <section className="capital-card lcr-history-note"><h3>Management stress view</h3><p className="muted">Management stress estimate: {ratioText(state.risk.riskMetrics.managementLcr??state.risk.riskMetrics.lcr)}. This uses behavioural stress assumptions and is separate from the reported COR011 LCR.</p></section>
  </div>;
 }

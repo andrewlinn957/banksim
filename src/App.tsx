@@ -29,7 +29,7 @@ import {
 } from './config/scenarios';
 import { SimulationEvent } from './engine/simulation';
 import { ComplianceStatus, RiskMetrics } from './domain/risks';
-import RegMetricsPanel from './components/RegMetricsPanel';
+import RegMetricsPanel, { type RegulatoryMetric } from './components/RegMetricsPanel';
 import LoansPanel from './components/LoansPanel';
 import CostsPanel from './components/CostsPanel';
 import ReconciliationPanel from './components/ReconciliationPanel';
@@ -51,7 +51,6 @@ import { createDefaultThreeYearPlan } from './config/threeYearPlan';
 import { buildCapitalMarketsBook } from './engine/capitalMarkets';
 import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
-const controller = new SimulationController(baseConfig);
 const tabLabels: Record<string, string> = {
   Boardroom: 'Bank',
   Performance: 'Performance',
@@ -77,6 +76,7 @@ const formatRateInputPct = (rate: number | null | undefined): string => {
 const App = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [simConfig, setSimConfig] = useState<SimulationConfig>(baseConfig);
+  const controller = useMemo(() => new SimulationController(simConfig), [simConfig]);
   const [pendingRiskAppetite, setPendingRiskAppetite] = useState<RiskAppetite|null|undefined>();
   const [bankState, setBankState] = useState<BankState>(initialState);
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
@@ -126,6 +126,8 @@ const App = () => {
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('Boardroom');
+  const [regulatoryMetric, setRegulatoryMetric] = useState<RegulatoryMetric>('capital');
+  const [reportOriginDepartment, setReportOriginDepartment] = useState<Department|null>(null);
   const [helpSectionFocus, setHelpSectionFocus] = useState<string | null>(null);
   const [highlightedEventIds, setHighlightedEventIds] = useState<string[]>([]);
   const [selectedAttributionLine, setSelectedAttributionLine] = useState<AttributionLineSelection | null>(null);
@@ -135,8 +137,9 @@ const App = () => {
   const [safetyPause, setSafetyPause] = useState(true);
   const clockRunning = autoRemaining !== null;
   const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=Math.max(simConfig.riskLimits.minLeverageRatio,bankState.behaviour.riskAppetite?.leverage??simConfig.riskLimits.minLeverageRatio*1.05) ? 'Capital':'Treasury';
-  const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
-  const openReport = (tab: string) => { setIsActionsOpen(false); setActiveTab(tab); };
+  const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setReportOriginDepartment(null); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
+  const goToBoardroom = () => { setAutoRemaining(null); setReportOriginDepartment(null); setIsActionsOpen(false); setActiveTab('Boardroom'); };
+  const openReport = (tab: string, metric?: RegulatoryMetric, origin: Department|null = null) => { setIsActionsOpen(false); setReportOriginDepartment(origin); if(tab==='Regulatory'&&metric)setRegulatoryMetric(metric); setActiveTab(tab); };
 
   const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors) return; setPauseReason(''); setAutoRemaining(months); };
   const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
@@ -156,7 +159,7 @@ const App = () => {
     if (!canToggleThreeYearPlan) return;
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
     const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
-    controller.setConfig(nextConfig); setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setCurrentSnapshots([controller.createSnapshot(nextState)]);
+    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setCurrentSnapshots([controller.createSnapshot(nextState)]);
   };
 
   const totalEquity = useMemo(
@@ -233,7 +236,6 @@ const App = () => {
       actions,
     });
 
-    controller.setConfig(simConfig);
     const summary = controller.preview(bankState, actions, scenarioStep.shocks);
     const baseline = summary.baseline;
     const stressed = summary.stressed;
@@ -262,7 +264,6 @@ const App = () => {
   },[actionForm.capitalMarketsInstrument,bankState,preview]);
 
   const recommendations = useMemo(() => {
-    controller.setConfig(simConfig);
     return controller.recommend(bankState);
   }, [bankState, simConfig]);
   const scenarioDebrief = useMemo(
@@ -325,7 +326,6 @@ const App = () => {
       actions,
     });
 
-    controller.setConfig(simConfig);
     const { nextState, events, diagnostics } = controller.step(bankState, actions, scenarioStep.shocks);
     if (automatic) {
       const clock = clockAfterStep(autoRemaining, nextState, simConfig, safetyPause);
@@ -396,7 +396,6 @@ const App = () => {
     const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
     scenarioState.risk.riskMetrics = metrics;
     scenarioState.risk.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
-    controller.setConfig(scenarioConfig);
     setSimConfig(scenarioConfig);
     setPendingRiskAppetite(undefined);
     setBankState(scenarioState);
@@ -460,13 +459,13 @@ const App = () => {
   return (
     <div className="app-shell">
       <header className="masthead">
-        <button className="brand" onClick={() => setActiveTab('Boardroom')} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
+        <button className="brand" onClick={goToBoardroom} aria-label="BankSim boardroom"><span className="brand-symbol">B</span><span>BANKSIM<small>BUILD A BANK THAT LASTS</small></span></button>
         <div className="masthead-actions"><details className="settings-menu"><summary>Game</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
       <FunctionalNavigation
         activeTab={activeTab}
         activeDepartment={activeTab==='Boardroom'&&isActionsOpen?activeDepartment:null}
-        onBoardroom={()=>{setIsActionsOpen(false);setActiveTab('Boardroom');}}
+        onBoardroom={goToBoardroom}
         onDepartment={openDepartment}
         onReport={openReport}
       />
@@ -475,6 +474,7 @@ const App = () => {
        <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
        <div className="clock-status" role="status">{clockRunning?Number.isFinite(autoRemaining)?`Running · ${autoRemaining} months remaining`:'Running continuously':pauseReason}</div>
       </section>
+      {stateHistory.length>1&&<nav className="post-close-links" aria-label="Review last close"><strong>Review last close</strong><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button></nav>}
       {attentionReason(bankState,simConfig)&&!bankState.status.hasFailed&&<div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={()=>openDepartment(responsibleDepartment)}>Manage {responsibleDepartment.toLowerCase()} →</button></div>}
 
 
@@ -496,7 +496,7 @@ const App = () => {
         </div>
       )}
 
-      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>{setIsActionsOpen(false);setActiveTab('Boardroom');}}>← Back to bank</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span></div>}
+      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>reportOriginDepartment?openDepartment(reportOriginDepartment):goToBoardroom()}>← Back to {reportOriginDepartment??'bank'}</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span></div>}
       <FunctionalReportNavigation activeTab={activeTab} onReport={openReport} onManage={openDepartment}/>
 
 
@@ -626,11 +626,12 @@ const App = () => {
 
       {activeTab === 'Regulatory' && (
         <section className="stack">
-      <h2>Regulatory metrics</h2>
       <RegMetricsPanel
         state={bankState}
         history={stateHistory}
         config={simConfig}
+        metric={regulatoryMetric}
+        onMetricChange={setRegulatoryMetric}
         pendingRiskAppetite={pendingRiskAppetite}
         onRiskAppetite={t=>{pauseClock();setPendingRiskAppetite(t);}}
         attribution={lastAttribution}

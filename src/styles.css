@@ -1474,3 +1474,31 @@ summary { cursor:pointer; }
 .risk-area-building { background:#123746e8; }
 @media(max-width:980px) { .functional-nav-group-secondary { margin-left:0; } .functional-navigation { align-items:flex-start; } .functional-nav-group { flex-wrap:wrap; } .bank-departments { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media(max-width:760px) { .functional-navigation { display:grid; grid-template-columns:1fr; } .functional-nav-group { border-right:0; border-bottom:1px solid var(--border); padding:3px 0 7px; } .functional-nav-group:last-child { border-bottom:0; } }
+
+
+/* Review pass: prioritise decision space once a department is open. */
+@media(min-width:1151px) {
+  .bank-workspace.with-department { grid-template-columns:minmax(280px,.55fr) minmax(620px,1.45fr); }
+  .with-department .bank-map { min-height:500px; }
+  .with-department .bank-map-heading { padding:22px 24px; }
+  .with-department .bank-map-heading h1 { font-size:28px; margin:8px 0; }
+  .with-department .bank-map-heading p { display:none; }
+  .with-department .bank-departments { margin:42px 16px 16px; gap:8px; }
+  .with-department .department-building { padding:12px; }
+  .with-department .department-building>strong,
+  .with-department .department-building>small,
+  .with-department .department-status { display:none; }
+  .with-department .department-name { margin-bottom:2px; }
+  .with-department .department-job { margin-top:2px; }
+}
+.department-guidance,.post-close-links { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--border); background:var(--bg-2); }
+.department-guidance>div { display:flex; flex:1; min-width:220px; flex-direction:column; gap:2px; }
+.department-guidance small { color:var(--muted); }
+.post-close-links { margin:-8px 0 18px; font-size:13px; }
+.post-close-links strong { margin-right:4px; }
+.lcr-contribution-detail>details { margin:-8px 0 16px; padding:0 10px 10px; border:1px solid var(--border); border-top:0; border-radius:0 0 7px 7px; }
+.lcr-contribution-detail>details>summary { cursor:pointer; color:var(--accent); font-weight:650; padding:8px 0 2px; }
+.lcr-contribution-detail>details .lcr-detail-group { margin:10px 0 0; }
+.lcr-headline-history { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); }
+.lcr-headline-history h4 { margin-top:0; }
+.lcr-history-note { grid-column:1/-1; }
