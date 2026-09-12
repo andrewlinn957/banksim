@@ -20,6 +20,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - if: matrix.suite == 'fast'
+        name: Audit high and critical dependency vulnerabilities
+        run: npm audit --audit-level=high
       - run: npm run test:${{ matrix.suite }}
       - if: matrix.suite == 'fast'
         run: npm run typecheck && npm run build
