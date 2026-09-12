@@ -1,4 +1,4 @@
-name: Dependency audit diagnostics
+name: Dependency security upgrade
 
 on:
   push:
@@ -9,46 +9,41 @@ on:
       - .github/workflows/dependency-audit-diagnostics.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  upgrade-and-verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: security/dependency-audit-2026-09-12
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.20.2
           cache: npm
-      - run: npm ci
-      - name: Collect npm audit reports
+      - name: Upgrade vulnerable build and test toolchain
+        run: npm install --save-dev vite@8.3.0 vitest@4.1.11 @vitejs/plugin-react@6.1.1
+      - name: Show resolved security-sensitive packages
+        run: npm ls vite vitest @vitejs/plugin-react browserslist nanoid postcss rollup || true
+      - name: Audit all dependencies
+        run: npm audit --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Run full test suite
+        run: npm run test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+      - name: Commit verified dependency upgrade
         run: |
-          npm audit --json > audit-all.json || true
-          npm audit --omit=dev --json > audit-prod.json || true
-      - name: Print high and critical findings
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          for (const [label, file] of [['ALL', 'audit-all.json'], ['PRODUCTION', 'audit-prod.json']]) {
-            const report = JSON.parse(fs.readFileSync(file, 'utf8'));
-            console.log(`\n=== ${label} DEPENDENCIES ===`);
-            console.log('metadata:', JSON.stringify(report.metadata?.vulnerabilities ?? {}));
-            const vulns = Object.values(report.vulnerabilities ?? {})
-              .filter(v => ['high', 'critical'].includes(v.severity))
-              .sort((a, b) => (a.severity === 'critical' ? -1 : 1) - (b.severity === 'critical' ? -1 : 1));
-            if (!vulns.length) {
-              console.log('No high or critical vulnerabilities.');
-              continue;
-            }
-            for (const v of vulns) {
-              console.log(`\n${v.name} | ${v.severity} | direct=${v.isDirect} | range=${v.range}`);
-              console.log('nodes:', (v.nodes ?? []).join(', '));
-              console.log('effects:', (v.effects ?? []).join(', '));
-              console.log('fixAvailable:', JSON.stringify(v.fixAvailable));
-              for (const via of v.via ?? []) {
-                if (typeof via === 'string') console.log('via:', via);
-                else console.log(`via: ${via.title} | ${via.severity} | ${via.url} | range=${via.range}`);
-              }
-            }
-          }
-          NODE
+          if git diff --quiet -- package.json package-lock.json; then
+            echo 'Dependency files already up to date.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json package-lock.json
+          git commit -m 'Upgrade vulnerable Vite and Vitest dependencies'
+          git push origin HEAD:security/dependency-audit-2026-09-12
