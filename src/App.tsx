@@ -2,11 +2,11 @@ import DepartmentOffice from './components/DepartmentOffice';
 import RiskAppetiteEditor, { RiskAppetite } from './components/RiskAppetiteEditor';
 import PerformanceReport from './components/PerformanceReport';
 import { Department } from './game/departments';
-import { attentionReason, clockAfterStep, monthsToPeriodEnd } from './game/management';
+import { attentionReason, monthsToPeriodEnd } from './game/management';
 import Boardroom from './components/Boardroom';
 import FunctionalNavigation from './components/FunctionalNavigation';
 import FunctionalReportNavigation from './components/FunctionalReportNavigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { initialState } from './config/initialState';
 import { baseConfig } from './config/baseConfig';
 import { BankState } from './domain/bankState';
@@ -19,13 +19,13 @@ import {
 import RiskDashboard from './components/RiskDashboard';
 import { ActionFormState, type CapitalMarketsPlanImpact } from './components/ActionsPanel';
 import { createActionFormState, clearOneOffTransactions } from './ui/actionFormState';
+import { useSimulationClock } from './ui/useSimulationClock';
+import { prepareScenarioSession } from './ui/scenarioSession';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
 import {
-  getScenarioInitialState,
   getScenarioStepPayload,
   scenarios,
-  applyScenarioConfig,
   Scenario,
 } from './config/scenarios';
 import { SimulationEvent } from './engine/simulation';
@@ -35,7 +35,6 @@ import LoansPanel from './components/LoansPanel';
 import CostsPanel from './components/CostsPanel';
 import ReconciliationPanel from './components/ReconciliationPanel';
 import { SimulationConfig } from './domain/config';
-import { calculateRiskMetrics, evaluateCompliance } from './engine/metrics';
 import { SimulationController } from './ui/simulationController';
 import AccountsPanel from './components/AccountsPanel';
 import { formatCurrency, formatPct } from './utils/formatters';
@@ -79,6 +78,13 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>(() => createActionFormState(initialState, baseConfig));
+  const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);
+  const clockTickRef = useRef<() => void>(() => {});
+  const clock = useSimulationClock({
+    canRun: !bankState.status.hasFailed && !parsedActionForm.hasErrors,
+    onTick: () => clockTickRef.current(),
+  });
+  const { autoRemaining, clockRunning, clockSpeed, setClockSpeed, pauseReason, safetyPause, setSafetyPause } = clock;
   const [lastAttribution, setLastAttribution] = useState<StepAttribution | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
@@ -88,18 +94,13 @@ const App = () => {
   const [helpSectionFocus, setHelpSectionFocus] = useState<string | null>(null);
   const [highlightedEventIds, setHighlightedEventIds] = useState<string[]>([]);
   const [selectedAttributionLine, setSelectedAttributionLine] = useState<AttributionLineSelection | null>(null);
-  const [autoRemaining, setAutoRemaining] = useState<number | null>(null);
-  const [clockSpeed, setClockSpeed] = useState(1500);
-  const [pauseReason, setPauseReason] = useState('Ready. Set your policy, then run a quarter.');
-  const [safetyPause, setSafetyPause] = useState(true);
-  const clockRunning = autoRemaining !== null;
   const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=Math.max(simConfig.riskLimits.minLeverageRatio,bankState.behaviour.riskAppetite?.leverage??simConfig.riskLimits.minLeverageRatio*1.05) ? 'Capital':'Treasury';
-  const openDepartment = (department: Department) => { setAutoRemaining(null); setPauseReason('Paused for a policy decision.'); setReportOriginDepartment(null); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
-  const goToBoardroom = () => { setAutoRemaining(null); setReportOriginDepartment(null); setIsActionsOpen(false); setActiveTab('Boardroom'); };
+  const openDepartment = (department: Department) => { clock.stop('Paused for a policy decision.'); setReportOriginDepartment(null); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
+  const goToBoardroom = () => { clock.stop(); setReportOriginDepartment(null); setIsActionsOpen(false); setActiveTab('Boardroom'); };
   const openReport = (tab: string, metric?: RegulatoryMetric, origin: Department|null = null) => { setIsActionsOpen(false); setReportOriginDepartment(origin); if(tab==='Regulatory'&&metric)setRegulatoryMetric(metric); setActiveTab(tab); };
 
-  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors) return; setPauseReason(''); setAutoRemaining(months); };
-  const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };
+  const startClock = (months: number) => clock.start(months);
+  const pauseClock = () => clock.pause();
 
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
@@ -163,7 +164,6 @@ const App = () => {
   );
 
   const failureSummary = buildFailureSummary(bankState.risk.compliance, bankState.risk.riskMetrics);
-  const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);
   const capitalMarketsQuote = useMemo(() => {
     const instrument=actionForm.capitalMarketsInstrument;
     const target=parsedActionForm.values.capitalMarketsTargetAmount;
@@ -247,7 +247,7 @@ const App = () => {
     setActionForm(clearOneOffTransactions);
   };
   const handleRunNextMonth = (automatic = false) => {
-    if (!automatic) setAutoRemaining(null);
+    if (!automatic) clock.stop();
     if (bankState.status.hasFailed) return;
     if (parsedActionForm.hasErrors) {
       setEventLog((prev) => [
@@ -271,11 +271,8 @@ const App = () => {
     });
 
     const { nextState, events, diagnostics } = controller.step(bankState, actions, scenarioStep.shocks);
-    if (automatic) {
-      const clock = clockAfterStep(autoRemaining, nextState, simConfig, safetyPause);
-      setAutoRemaining(clock.remaining);
-      setPauseReason(clock.reason);
-    } else setPauseReason('Month closed. Review the position or continue your strategy.');
+    if (automatic) clock.afterAutomaticStep(nextState, simConfig);
+    else clock.afterManualStep();
     const milestoneEvents = milestoneEventsFromPayload(scenarioStep);
 
     clearTransactions();
@@ -292,19 +289,10 @@ const App = () => {
     setCurrentSnapshots((prev) => [...prev, controller.createSnapshot(nextState)]);
   };
 
-  useEffect(() => {
-    if (!clockRunning || bankState.status.hasFailed || parsedActionForm.hasErrors ) return;
-    const timer = window.setTimeout(() => handleRunNextMonth(true), clockSpeed);
-    return () => window.clearTimeout(timer);
-  }, [autoRemaining, bankState, actionForm, simConfig, activeScenarioId, clockSpeed, safetyPause, isActionsOpen, parsedActionForm.hasErrors, pendingRiskAppetite]);
+  clockTickRef.current = () => handleRunNextMonth(true);
 
-  // Leave the bank paused when returning from another tab or opening a modal.
-  useEffect(() => {
-    const hide = () => { if (document.hidden) pauseClock(); };
-    document.addEventListener('visibilitychange', hide);
-    return () => document.removeEventListener('visibilitychange', hide);
-  }, []);
-  useEffect(() => { if (isActionsOpen) { setAutoRemaining(null); setActiveTab('Boardroom'); } }, [isActionsOpen]);
+  // Opening a department is a deliberate policy-decision pause; timer/visibility coordination lives in useSimulationClock.
+  useEffect(() => { if (isActionsOpen) { clock.stop(); setActiveTab('Boardroom'); } }, [isActionsOpen, clock.stop]);
 
   const handleSaveCurrentRun = () => {
     if (currentTimeline.length === 0 || currentSnapshots.length === 0) return;
@@ -331,15 +319,12 @@ const App = () => {
 
   const handleStartScenario = (scenarioId: string | null = selectedScenarioId) => {
     if (bankState.time.step > stateHistory[0].time.step) handleSaveCurrentRun();
-    setAutoRemaining(null);
-    setPauseReason('New bank ready. Set a policy and give it time.');
+    clock.reset();
     setActiveTab('Boardroom');
     setIsActionsOpen(false);
-    const scenarioConfig = applyScenarioConfig(baseConfig, scenarioId);
-    const scenarioState = getScenarioInitialState(scenarioId, scenarioConfig);
-    const metrics = calculateRiskMetrics({ state: scenarioState, config: scenarioConfig });
-    scenarioState.risk.riskMetrics = metrics;
-    scenarioState.risk.compliance = evaluateCompliance(metrics, scenarioConfig.riskLimits);
+    const prepared = prepareScenarioSession(scenarioId);
+    const scenarioConfig = prepared.config;
+    const scenarioState = prepared.state;
     setSimConfig(scenarioConfig);
     setPendingRiskAppetite(undefined);
     setBankState(scenarioState);
@@ -351,7 +336,7 @@ const App = () => {
     setActiveScenarioId(scenarioId);
     setCurrentTimeline([]);
     setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
-    setActionForm(createActionFormState(scenarioState, scenarioConfig));
+    setActionForm(prepared.actionForm);
   };
 
   const openHelpSection = (sectionId: string) => {
