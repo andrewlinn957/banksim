@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [fast, regression]
+        suite: [fast, regression, calibration]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
