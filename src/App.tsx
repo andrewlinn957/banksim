@@ -21,6 +21,7 @@ import { ActionFormState, type CapitalMarketsPlanImpact } from './components/Act
 import { createActionFormState, clearOneOffTransactions } from './ui/actionFormState';
 import { useSimulationClock } from './ui/useSimulationClock';
 import { prepareScenarioSession } from './ui/scenarioSession';
+import { useRunSession } from './ui/useRunSession';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
 import {
@@ -41,7 +42,6 @@ import { formatCurrency, formatPct } from './utils/formatters';
 import { parseMoneyInput, parseRateInput } from './utils/parsers';
 import { evaluateScenarioGoals } from './engine/scoring';
 import { ScenarioMetricKey, ScenarioScore } from './domain/scoring';
-import { ActionTimelineEntry, RunRecord, RunSnapshot } from './domain/runHistory';
 import RunComparisonPanel from './components/RunComparisonPanel';
 import { AttributionLineSelection, StepAttribution } from './domain/attribution';
 import SharePricePanel from './components/SharePricePanel';
@@ -105,19 +105,15 @@ const App = () => {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
   const [runPeriod, setRunPeriod] = useState('quarter');
-  const [savedRuns, setSavedRuns] = useState<RunRecord[]>([]);
-  const [currentTimeline, setCurrentTimeline] = useState<ActionTimelineEntry[]>([]);
-  const [currentSnapshots, setCurrentSnapshots] = useState<RunSnapshot[]>([
-    controller.createSnapshot(initialState),
-  ]);
-  const [runCounter, setRunCounter] = useState(1);
+  const runSession = useRunSession(controller, initialState);
+  const { savedRuns, currentTimeline, currentSnapshots } = runSession;
   const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);
   const canToggleThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;
   const setThreeYearPlanMode = (enabled: boolean) => {
     if (!canToggleThreeYearPlan) return;
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
     const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
-    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setCurrentSnapshots([controller.createSnapshot(nextState)]);
+    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); runSession.reset(nextState);
   };
 
   const totalEquity = useMemo(
@@ -282,11 +278,7 @@ const App = () => {
     setLastAttribution(diagnostics.attribution);
     setHighlightedEventIds([]);
     setSelectedAttributionLine(null);
-    setCurrentTimeline((prev) => [
-      ...prev,
-      { step: nextState.time.step, actions: actions.map((a) => ({ ...a })), shocks: scenarioStep.shocks.map((s) => ({ ...s })) },
-    ]);
-    setCurrentSnapshots((prev) => [...prev, controller.createSnapshot(nextState)]);
+    runSession.appendStep(nextState, actions, scenarioStep.shocks);
   };
 
   clockTickRef.current = () => handleRunNextMonth(true);
@@ -295,17 +287,12 @@ const App = () => {
   useEffect(() => { if (isActionsOpen) { clock.stop(); setActiveTab('Boardroom'); } }, [isActionsOpen, clock.stop]);
 
   const handleSaveCurrentRun = () => {
-    if (currentTimeline.length === 0 || currentSnapshots.length === 0) return;
-    const record = controller.toRunRecord({
-      id: `run-${Date.now()}`,
-      label: `${activeScenarioId ?? 'sandbox'} run ${runCounter}`,
+    const record = runSession.saveCurrent({
+      scenarioId: activeScenarioId,
       initialState: stateHistory[0],
       finalState: bankState,
-      timeline: currentTimeline,
-      snapshots: currentSnapshots,
     });
-    setSavedRuns((prev) => [record, ...prev]);
-    setRunCounter((prev) => prev + 1);
+    if (!record) return;
     setEventLog((prev) => [
       ...prev,
       {
@@ -334,8 +321,7 @@ const App = () => {
     setHighlightedEventIds([]);
     setSelectedAttributionLine(null);
     setActiveScenarioId(scenarioId);
-    setCurrentTimeline([]);
-    setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
+    runSession.reset(scenarioState);
     setActionForm(prepared.actionForm);
   };
 
