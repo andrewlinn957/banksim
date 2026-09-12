@@ -18,6 +18,7 @@ import {
 } from './domain/enums';
 import RiskDashboard from './components/RiskDashboard';
 import { ActionFormState, type CapitalMarketsPlanImpact } from './components/ActionsPanel';
+import { createActionFormState, clearOneOffTransactions } from './ui/actionFormState';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
 import {
@@ -68,10 +69,6 @@ const tabLabels: Record<string, string> = {
 };
 
 
-const formatRateInputPct = (rate: number | null | undefined): string => {
-  if (rate === undefined || rate === null || !Number.isFinite(rate)) return '';
-  return `${(rate * 100).toFixed(2)}%`;
-};
 
 const App = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -81,47 +78,7 @@ const App = () => {
   const [bankState, setBankState] = useState<BankState>(initialState);
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
-  const [actionForm, setActionForm] = useState<ActionFormState>({
-    retailCurrentAccountRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailCurrentAccounts)?.interestRate ?? bankState.market.competitorRetailCurrentAccountRate),
-    termDepositRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? bankState.market.competitorTermDepositRate),
-    termDepositTenorMonths: String(bankState.behaviour.termDepositTenorMonths ?? 12),
-    corporateDepositRate: formatRateInputPct(getGroupDepositRate(bankState, 'corporate')),
-    mortgageRate: formatRateInputPct(
-      bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
-        ?.interestRate
-    ),
-    consumerLoanRate: formatRateInputPct(bankState.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.ConsumerLoans)?.interestRate ?? bankState.market.competitorConsumerLoanRate),
-    corporateLoanRate: formatRateInputPct(
-      bankState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
-        ?.interestRate
-    ),
-    mortgageUnderwritingTightness:
-      (bankState.behaviour.underwritingTightness?.[AssetProductType.Mortgages] ?? 0).toString(),
-    consumerUnderwritingTightness: (bankState.behaviour.underwritingTightness?.[AssetProductType.ConsumerLoans] ?? 0.35).toString(),
-    corporateUnderwritingTightness:
-      (bankState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
-    mortgageMaxLtv: String(bankState.behaviour.mortgagePolicy?.maxLtv ?? .85),
-    mortgageFixedPeriodMonths: String(bankState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
-    capitalMarketsInstrument: 'none',
-    capitalMarketsTargetAmount: '',
-    capitalMarketsMaxDiscount: '15%',
-    capitalMarketsMaxSpreadBps: '1000',
-    capitalMarketsTenorMonths: '60',
-    dividendPayoutRatio: (
-      bankState.behaviour.capitalPolicy?.dividendPayoutRatio ??
-      baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
-    ).toString(),
-    at1CouponMode: bankState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
-    giltTradeDirection: 'none',
-    giltTradeAmount: '',
-    giltDurationYears: String(bankState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
-    boeFacility: 'none',
-    boeFundingAmount: '',
-    hedgeDirection: 'none',
-    hedgeNotional: '',
-    hedgeFixedRate: '',
-    hedgeMaturityMonths: '24',
-  });
+  const [actionForm, setActionForm] = useState<ActionFormState>(() => createActionFormState(initialState, baseConfig));
   const [lastAttribution, setLastAttribution] = useState<StepAttribution | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
@@ -287,20 +244,7 @@ const App = () => {
 
   const clearTransactions = () => {
     setPendingRiskAppetite(undefined);
-    setActionForm(prev => ({
-      ...prev,
-      giltTradeDirection: 'none',
-      giltTradeAmount: '',
-      capitalMarketsInstrument: 'none',
-      capitalMarketsTargetAmount: '',
-      capitalMarketsMaxDiscount: '15%',
-      capitalMarketsMaxSpreadBps: '1000',
-      capitalMarketsTenorMonths: '60',
-      boeFacility: 'none',
-      boeFundingAmount: '',
-      hedgeDirection: 'none',
-      hedgeNotional: '',
-    }));
+    setActionForm(clearOneOffTransactions);
   };
   const handleRunNextMonth = (automatic = false) => {
     if (!automatic) setAutoRemaining(null);
@@ -407,47 +351,7 @@ const App = () => {
     setActiveScenarioId(scenarioId);
     setCurrentTimeline([]);
     setCurrentSnapshots([controller.createSnapshot(scenarioState)]);
-    setActionForm({
-      retailCurrentAccountRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailCurrentAccounts)?.interestRate ?? scenarioState.market.competitorRetailCurrentAccountRate),
-      termDepositRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===LiabilityProductType.RetailTermDeposits)?.interestRate ?? scenarioState.market.competitorTermDepositRate),
-      termDepositTenorMonths: String(scenarioState.behaviour.termDepositTenorMonths ?? 12),
-      corporateDepositRate: formatRateInputPct(getGroupDepositRate(scenarioState, 'corporate')),
-      mortgageRate: formatRateInputPct(
-        scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.Mortgages)
-          ?.interestRate
-      ),
-      consumerLoanRate: formatRateInputPct(scenarioState.financial.balanceSheet.items.find(i=>i.productType===AssetProductType.ConsumerLoans)?.interestRate ?? scenarioState.market.competitorConsumerLoanRate),
-      corporateLoanRate: formatRateInputPct(
-        scenarioState.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CorporateLoans)
-          ?.interestRate
-      ),
-      mortgageUnderwritingTightness:
-        (scenarioState.behaviour.underwritingTightness?.[AssetProductType.Mortgages] ?? 0).toString(),
-      consumerUnderwritingTightness: (scenarioState.behaviour.underwritingTightness?.[AssetProductType.ConsumerLoans] ?? 0.35).toString(),
-      corporateUnderwritingTightness:
-        (scenarioState.behaviour.underwritingTightness?.[AssetProductType.CorporateLoans] ?? 0).toString(),
-      mortgageMaxLtv: String(scenarioState.behaviour.mortgagePolicy?.maxLtv ?? .85),
-      mortgageFixedPeriodMonths: String(scenarioState.behaviour.mortgagePolicy?.fixedPeriodMonths ?? 24),
-      capitalMarketsInstrument: 'none',
-      capitalMarketsTargetAmount: '',
-      capitalMarketsMaxDiscount: '15%',
-      capitalMarketsMaxSpreadBps: '1000',
-      capitalMarketsTenorMonths: '60',
-      dividendPayoutRatio: (
-        scenarioState.behaviour.capitalPolicy?.dividendPayoutRatio ??
-        scenarioConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio
-      ).toString(),
-      at1CouponMode: scenarioState.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
-      giltTradeDirection: 'none',
-      giltTradeAmount: '',
-      giltDurationYears: String(scenarioState.behaviour.treasuryPolicy?.giltDurationYears ?? 5),
-      boeFacility: 'none',
-      boeFundingAmount: '',
-      hedgeDirection: 'none',
-      hedgeNotional: '',
-      hedgeFixedRate: '',
-      hedgeMaturityMonths: '24',
-    });
+    setActionForm(createActionFormState(scenarioState, scenarioConfig));
   };
 
   const openHelpSection = (sectionId: string) => {
@@ -1012,26 +916,6 @@ const calculateNim = (state: BankState): number => {
     .reduce((sum, item) => sum + item.balance, 0);
   if (assets <= 0) return 0;
   return (state.financial.incomeStatement.netInterestIncome * 12) / assets;
-};
-
-const getGroupDepositRate = (state: BankState, segment: 'retail' | 'corporate'): number => {
-  const productTypes: Array<LiabilityProductType> =
-    segment === 'retail'
-      ? [LiabilityProductType.RetailCurrentAccounts]
-      : [
-          LiabilityProductType.CorporateOperatingDeposits,
-          LiabilityProductType.CorporateNonOperatingDeposits,
-        ];
-  const selected = state.financial.balanceSheet.items.filter((item) =>
-    productTypes.includes(item.productType as LiabilityProductType)
-  );
-  const total = selected.reduce((sum, item) => sum + item.balance, 0);
-  if (total <= 0) {
-    return segment === 'retail'
-      ? state.market.competitorRetailCurrentAccountRate
-      : state.market.competitorCorporateDepositRate ?? state.market.competitorRetailCurrentAccountRate;
-  }
-  return selected.reduce((sum, item) => sum + item.balance * item.interestRate, 0) / total;
 };
 
 interface ScenarioBriefingView {
