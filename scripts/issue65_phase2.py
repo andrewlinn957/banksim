@@ -42,9 +42,11 @@ text = text.replace("  const openDepartment = (department: Department) => { setA
 text = text.replace("  const goToBoardroom = () => { setAutoRemaining(null);", "  const goToBoardroom = () => { clock.stop();", 1)
 text = text.replace("  const startClock = (months: number) => { if (bankState.status.hasFailed || parsedActionForm.hasErrors) return; setPauseReason(''); setAutoRemaining(months); };\n  const pauseClock = () => { setAutoRemaining(null); setPauseReason('Paused. Your policies remain in force.'); };", "  const startClock = (months: number) => clock.start(months);\n  const pauseClock = () => clock.pause();", 1)
 
-old = "  const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);\n"
-if text.count(old) != 1: raise SystemExit(f'Expected one later parsed action form, got {text.count(old)}')
-text = text.replace(old, '', 1)
+parsed_line = "  const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);\n"
+first = text.find(parsed_line)
+second = text.find(parsed_line, first + len(parsed_line))
+if first < 0 or second < 0: raise SystemExit('Could not locate old parsed action form declaration')
+text = text[:second] + text[second + len(parsed_line):]
 
 text = text.replace("    if (!automatic) setAutoRemaining(null);", "    if (!automatic) clock.stop();", 1)
 old = """    if (automatic) {
