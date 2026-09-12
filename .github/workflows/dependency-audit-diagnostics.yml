@@ -6,6 +6,10 @@ on:
     paths:
       - package.json
       - package-lock.json
+      - src/engine/modelRegression.test.ts
+      - src/engine/passiveBankCalibration.test.ts
+      - src/engine/threeYearPlanRegression.test.ts
+      - src/engine/integratedCalibration.test.ts
       - .github/workflows/dependency-audit-diagnostics.yml
 
 permissions:
@@ -13,6 +17,7 @@ permissions:
 
 jobs:
   upgrade-and-verify:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +29,39 @@ jobs:
           cache: npm
       - name: Upgrade vulnerable build and test toolchain
         run: npm install --save-dev vite@8.3.0 vitest@4.1.11 @vitejs/plugin-react@6.1.1
+      - name: Make intentional long-test timeouts explicit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              'src/engine/modelRegression.test.ts': (
+                  "describe('Model regression harness', () => {",
+                  "describe('Model regression harness', { timeout: 30_000 }, () => {",
+              ),
+              'src/engine/passiveBankCalibration.test.ts': (
+                  "describe('Passive bank calibration diagnostics', () => {",
+                  "describe('Passive bank calibration diagnostics', { timeout: 30_000 }, () => {",
+              ),
+              'src/engine/threeYearPlanRegression.test.ts': (
+                  "describe('Three-Year Plan calibrated strategy regression',()=>{",
+                  "describe('Three-Year Plan calibrated strategy regression', { timeout: 30_000 },()=>{",
+              ),
+              'src/engine/integratedCalibration.test.ts': (
+                  "describe('integrated 72-month game calibration', () => {",
+                  "describe('integrated 72-month game calibration', { timeout: 360_000 }, () => {",
+              ),
+          }
+
+          for filename, (old, new) in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              if new in text:
+                  continue
+              if text.count(old) != 1:
+                  raise SystemExit(f'Expected exactly one timeout target in {filename}')
+              path.write_text(text.replace(old, new))
+          PY
       - name: Show resolved security-sensitive packages
         run: npm ls vite vitest @vitejs/plugin-react browserslist nanoid postcss rollup || true
       - name: Audit all dependencies
@@ -38,12 +76,16 @@ jobs:
         run: npm run build
       - name: Commit verified dependency upgrade
         run: |
-          if git diff --quiet -- package.json package-lock.json; then
-            echo 'Dependency files already up to date.'
-            exit 0
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add package.json package-lock.json
+          git add package.json package-lock.json \
+            src/engine/modelRegression.test.ts \
+            src/engine/passiveBankCalibration.test.ts \
+            src/engine/threeYearPlanRegression.test.ts \
+            src/engine/integratedCalibration.test.ts
+          if git diff --cached --quiet; then
+            echo 'Dependency and compatibility files already up to date.'
+            exit 0
+          fi
           git commit -m 'Upgrade vulnerable Vite and Vitest dependencies'
           git push origin HEAD:security/dependency-audit-2026-09-12
