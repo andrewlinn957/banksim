@@ -6,6 +6,7 @@ on:
       - refactor/issue-65-run-session
     paths:
       - scripts/issue65_run_session.py
+      - src/ui/navigationBehaviour.test.tsx
       - .github/workflows/issue65-run-session.yml
 
 permissions:
