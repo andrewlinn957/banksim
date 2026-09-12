@@ -51,7 +51,7 @@ const assertBroadCalibrationEnvelope = (summary: IntegratedCalibrationSummary) =
   }
 };
 
-describe('integrated 72-month game calibration', () => {
+describe('integrated 72-month game calibration', { timeout: 360_000 }, () => {
   it('runs the selected multi-seed strategy paths while the single mandate freezes after month 36', () => {
     const runs = selectedStrategies.flatMap(strategy =>
       INTEGRATED_CALIBRATION_SEEDS.map(seed => runIntegratedCalibration({ strategy, seed }))

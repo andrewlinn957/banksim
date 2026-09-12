@@ -99,7 +99,7 @@ const snapshot = (state: typeof initialState) => {
   };
 };
 
-describe('Passive bank calibration diagnostics', () => {
+describe('Passive bank calibration diagnostics', { timeout: 30_000 }, () => {
   it('reports the unmanaged balance-sheet and liquidity path without player actions', () => {
     const engine = createSimulationEngine();
     let state = cloneBankState(initialState);

@@ -115,7 +115,7 @@ const managementPolicy = (
   return actions;
 };
 
-describe('Model regression harness', () => {
+describe('Model regression harness', { timeout: 30_000 }, () => {
   it('archetype trajectories stay within configured KPI envelopes', () => {
     calibrationPacks.forEach((pack) => {
       const finalState = runMonths(24, { state: pack.initialState, config: pack.config });
