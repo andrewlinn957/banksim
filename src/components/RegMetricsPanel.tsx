@@ -93,13 +93,10 @@ export default function RegMetricsPanel({ state, history, config, metric: contro
   const metric=controlledMetric??internalMetric;
   const setMetric=(next:RegulatoryMetric)=>{setInternalMetric(next);onMetricChange?.(next);};
   const labels: Record<RegulatoryMetric, string> = { capital: 'Capital', rwa: 'Risk-weighted assets', leverage: 'Leverage', lcr: 'Liquidity coverage', nsfr: 'Stable funding' };
-  const fields = { capital: 'cet1Ratio', rwa: 'rwa', leverage: 'leverageRatio', lcr: 'lcr', nsfr: 'nsfr' } as const;
   return <section className="card regulatory-detail">
     <div className="section-heading"><div><div className="eyebrow">Regulatory metrics</div><h3>{labels[metric]}</h3></div></div>
     <div className="metric-switch" role="group" aria-label="Regulatory metric">{(Object.keys(labels) as RegulatoryMetric[]).map(k => <button key={k} className={`button ${metric === k ? 'primary' : 'ghost'}`} aria-pressed={metric === k} onClick={() => setMetric(k)}>{labels[k]}</button>)}</div>
-    {metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : metric === 'lcr' ? <LcrDashboard state={state} config={config} history={history}/> : metric === 'nsfr' ? <NsfrDashboard state={state} config={config} history={history}/> : metric === 'leverage' ? <LeverageDashboard state={state} config={config} history={history}/> : metric === 'rwa' ? <RwaDashboard state={state} config={config} history={history}/> : <div className="regulatory-grid"><div className="table-wrap"><table><thead><tr><th>Contribution</th><th className="align-right">Effective factor</th><th className="align-right">Amount / ratio</th></tr></thead><tbody>{regulatoryRows(state, config, metric).map((r, n) => <tr key={n} className={r.total ? 'total-row' : ''}><td>{r.label}</td><td className="align-right">{r.factor === undefined ? '·' : formatPct(r.factor)}</td><td className="align-right">{r.ratio ? formatPct(r.value) : formatCurrency(r.value)}</td></tr>)}</tbody></table></div>
-    <aside><h3>{labels[metric]} over time</h3><div style={{ height: 260 }}><TimeSeriesChart data={history.map(s => ({ step: s.time.step, value: s.risk.riskMetrics[fields[metric]] }))} xLabel="Month" /></div></aside></div>
-    }
+    {metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : metric === 'lcr' ? <LcrDashboard state={state} config={config} history={history}/> : metric === 'nsfr' ? <NsfrDashboard state={state} config={config} history={history}/> : metric === 'leverage' ? <LeverageDashboard state={state} config={config} history={history}/> : <RwaDashboard state={state} config={config} history={history}/>}
     {metric === 'capital' && <><CapitalHistory history={history}/>{onRiskAppetite&&<RiskAppetiteEditor state={state} config={config} pending={pendingRiskAppetite} onQueue={onRiskAppetite}/>}</>}
   </section>;
 }
