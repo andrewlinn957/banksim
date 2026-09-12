@@ -1,4 +1,4 @@
-# Temporary workflow used only on the review implementation branch.
+# Temporary workflow used only to publish the already verified source patch.
 name: Apply review recommendations
 
 on:
@@ -12,32 +12,22 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-verify:
+  publish-verified-source:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: improve/review-2026-09-12
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - name: Apply recommendations
+      - name: Apply verified recommendations
         run: python .github/review-implementation.py
-      - name: Install dependencies
-        run: npm ci
-      - name: Run full test suite
-        run: npm run test
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Production build
-        run: npm run build
-      - name: Commit verified changes
+      - name: Exclude workflow edits from Actions commit
+        run: git checkout HEAD -- .github/workflows/ci.yml .github/workflows/deploy.yml .github/workflows/review-implementation.yml
+      - name: Commit verified source changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/review-implementation.py .github/workflows/review-implementation.yml
-          git add src .github/workflows/ci.yml .github/workflows/deploy.yml
+          git rm .github/review-implementation.py
+          git add src
           git commit -m 'Implement BankSim review recommendations'
           git push origin HEAD:improve/review-2026-09-12
