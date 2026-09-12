@@ -13,6 +13,9 @@ export const useSimulationClock = ({ canRun, onTick }: UseSimulationClockArgs) =
   const [clockSpeed, setClockSpeed] = useState(1500);
   const [pauseReason, setPauseReason] = useState('Ready. Set your policy, then run a quarter.');
   const [safetyPause, setSafetyPause] = useState(true);
+  // Continuous mode uses Infinity for the remaining period. Because Infinity - 1 is still
+  // Infinity, this sequence explicitly re-arms the timer after every automatic close.
+  const [tickSequence, setTickSequence] = useState(0);
   const onTickRef = useRef(onTick);
   onTickRef.current = onTick;
 
@@ -22,6 +25,7 @@ export const useSimulationClock = ({ canRun, onTick }: UseSimulationClockArgs) =
     if (!canRun) return;
     setPauseReason('');
     setAutoRemaining(months);
+    setTickSequence((sequence) => sequence + 1);
   }, [canRun]);
 
   const stop = useCallback((reason?: string) => {
@@ -39,6 +43,7 @@ export const useSimulationClock = ({ canRun, onTick }: UseSimulationClockArgs) =
       setPauseReason(next.reason);
       return next.remaining;
     });
+    setTickSequence((sequence) => sequence + 1);
   }, [safetyPause]);
 
   const afterManualStep = useCallback(() => {
@@ -55,7 +60,7 @@ export const useSimulationClock = ({ canRun, onTick }: UseSimulationClockArgs) =
     if (!clockRunning || !canRun) return;
     const timer = window.setTimeout(() => onTickRef.current(), clockSpeed);
     return () => window.clearTimeout(timer);
-  }, [autoRemaining, canRun, clockRunning, clockSpeed]);
+  }, [autoRemaining, canRun, clockRunning, clockSpeed, tickSequence]);
 
   useEffect(() => {
     const hide = () => {
