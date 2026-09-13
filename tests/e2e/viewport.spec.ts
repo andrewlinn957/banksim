@@ -19,7 +19,10 @@ for (const profile of profiles) {
 
     test('management workspace remains usable', async ({ page }) => {
       await page.goto('/');
-      await page.getByRole('button', { name: 'Treasury & Funding' }).click();
+      await page
+        .getByRole('navigation', { name: 'Bank areas' })
+        .getByRole('button', { name: 'Treasury & Funding', exact: true })
+        .click();
       await expect(page.locator('.department-workspace')).toBeVisible();
       await expect(page.locator('.department-workspace')).toContainText('Treasury');
       await expectNoDocumentOverflow(page);
@@ -27,7 +30,10 @@ for (const profile of profiles) {
 
     test('capital and liquidity dashboards render without page overflow', async ({ page }) => {
       await page.goto('/');
-      await page.getByRole('button', { name: 'Risk & Regulatory' }).click();
+      await page
+        .getByRole('navigation', { name: 'Bank areas' })
+        .getByRole('button', { name: 'Risk & Regulatory', exact: true })
+        .click();
       await expect(page.locator('.regulatory-detail')).toBeVisible();
 
       const dashboards = [
