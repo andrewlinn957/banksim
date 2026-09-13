@@ -1,0 +1,46 @@
+@media (max-width: 760px) {
+  .lcr-dashboard,
+  .lcr-working-grid,
+  .lcr-working-grid > *,
+  .lcr-detail,
+  .lcr-contribution-detail {
+    min-width: 0;
+  }
+
+  .lcr-detail-group {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .lcr-detail-group table {
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .lcr-detail-group th {
+    width: 42%;
+    overflow-wrap: anywhere;
+  }
+
+  .lcr-detail-group td {
+    width: 58%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .lcr-headline .capital-amounts,
+  .lcr-headline .capital-ratios {
+    grid-template-columns: 1fr;
+  }
+
+  .lcr-headline .capital-amounts > div + div,
+  .lcr-headline .capital-ratios > div + div {
+    border-left: 0;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 8px;
+  }
+}
