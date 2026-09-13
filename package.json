@@ -12,7 +12,8 @@
     "test:regression": "vitest run src/engine/modelRegression.test.ts src/engine/passiveBankCalibration.test.ts src/engine/threeYearPlanRegression.test.ts",
     "test:calibration": "vitest run src/engine/integratedCalibration.test.ts --reporter=verbose",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "chart.js": "^4.5.1",
@@ -21,6 +22,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^18.2.14",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^5.2.0",
