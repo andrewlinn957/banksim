@@ -5,12 +5,30 @@ const profiles = [
   { name: 'narrow', width: 390, height: 844 },
 ] as const;
 
-const expectNoDocumentOverflow = async (page: Page) => {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+const expectNoDocumentOverflow = async (page: Page, context: string) => {
+  const layout = await page.evaluate(() => {
+    const clientWidth = document.documentElement.clientWidth;
+    const scrollWidth = document.documentElement.scrollWidth;
+    const offenders = Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          classes: element.className?.toString().slice(0, 120) ?? '',
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+        };
+      })
+      .filter((item) => item.right > clientWidth + 1 || item.left < -1)
+      .sort((a, b) => b.right - a.right)
+      .slice(0, 8);
+    return { clientWidth, scrollWidth, offenders };
+  });
+  expect(
+    layout.scrollWidth,
+    `${context}: viewport ${layout.clientWidth}px, document ${layout.scrollWidth}px; offenders ${JSON.stringify(layout.offenders)}`
+  ).toBeLessThanOrEqual(layout.clientWidth + 1);
 };
 
 for (const profile of profiles) {
@@ -25,7 +43,7 @@ for (const profile of profiles) {
         .click();
       await expect(page.locator('.department-workspace')).toBeVisible();
       await expect(page.locator('.department-workspace')).toContainText('Treasury');
-      await expectNoDocumentOverflow(page);
+      await expectNoDocumentOverflow(page, 'Treasury workspace');
     });
 
     test('capital and liquidity dashboards render without page overflow', async ({ page }) => {
@@ -46,7 +64,7 @@ for (const profile of profiles) {
       for (const dashboard of dashboards) {
         await page.locator('.metric-switch').getByRole('button', { name: dashboard.label, exact: true }).click();
         await expect(page.locator(dashboard.selector)).toBeVisible();
-        await expectNoDocumentOverflow(page);
+        await expectNoDocumentOverflow(page, dashboard.label);
       }
     });
   });
