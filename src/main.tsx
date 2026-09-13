@@ -4,6 +4,7 @@ import App from './App';
 import './styles.css';
 import './capitalDashboard.css';
 import './capitalDashboardTooltips.css';
+import './lcrResponsive.css';
 
 const root = document.getElementById('root');
 
