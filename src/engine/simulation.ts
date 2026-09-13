@@ -42,7 +42,6 @@ import {
   CounterpartyDefaultShock,
   RolloverStressShock,
 } from '../domain/shocks';
-import { CashFlowStatement } from '../domain/cashflow';
 import { Currency, MaturityBucket } from '../domain/enums';
 import { PRODUCTS } from '../products/catalogue';
 import { createPosition } from '../products/factory';
@@ -72,6 +71,7 @@ import { reviewThreeYearPlan } from './threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
+import { buildStatements, type BuildStatementsResult } from './simulationStatements';
 
 // Tiny "by-reference" wrapper so shocks can compound multipliers in-place.
 type Ref<T> = { value: T };
@@ -369,17 +369,6 @@ const clamp = (value: number, min: number, max: number): number =>
 const normaliseStepLengthMonths = (raw: number): number => {
   if (!Number.isFinite(raw)) return 1;
   return Math.max(1, Math.round(raw));
-};
-
-const advanceDateByMonths = (date: Date, months: number): Date => {
-  const wholeMonths = Math.max(0, Math.round(months));
-  const next = new Date(date.getTime());
-  const day = next.getUTCDate();
-  next.setUTCDate(1);
-  next.setUTCMonth(next.getUTCMonth() + wholeMonths);
-  const daysInMonth = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate();
-  next.setUTCDate(Math.min(day, daysInMonth));
-  return next;
 };
 
 const CONFIDENCE_STATE_ORDER: FundingConfidenceState[] = ['strong', 'stable', 'watch', 'stressed'];
@@ -2609,166 +2598,6 @@ export const updateSharePrice = (
     sharePrice,
     marketCap: sharePrice * shares,
   };
-};
-
-export interface BuildStatementsResult {
-  cashFlowStatement: CashFlowStatement;
-  cfMismatch: number;
-}
-
-interface BalanceFlowResult {
-  operatingBalanceFlow: number;
-  investingBalanceFlow: number;
-  financingLiabilityFlow: number;
-}
-
-const computeBalanceFlows = (
-  inputState: BankState,
-  state: BankState,
-  losses: LossRecognitionResult,
-  capitalClose: CapitalCloseResult
-): BalanceFlowResult => {
-  const prevBalances: Partial<Record<ProductType, number>> = {};
-  const prevSides: Partial<Record<ProductType, BalanceSheetSide>> = {};
-  inputState.financial.balanceSheet.items.forEach((item) => {
-    prevBalances[item.productType] = item.balance;
-    prevSides[item.productType] = item.side;
-  });
-  const currBalances: Partial<Record<ProductType, number>> = {};
-  const currSides: Partial<Record<ProductType, BalanceSheetSide>> = {};
-  state.financial.balanceSheet.items.forEach((item) => {
-    currBalances[item.productType] = item.balance;
-    currSides[item.productType] = item.side;
-  });
-  const productTypes = new Set<ProductType>(
-    [...Object.keys(prevBalances), ...Object.keys(currBalances)] as ProductType[]
-  );
-
-  const nonCashBalanceAdjustmentsByProduct: Partial<Record<ProductType, number>> = {};
-  Object.entries(losses.recognizedLoanLosses).forEach(([product, loss]) => {
-    const productType = product as ProductType;
-    nonCashBalanceAdjustmentsByProduct[productType] =
-      (nonCashBalanceAdjustmentsByProduct[productType] ?? 0) + (loss ?? 0);
-  });
-  Object.entries(losses.recognizedNonLoanLosses).forEach(([product, loss]) => {
-    const productType = product as ProductType;
-    nonCashBalanceAdjustmentsByProduct[productType] =
-      (nonCashBalanceAdjustmentsByProduct[productType] ?? 0) + (loss ?? 0);
-  });
-  Object.entries(capitalClose.nonCashAdjustmentsByProduct ?? {}).forEach(([product, adjustment]) => {
-    const productType = product as ProductType;
-    nonCashBalanceAdjustmentsByProduct[productType] =
-      (nonCashBalanceAdjustmentsByProduct[productType] ?? 0) + (adjustment ?? 0);
-  });
-
-  const operatingLiabilityProducts = new Set<ProductType>([
-    LiabilityProductType.DerivativeLiabilities,
-      LiabilityProductType.RetailCurrentAccounts,
-    LiabilityProductType.CorporateOperatingDeposits,
-    LiabilityProductType.CorporateNonOperatingDeposits,
-    LiabilityProductType.WholesaleFundingST,
-  ]);
-
-  const investingAssetProducts = new Set<ProductType>([AssetProductType.Gilts]);
-
-  let operatingBalanceFlow = 0;
-  let investingBalanceFlow = 0;
-  let financingLiabilityFlow = 0;
-
-  productTypes.forEach((productType) => {
-    const side = currSides[productType] ?? prevSides[productType];
-    if (!side) return;
-    const current = currBalances[productType] ?? 0;
-    const previous = prevBalances[productType] ?? 0;
-
-    if (side === BalanceSheetSide.Asset) {
-      if (productType === AssetProductType.CashReserves) return;
-      const delta = current - previous;
-      const nonCashAdjustment = nonCashBalanceAdjustmentsByProduct[productType] ?? 0;
-      const cashDrivenDelta = delta + nonCashAdjustment;
-      const flow = -cashDrivenDelta; // asset increase = outflow
-      if (investingAssetProducts.has(productType)) {
-        investingBalanceFlow += flow;
-      } else {
-        operatingBalanceFlow += flow;
-      }
-    } else {
-      if (productType === LiabilityProductType.CreditProvisions) return; // entirely non-cash ECL movement
-      const delta = current - previous;
-      const flow = delta + (nonCashBalanceAdjustmentsByProduct[productType] ?? 0); // exclude non-cash marks
-      if (operatingLiabilityProducts.has(productType)) {
-        operatingBalanceFlow += flow;
-      } else {
-        financingLiabilityFlow += flow;
-      }
-    }
-  });
-
-  return { operatingBalanceFlow, investingBalanceFlow, financingLiabilityFlow };
-};
-
-/**
- * Builds derived statements and advances the simulation clock.
- *
- * The cash flow statement is constructed as:
- * - Operating cash flows: P&L cash + balance-sheet operating flows
- * - Investing cash flows: changes in investing assets (e.g. gilts)
- * - Financing cash flows: changes in financing liabilities + external capital flows
- *
- * To avoid treating write-downs as cash inflows, recognised losses are added back when turning
- * asset balance changes into cash flows.
- */
-export const buildStatements = (
-  inputState: BankState,
-  state: BankState,
-  config: SimulationConfig,
-  cashStart: number,
-  capitalClose: CapitalCloseResult,
-  losses: LossRecognitionResult
-): BuildStatementsResult => {
-  state.time = {
-    step: state.time.step + 1,
-    stepLengthMonths: state.time.stepLengthMonths,
-    date: advanceDateByMonths(state.time.date, state.time.stepLengthMonths),
-  };
-
-  const cashEnd = findItem(state.financial.balanceSheet, AssetProductType.CashReserves)?.balance ?? 0;
-  const netChange = cashEnd - cashStart;
-  const { operatingBalanceFlow, investingBalanceFlow, financingLiabilityFlow } = computeBalanceFlows(
-    inputState,
-    state,
-    losses,
-    capitalClose
-  );
-
-  const investingCashFlow = investingBalanceFlow;
-
-  const capitalDelta =
-    state.financial.capital.cet1 +
-    state.financial.capital.at1 -
-    (inputState.financial.capital.cet1 + inputState.financial.capital.at1);
-  const externalCapitalFlow = capitalDelta - capitalClose.netIncome;
-  const financingCashFlow = financingLiabilityFlow + externalCapitalFlow;
-
-  let operatingCashFlow = capitalClose.operatingCashDelta + operatingBalanceFlow;
-  let cfMismatch = operatingCashFlow + investingCashFlow + financingCashFlow - netChange;
-
-  if (Math.abs(cfMismatch) <= config.tolerances.cashFlowRoundingTolerance) {
-    operatingCashFlow -= cfMismatch;
-    cfMismatch = 0;
-  }
-
-  const cashFlowStatement: CashFlowStatement = {
-    cashStart,
-    cashEnd,
-    netChange,
-    operatingCashFlow,
-    investingCashFlow,
-    financingCashFlow,
-  };
-  state.financial.cashFlowStatement = cashFlowStatement;
-
-  return { cashFlowStatement, cfMismatch };
 };
 
 /**
