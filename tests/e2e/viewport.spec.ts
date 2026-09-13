@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
+// Representative viewport coverage for management and prudential surfaces.
 const profiles = [
   { name: 'desktop', width: 1440, height: 1000 },
   { name: 'narrow', width: 390, height: 844 },
