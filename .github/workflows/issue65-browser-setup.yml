@@ -43,7 +43,7 @@ jobs:
               text=text.rstrip()+block+'\n'
           p.write_text(text)
           PY
-      - name: Fit narrow LCR detail tables
+      - name: Fit narrow LCR content
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -51,7 +51,7 @@ jobs:
           text=p.read_text()
           marker='/* Narrow LCR detail tables stay inside their card instead of widening the page. */'
           if marker not in text:
-              text += '''\n\n/* Narrow LCR detail tables stay inside their card instead of widening the page. */\n@media(max-width:760px) {\n  .lcr-dashboard,.lcr-working-grid,.lcr-working-grid>*,.lcr-detail,.lcr-contribution-detail { min-width:0; }\n  .lcr-detail-group { min-width:0; max-width:100%; overflow:hidden; }\n  .lcr-detail-group table { width:100%; table-layout:fixed; }\n  .lcr-detail-group th { width:42%; overflow-wrap:anywhere; }\n  .lcr-detail-group td { width:58%; white-space:normal; overflow-wrap:anywhere; }\n}\n'''
+              text += '''\n\n/* Narrow LCR detail tables stay inside their card instead of widening the page. */\n@media(max-width:760px) {\n  .lcr-dashboard,.lcr-working-grid,.lcr-working-grid>*,.lcr-detail,.lcr-contribution-detail { min-width:0; }\n  .lcr-detail-group { min-width:0; max-width:100%; overflow:hidden; }\n  .lcr-detail-group table { width:100%; table-layout:fixed; }\n  .lcr-detail-group th { width:42%; overflow-wrap:anywhere; }\n  .lcr-detail-group td { width:58%; white-space:normal; overflow-wrap:anywhere; }\n  .lcr-headline .capital-amounts { grid-template-columns:1fr; }\n  .lcr-headline .capital-amounts>div+div { border-left:0; padding-left:0; margin-left:0; border-top:1px solid var(--border); padding-top:8px; margin-top:8px; }\n}\n'''
           p.write_text(text)
           PY
       - run: npm audit --audit-level=high
