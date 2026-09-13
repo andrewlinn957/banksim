@@ -38,12 +38,12 @@ jobs:
           from pathlib import Path
           p=Path('.github/workflows/ci.yml')
           text=p.read_text()
-          block='''\n  browser:\n    name: Browser viewport coverage\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: 20\n          cache: npm\n      - run: npm ci\n      - run: npx playwright install --with-deps chromium\n      - run: npm run test:browser\n'''
+          block='''\n  browser:\n    name: Browser viewport coverage\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20.20.2'\n          cache: npm\n      - run: npm ci\n      - run: npx playwright install --with-deps chromium\n      - run: npm run test:browser\n'''
           if '\n  browser:\n' not in text:
               text=text.rstrip()+block+'\n'
           p.write_text(text)
           PY
-      - name: Contain narrow LCR detail tables
+      - name: Fit narrow LCR detail tables
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -51,7 +51,7 @@ jobs:
           text=p.read_text()
           marker='/* Narrow LCR detail tables stay inside their card instead of widening the page. */'
           if marker not in text:
-              text += '''\n\n/* Narrow LCR detail tables stay inside their card instead of widening the page. */\n@media(max-width:760px) {\n  .lcr-dashboard,.lcr-working-grid,.lcr-working-grid>*,.lcr-detail,.lcr-contribution-detail { min-width:0; }\n  .lcr-detail-group { min-width:0; max-width:100%; overflow-x:auto; }\n}\n'''
+              text += '''\n\n/* Narrow LCR detail tables stay inside their card instead of widening the page. */\n@media(max-width:760px) {\n  .lcr-dashboard,.lcr-working-grid,.lcr-working-grid>*,.lcr-detail,.lcr-contribution-detail { min-width:0; }\n  .lcr-detail-group { min-width:0; max-width:100%; overflow:hidden; }\n  .lcr-detail-group table { width:100%; table-layout:fixed; }\n  .lcr-detail-group th { width:42%; overflow-wrap:anywhere; }\n  .lcr-detail-group td { width:58%; white-space:normal; overflow-wrap:anywhere; }\n}\n'''
           p.write_text(text)
           PY
       - run: npm audit --audit-level=high
