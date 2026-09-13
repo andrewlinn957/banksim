@@ -50,7 +50,7 @@ import { hasCapability, productTypesWithCapability } from '../products/capabilit
 import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 import { customerDepositProductsForBenchmark, requireLoanProductForBenchmark } from '../products/benchmarks';
 import { liquidityTagForProduct } from '../products/regulatory';
-import { calculateRiskMetrics, classifyFundingConfidenceState, evaluateCompliance } from './metrics';
+import { calculateRiskMetrics } from './metrics';
 import { advanceSupervisoryAssessmentsAtClose } from './supervisoryAssessments';
 import { checkInvariants } from './invariants';
 import { cloneBankState } from './clone';
@@ -72,6 +72,11 @@ import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { buildStatements, type BuildStatementsResult } from './simulationStatements';
+import { createSimulationEvent as createEvent, type EventSeverity, type SimulationEvent } from './simulationEvents';
+import { getConfidenceStateImpact } from './fundingConfidence';
+import { computeMetrics } from './regulatoryClose';
+export type { EventSeverity, SimulationEvent } from './simulationEvents';
+export { computeMetrics };
 
 // Tiny "by-reference" wrapper so shocks can compound multipliers in-place.
 type Ref<T> = { value: T };
@@ -296,54 +301,6 @@ export interface SimulationStepInput {
   shocks: Shock[];
 }
 
-// Used by the UI to present what happened during the step.
-export type EventSeverity = 'info' | 'warning' | 'error';
-
-export interface SimulationEvent {
-  id: string;
-  severity: EventSeverity;
-  message: string;
-  timestamp: number;
-  tags?: string[];
-}
-
-/** Helper to create a SimulationEvent with current timestamp */
-let eventSequence = 0;
-const EVENT_TAG_RULES: Array<{ tag: string; pattern: RegExp }> = [
-  { tag: 'capital', pattern: /\bcet1|at1|capital|equity|dividend|coupon|mda|oci\b/i },
-  { tag: 'liquidity', pattern: /\blcr|nsfr|hqla|outflow|inflow|liquidity|run\b/i },
-  { tag: 'funding', pattern: /\bfunding|rollover|debt|repo|maturity\b/i },
-  { tag: 'deposits', pattern: /\bdeposit|withdrawal|churn|franchise\b/i },
-  { tag: 'loans', pattern: /\bloan|mortgage|pipeline|underwriting|drawdown|origination\b/i },
-  { tag: 'credit', pattern: /\bdefault|pd|lgd|impairment|provision|loss\b/i },
-  { tag: 'conduct', pattern: /\bconduct|consumer duty|duty|fine|remediation\b/i },
-  { tag: 'income', pattern: /\bp&l|profit|income|expense|cost|tax\b/i },
-  { tag: 'market', pattern: /\bspread|rate|curve|macro|shock|gilt\b/i },
-  { tag: 'hedges', pattern: /\bhedge|irrbb|duration|eve|nii\b/i },
-];
-
-const inferEventTags = (message: string, explicitTags: string[] = []): string[] => {
-  const deduped = new Set<string>(explicitTags.map((tag) => tag.toLowerCase()));
-  EVENT_TAG_RULES.forEach(({ tag, pattern }) => {
-    if (pattern.test(message)) {
-      deduped.add(tag);
-    }
-  });
-  return [...deduped];
-};
-
-const createEvent = (severity: EventSeverity, message: string, tags: string[] = []): SimulationEvent => {
-  const timestamp = Date.now();
-  const id = `evt-${timestamp}-${eventSequence++}`;
-  return {
-    id,
-    severity,
-    message,
-    timestamp,
-    tags: inferEventTags(message, tags),
-  };
-};
-
 export interface SimulationDiagnostics {
   attribution: StepAttribution;
 }
@@ -369,37 +326,6 @@ const clamp = (value: number, min: number, max: number): number =>
 const normaliseStepLengthMonths = (raw: number): number => {
   if (!Number.isFinite(raw)) return 1;
   return Math.max(1, Math.round(raw));
-};
-
-const CONFIDENCE_STATE_ORDER: FundingConfidenceState[] = ['strong', 'stable', 'watch', 'stressed'];
-
-const confidenceStateRank = (state: FundingConfidenceState): number => {
-  const idx = CONFIDENCE_STATE_ORDER.indexOf(state);
-  return idx >= 0 ? idx : 1;
-};
-
-const getFundingConfidenceState = (state: BankState): FundingConfidenceState =>
-  state.behaviour.fundingConfidenceState ?? 'stable';
-
-interface ConfidenceStateImpactSet {
-  state: FundingConfidenceState;
-  spreadPenaltyBps: number;
-  accessMultiplier: number;
-  equityIssuanceMultiplier: number;
-  equityIssuanceFeeRate: number;
-}
-
-const getConfidenceStateImpact = (state: BankState, config: SimulationConfig): ConfidenceStateImpactSet => {
-  const confidenceState = getFundingConfidenceState(state);
-  const impactMap = config.behaviour.confidenceStateMachine?.impacts;
-  const perState = impactMap?.[confidenceState] ?? impactMap?.stable;
-  return {
-    state: confidenceState,
-    spreadPenaltyBps: perState?.spreadPenaltyBps ?? 0,
-    accessMultiplier: clamp(perState?.accessMultiplier ?? 1, 0.1, 1),
-    equityIssuanceMultiplier: clamp(perState?.equityIssuanceMultiplier ?? 1, 0, 1),
-    equityIssuanceFeeRate: clamp(perState?.equityIssuanceFeeRate ?? 0, 0, 0.5),
-  };
 };
 
 const xorshiftUnit = (seed: number): number => {
@@ -1482,73 +1408,6 @@ const stepCompetitorReaction = (
   }
 };
 
-const stepFundingConfidenceState = (
-  state: BankState,
-  config: SimulationConfig,
-  metrics: RiskMetrics,
-  events: SimulationEvent[]
-): void => {
-  if (!config.behaviour.confidenceStateMachine) return;
-
-  const current = getFundingConfidenceState(state);
-  const target = classifyFundingConfidenceState({
-    fundingConfidenceScore: metrics.fundingConfidenceScore,
-    lcr: metrics.lcr,
-    nsfr: metrics.nsfr,
-    cet1Headroom: metrics.cet1Headroom,
-    config,
-  });
-  const currentRank = confidenceStateRank(current);
-  const targetRank = confidenceStateRank(target);
-  const requiredUpgradeMonths = Math.max(
-    1,
-    Math.round(config.behaviour.confidenceStateMachine?.upgradeSustainMonths ?? 3)
-  );
-  const progress = Math.max(0, Math.round(state.behaviour.confidenceUpgradeProgressMonths ?? 0));
-
-  let nextState = current;
-  let nextProgress = progress;
-
-  if (targetRank > currentRank) {
-    // Downgrades are immediate and stepwise.
-    nextState = CONFIDENCE_STATE_ORDER[Math.min(currentRank + 1, targetRank)];
-    nextProgress = 0;
-  } else if (targetRank < currentRank) {
-    // Upgrades require sustained improvement for several months.
-    nextProgress = progress + 1;
-    if (nextProgress >= requiredUpgradeMonths) {
-      nextState = CONFIDENCE_STATE_ORDER[Math.max(currentRank - 1, targetRank)];
-      nextProgress = 0;
-    }
-  } else {
-    nextProgress = 0;
-  }
-
-  state.behaviour.fundingConfidenceState = nextState;
-  state.behaviour.confidenceUpgradeProgressMonths = nextProgress;
-  const notchMap: Record<FundingConfidenceState, number> = {
-    strong: -1,
-    stable: 0,
-    watch: 1,
-    stressed: 2,
-  };
-  state.behaviour.ratingNotchOffset = notchMap[nextState];
-
-  if (nextState !== current) {
-    const severity: EventSeverity =
-      confidenceStateRank(nextState) > confidenceStateRank(current) ? 'warning' : 'info';
-    events.push(
-      createEvent(
-        severity,
-        `Market confidence state moved ${current} -> ${nextState} (score ${(metrics.fundingConfidenceScore * 100).toFixed(
-          0
-        )}%, LCR ${(metrics.lcr * 100).toFixed(0)}%, NSFR ${(metrics.nsfr * 100).toFixed(0)}%)`,
-        ['funding', 'capital']
-      )
-    );
-  }
-};
-
 const applyDepositMixMigration = (
   state: BankState,
   config: SimulationConfig,
@@ -2415,70 +2274,6 @@ export const applyCapitalPolicyDistributions = (
     requestedDividendRatio,
     effectiveDividendRatio,
   };
-};
-
-/**
- * Computes risk metrics (RWA/leverage/liquidity) and evaluates regulatory compliance.
- *
- * Capital minima end the game. Liquidity ratio breaches initiate recovery warnings.
- */
-export const computeMetrics = (
-  state: BankState,
-  config: SimulationConfig,
-  lcrOutflowMultiplier: number,
-  events: SimulationEvent[],
-  advanceConfidenceState = true,
-  emitRegulatoryEvents = true
-): void => {
-  let metrics = calculateRiskMetrics({ state, config, lcrOutflowMultiplier });
-  if (config.behaviour.confidenceStateMachine && advanceConfidenceState) {
-    stepFundingConfidenceState(state, config, metrics, events);
-    metrics = calculateRiskMetrics({ state, config, lcrOutflowMultiplier });
-  }
-
-  state.risk.riskMetrics = metrics;
-  state.risk.compliance = evaluateCompliance(metrics, config.riskLimits);
-  state.behaviour.fundingConfidenceScore = metrics.fundingConfidenceScore;
-  state.behaviour.fundingConfidenceState = metrics.fundingConfidenceState;
-
-  state.status.hasFailed =
-    state.status.hasFailed ||
-    state.risk.compliance.cet1Breached ||
-    Boolean(state.risk.compliance.ownFundsBreached) ||
-    state.risk.compliance.leverageBreached;
-
-  if (!emitRegulatoryEvents) {
-    return;
-  }
-
-  if (state.risk.compliance.mdaTriggered) {
-    events.push(createEvent('warning', 'CET1 has entered the combined buffer stack (MDA restrictions active)'));
-  }
-  if (metrics.praBufferBreached) events.push(createEvent('warning', 'PRA buffer in use: prepare a capital recovery plan. This supervisory target is separate from automatic combined-buffer distribution restrictions.', ['capital']));
-  if (metrics.payoutBlockedByInternalTarget) {
-    events.push(
-      createEvent(
-        'warning',
-        `Internal capital target active: payout cap ${(metrics.maxPayoutRatio * 100).toFixed(0)}%`,
-        ['capital']
-      )
-    );
-  }
-  if (state.risk.compliance.concentrationBreached) {
-    events.push(
-      createEvent(
-        'warning',
-        `Concentration limit breached (sector ${(metrics.sectorConcentration * 100).toFixed(1)}%, geography ${(metrics.geographyConcentration * 100).toFixed(1)}%)`
-      )
-    );
-  }
-
-  if (state.risk.compliance.lcrBreached || state.risk.compliance.nsfrBreached) {
-    events.push(createEvent('warning', 'Liquidity recovery required: restore the buffer and protect funding access. A ratio breach alone does not end the game.'));
-  }
-  if (state.status.hasFailed) {
-    events.push(createEvent('error', 'Mandate ended: a capital minimum or cash obligation was breached. This is a game rule, not a legal resolution determination.'));
-  }
 };
 
 export const updateSharePrice = (
