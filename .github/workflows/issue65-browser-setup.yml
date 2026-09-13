@@ -5,6 +5,8 @@ on:
     branches:
       - test/issue-65-browser-viewports
     paths:
+      - tests/e2e/viewport.spec.ts
+      - playwright.config.ts
       - .github/workflows/issue65-browser-setup.yml
 
 permissions:
