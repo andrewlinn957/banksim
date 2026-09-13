@@ -1,0 +1,14 @@
+@media (max-width: 760px) {
+  .lcr-headline .capital-ratios {
+    grid-template-columns: 1fr;
+  }
+
+  .lcr-headline .capital-ratios > div + div {
+    border-left: 0;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 8px;
+  }
+}
