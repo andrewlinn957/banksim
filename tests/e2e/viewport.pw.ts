@@ -66,6 +66,20 @@ for (const profile of profiles) {
       await expectNoDocumentOverflow(page, 'Finance report shortcuts');
     });
 
+    test('event log and reconciliations stay behind the Game menu', async ({ page }) => {
+      await page.goto('/');
+      await page.getByLabel('Advance time').selectOption('month');
+      await page.getByRole('button', { name: 'Run', exact: false }).click();
+      await expect(page.locator('.post-close-links')).toHaveCount(1);
+      await expect(page.locator('.post-close-links')).toBeHidden();
+
+      await page.getByText('Game', { exact: true }).click();
+      const menu = page.locator('.settings-menu');
+      await expect(menu.getByRole('button', { name: 'Event log', exact: true })).toBeVisible();
+      await expect(menu.getByRole('button', { name: 'Reconciliations', exact: true })).toBeVisible();
+      await expectNoDocumentOverflow(page, 'Game menu close-review links');
+    });
+
     test('capital and liquidity dashboards render without page overflow', async ({ page }) => {
       await page.goto('/');
       await page

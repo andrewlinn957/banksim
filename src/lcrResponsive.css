@@ -1,3 +1,7 @@
+.post-close-links {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .lcr-dashboard,
   .lcr-working-grid,
