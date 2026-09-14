@@ -47,6 +47,25 @@ for (const profile of profiles) {
       await expectNoDocumentOverflow(page, 'Treasury workspace');
     });
 
+    test('finance report shortcuts sit directly below the time controls', async ({ page }) => {
+      await page.goto('/');
+      await page
+        .getByRole('navigation', { name: 'Bank areas' })
+        .getByRole('button', { name: 'Finance & Capital', exact: true })
+        .click();
+
+      const reports = page.getByRole('navigation', { name: 'Finance & Capital reports' });
+      await expect(reports).toBeVisible();
+      await expect(reports).toContainText('Open the detailed view when you need it.');
+      await expect(reports.getByRole('button', { name: 'Performance', exact: false })).toBeVisible();
+      await expect(reports.getByRole('button', { name: 'Accounts', exact: false })).toBeVisible();
+      await expect(reports.getByRole('button', { name: 'Share price', exact: false })).toBeVisible();
+      await expect(reports.getByRole('button', { name: 'Costs', exact: false })).toBeVisible();
+      await expect(reports.evaluate((element) => element.previousElementSibling?.matches('.time-console'))).resolves.toBe(true);
+      await expect(page.locator('.department-workspace')).not.toContainText('Open the detailed view when you need it.');
+      await expectNoDocumentOverflow(page, 'Finance report shortcuts');
+    });
+
     test('capital and liquidity dashboards render without page overflow', async ({ page }) => {
       await page.goto('/');
       await page
