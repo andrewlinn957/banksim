@@ -66,6 +66,37 @@ for (const profile of profiles) {
       await expectNoDocumentOverflow(page, 'Finance report shortcuts');
     });
 
+    test('capital back button is hidden on performance, accounts and share price only', async ({ page }) => {
+      const hiddenBackReports = ['Performance', 'Accounts', 'Share price'] as const;
+
+      for (const report of hiddenBackReports) {
+        await page.goto('/');
+        await page
+          .getByRole('navigation', { name: 'Bank areas' })
+          .getByRole('button', { name: 'Finance & Capital', exact: true })
+          .click();
+        await page
+          .getByRole('navigation', { name: 'Finance & Capital reports' })
+          .getByRole('button', { name: report, exact: false })
+          .click();
+
+        await expect(page.locator('.report-breadcrumb > button')).toBeHidden();
+        await expectNoDocumentOverflow(page, `${report} report without capital back button`);
+      }
+
+      await page.goto('/');
+      await page
+        .getByRole('navigation', { name: 'Bank areas' })
+        .getByRole('button', { name: 'Finance & Capital', exact: true })
+        .click();
+      await page
+        .getByRole('navigation', { name: 'Finance & Capital reports' })
+        .getByRole('button', { name: 'Costs', exact: false })
+        .click();
+      await expect(page.locator('.report-breadcrumb > button')).toBeVisible();
+      await expect(page.locator('.report-breadcrumb > button')).toHaveText('← Back to Capital');
+    });
+
     test('event log and reconciliations stay behind the Game menu', async ({ page }) => {
       await page.goto('/');
       await page.getByLabel('Advance time').selectOption('month');
