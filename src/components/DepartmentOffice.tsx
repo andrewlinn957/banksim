@@ -18,7 +18,6 @@ interface Props {
 const labels:Record<Department,string>={Customers:'Deposits',Lending:'Lending',Capital:'Finance & Capital',Treasury:'Treasury & Funding'};
 const reportLinks:Partial<Record<Department,Array<[string,string,RegulatoryMetric?]>>>={
  Lending:[['Loans','Loan portfolio']],
- Capital:[['Performance','Performance'],['Accounts','Accounts'],['Share Price','Share price'],['Costs','Costs']],
  Treasury:[['Regulatory','Liquidity coverage','lcr'],['Regulatory','Stable funding','nsfr']],
 };
 const helpLinks:Record<Department,[string,string]>={
