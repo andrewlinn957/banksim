@@ -729,7 +729,7 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
 
   const payoutParsed = parseRateInput(state.dividendPayoutRatio);
   if (payoutParsed.error) {
-    errors.dividendPayoutRatio = parsed.error;
+    errors.dividendPayoutRatio = payoutParsed.error;
   } else if (payoutParsed.value !== undefined) {
     if (payoutParsed.value < 0 || payoutParsed.value > 1) {
       errors.dividendPayoutRatio = 'Dividend payout ratio must be between 0 and 1';
