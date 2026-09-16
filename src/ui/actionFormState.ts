@@ -40,7 +40,7 @@ export const createActionFormState = (state: BankState, config: SimulationConfig
   capitalMarketsMaxDiscount: '15%',
   capitalMarketsMaxSpreadBps: '1000',
   capitalMarketsTenorMonths: '60',
-  dividendPayoutRatio: (state.behaviour.capitalPolicy?.dividendPayoutRatio ?? config.riskLimits.capitalPolicy.defaultDividendPayoutRatio).toString(),
+  dividendPayoutRatio: formatRateInputPct(state.behaviour.capitalPolicy?.dividendPayoutRatio ?? config.riskLimits.capitalPolicy.defaultDividendPayoutRatio),
   at1CouponMode: state.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
   giltTradeDirection: 'none',
   giltTradeAmount: '',
