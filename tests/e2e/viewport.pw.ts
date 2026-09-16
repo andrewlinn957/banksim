@@ -66,10 +66,10 @@ for (const profile of profiles) {
       await expectNoDocumentOverflow(page, 'Finance report shortcuts');
     });
 
-    test('capital back button is hidden on performance, accounts and share price only', async ({ page }) => {
-      const hiddenBackReports = ['Performance', 'Accounts', 'Share price'] as const;
+    test('redundant report breadcrumb row is absent from tab views', async ({ page }) => {
+      const financeReports = ['Performance', 'Accounts', 'Share price', 'Costs'] as const;
 
-      for (const report of hiddenBackReports) {
+      for (const report of financeReports) {
         await page.goto('/');
         await page
           .getByRole('navigation', { name: 'Bank areas' })
@@ -80,21 +80,19 @@ for (const profile of profiles) {
           .getByRole('button', { name: report, exact: false })
           .click();
 
-        await expect(page.locator('.report-breadcrumb > button')).toBeHidden();
-        await expectNoDocumentOverflow(page, `${report} report without capital back button`);
+        await expect(page.locator('.report-breadcrumb')).toHaveCount(0);
+        await expectNoDocumentOverflow(page, `${report} report without redundant breadcrumb`);
       }
 
-      await page.goto('/');
-      await page
-        .getByRole('navigation', { name: 'Bank areas' })
-        .getByRole('button', { name: 'Finance & Capital', exact: true })
-        .click();
-      await page
-        .getByRole('navigation', { name: 'Finance & Capital reports' })
-        .getByRole('button', { name: 'Costs', exact: false })
-        .click();
-      await expect(page.locator('.report-breadcrumb > button')).toBeVisible();
-      await expect(page.locator('.report-breadcrumb > button')).toHaveText('← Back to Capital');
+      for (const tab of ['Risk & Regulatory', 'Scenarios', 'Past games', 'Help'] as const) {
+        await page.goto('/');
+        await page
+          .getByRole('navigation', { name: 'Bank areas' })
+          .getByRole('button', { name: tab, exact: true })
+          .click();
+        await expect(page.locator('.report-breadcrumb')).toHaveCount(0);
+        await expectNoDocumentOverflow(page, `${tab} without redundant breadcrumb`);
+      }
     });
 
     test('event log and reconciliations stay behind the Game menu', async ({ page }) => {

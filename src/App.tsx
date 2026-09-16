@@ -51,22 +51,6 @@ import { createDefaultThreeYearPlan } from './config/threeYearPlan';
 import { buildCapitalMarketsBook } from './engine/capitalMarkets';
 import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
 
-const tabLabels: Record<string, string> = {
-  Boardroom: 'Bank',
-  Performance: 'Performance',
-  Overview: 'Risk overview',
-  'Share Price': 'Share price',
-  Scenarios: 'Scenarios',
-  Accounts: 'Accounts',
-  Regulatory: 'Regulatory detail',
-  Loans: 'Loans',
-  Costs: 'Costs',
-  Events: 'Events',
-  Reconciliations: 'Reconciliations',
-  'Past games': 'Past games',
-  Help: 'Help',
-};
-
 
 
 const App = () => {
@@ -372,7 +356,6 @@ const App = () => {
         </div>
       )}
 
-      {activeTab !== 'Boardroom' && <div className="report-breadcrumb"><button className="button ghost" onClick={()=>reportOriginDepartment?openDepartment(reportOriginDepartment):goToBoardroom()}>← Back to {reportOriginDepartment??'bank'}</button><span>{activeTab==='Help'?'Reference library':tabLabels[activeTab]??activeTab}</span></div>}
       <FunctionalReportNavigation activeTab={activeTab} onReport={openReport} onManage={openDepartment}/>
 
 
