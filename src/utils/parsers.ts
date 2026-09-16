@@ -35,7 +35,7 @@ export const parseRateInput = (raw: string): ParsedInput => {
   } else {
     value = parseNumericToken(text);
     if (value !== null && value > 1 && value <= 100) {
-      // Ergonomic input: "2.5" means 2.5%.
+      // Legacy ratio input: callers using this parser may supply either 0.025 or 2.5.
       value /= 100;
     }
   }
@@ -48,6 +48,42 @@ export const parseRateInput = (raw: string): ParsedInput => {
   }
   if (value > 1) {
     return { value: undefined, error: 'Rate must be <= 100%' };
+  }
+  return { value };
+};
+
+/**
+ * Parses a user-facing percentage-point input without guessing between decimal ratios and
+ * percentages. A bare number is always percentage points: "1" = 1%, "0.5" = 0.5%.
+ * Explicit percent and basis-point suffixes remain supported.
+ */
+export const parsePercentageInput = (raw: string): ParsedInput => {
+  const text = clean(raw);
+  if (!text) return { value: undefined };
+
+  let value: number | null = null;
+  if (text.endsWith('bps')) {
+    value = parseNumericToken(text.slice(0, -3));
+    if (value !== null) value /= 10000;
+  } else if (text.endsWith('%')) {
+    value = parseNumericToken(text.slice(0, -1));
+    if (value !== null) value /= 100;
+  } else if (text.endsWith('pct')) {
+    value = parseNumericToken(text.slice(0, -3));
+    if (value !== null) value /= 100;
+  } else {
+    value = parseNumericToken(text);
+    if (value !== null) value /= 100;
+  }
+
+  if (value === null) {
+    return { value: undefined, error: 'Invalid percentage format' };
+  }
+  if (value < 0) {
+    return { value: undefined, error: 'Percentage cannot be negative' };
+  }
+  if (value > 1) {
+    return { value: undefined, error: 'Percentage must be <= 100%' };
   }
   return { value };
 };
