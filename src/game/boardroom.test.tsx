@@ -10,7 +10,10 @@ describe('Three-Year Plan board mandate', () => {
     const markup = renderToStaticMarkup(
       <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onRisk={noop} onClose={noop} />
     );
-    expect(markup).toContain('invalid policy input');
+    expect(markup).toContain('invalid management input');
+    expect(markup).toContain('Run is blocked');
+    expect(markup).toContain('Treasury &amp; Funding');
+    expect(markup).toContain('Finance &amp; Capital');
     expect(markup).toContain('Bank functional areas');
     expect(markup).toContain('Risk &amp; Regulatory');
     expect(markup.match(/class="department-building/g)).toHaveLength(5);
