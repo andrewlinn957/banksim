@@ -1,0 +1,33 @@
+.input-with-suffix,
+.money-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.input-with-suffix input,
+.money-input-row input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.input-with-suffix > span {
+  font-weight: 700;
+  color: var(--muted, #667085);
+}
+
+.money-input-row .button {
+  flex: 0 0 auto;
+  padding-inline: 0.65rem;
+}
+
+.field input:disabled,
+.field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.department-policy-panel .alert + .policy-fields,
+.department-policy-panel .alert + .policy-disclosure {
+  margin-top: 0.25rem;
+}

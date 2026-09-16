@@ -37,6 +37,31 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).toContain('all-in yield');
   });
 
+  it('locks a capital-markets ticket when the other management area owns the queued deal', () => {
+    const state=form({capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
+    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});
+    const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
+    expect(markup).toContain('is already queued in Treasury &amp; Funding');
+    expect(markup).toContain('Finish or cancel that transaction in its owning management area before replacing it here');
+    expect(markup).toContain('<select disabled=""');
+    expect(markup).not.toContain('Indicative book');
+    expect(markup).not.toContain('Cancel Tier 2 subordinated debt transaction');
+  });
+
+  it('uses transaction-specific cancellation controls on the Treasury desk', () => {
+    const state=form({
+      capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84',
+      giltTradeDirection:'buy',giltTradeAmount:'50m',boeFacility:'ILTR',boeFundingAmount:'100m',
+      hedgeDirection:'payFixedReceiveFloat',hedgeNotional:'75m',hedgeMaturityMonths:'24',
+    });
+    const markup=renderToStaticMarkup(<ActionsPanel department="Treasury" state={state} onChange={()=>{}} maxGiltSaleAmount={200e6} maxBoeFundingAmount={150e6}/>);
+    expect(markup).toContain('Cancel Tier 2 subordinated debt transaction');
+    expect(markup).toContain('Cancel gilt transaction');
+    expect(markup).toContain('Cancel Bank of England drawing');
+    expect(markup).toContain('Cancel swap transaction');
+    expect(markup).not.toContain('Cancel queued transactions');
+  });
+
   it('only shows plan impact when supplied and states there is no direct Board Confidence effect', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
     const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});

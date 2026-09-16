@@ -44,7 +44,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
   </section>
 
   <ThreeYearPlanPanel state={state}/>
-  {hasErrors&&!department&&<div className="alert danger" role="alert">A management area has an invalid policy input. Open it to correct the plan before advancing time.</div>}
+  {hasErrors&&<div className="alert danger" role="alert"><strong>Run is blocked by an invalid management input.</strong><div className="muted">Open the area containing the unfinished input; the field error is shown at the top of that management panel.</div><div className="metric-switch">{areas.map(area=><button key={area.department} className="button ghost" onClick={()=>onDepartment(area.department)}>{area.label}</button>)}</div></div>}
   {department&&<section ref={panel} tabIndex={-1} id="department-workspace" className="department-workspace" aria-label={`${areas.find(a=>a.department===department)?.label??department} management`}><div className="department-heading"><div><div className="eyebrow">Management area</div><h2>{areas.find(a=>a.department===department)?.label??department}</h2></div><button className="button ghost" onClick={onClose} aria-label="Close management area">✕</button></div>{children}</section>}
  </main>;
 }

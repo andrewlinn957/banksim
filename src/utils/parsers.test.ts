@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMoneyInput, parseRateInput } from './parsers';
+import { parseMoneyInput, parsePercentageInput, parseRateInput } from './parsers';
 
 describe('Input parsers', () => {
   it('parses rates in decimal, percent, and bps formats', () => {
@@ -7,6 +7,14 @@ describe('Input parsers', () => {
     expect(parseRateInput('2.5%').value).toBeCloseTo(0.025, 12);
     expect(parseRateInput('250bps').value).toBeCloseTo(0.025, 12);
     expect(parseRateInput('2.5').value).toBeCloseTo(0.025, 12);
+  });
+
+  it('parses user-facing percentages as percentage points without a unit guess', () => {
+    expect(parsePercentageInput('1').value).toBeCloseTo(0.01, 12);
+    expect(parsePercentageInput('0.5').value).toBeCloseTo(0.005, 12);
+    expect(parsePercentageInput('1.01').value).toBeCloseTo(0.0101, 12);
+    expect(parsePercentageInput('1%').value).toBeCloseTo(0.01, 12);
+    expect(parsePercentageInput('100bps').value).toBeCloseTo(0.01, 12);
   });
 
   it('parses money with scale suffixes and symbols', () => {
@@ -20,6 +28,8 @@ describe('Input parsers', () => {
   it('returns errors for invalid or disallowed inputs', () => {
     expect(parseRateInput('-1%').error).toBeTruthy();
     expect(parseRateInput('abc').error).toBeTruthy();
+    expect(parsePercentageInput('-1').error).toBeTruthy();
+    expect(parsePercentageInput('abc').error).toBeTruthy();
     expect(parseMoneyInput('-5m').error).toBeTruthy();
     expect(parseMoneyInput('xyz').error).toBeTruthy();
   });

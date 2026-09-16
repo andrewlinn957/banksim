@@ -8,7 +8,8 @@ describe('action form state', () => {
     const form = createActionFormState(initialState, baseConfig);
     expect(form.retailCurrentAccountRate).toMatch(/%$/);
     expect(form.termDepositTenorMonths).toBe(String(initialState.behaviour.termDepositTenorMonths ?? 12));
-    expect(form.dividendPayoutRatio).toBe(String(initialState.behaviour.capitalPolicy?.dividendPayoutRatio ?? baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio));
+    const payout = initialState.behaviour.capitalPolicy?.dividendPayoutRatio ?? baseConfig.riskLimits.capitalPolicy.defaultDividendPayoutRatio;
+    expect(form.dividendPayoutRatio).toBe(`${(payout * 100).toFixed(2)}%`);
     expect(form.capitalMarketsInstrument).toBe('none');
     expect(form.hedgeDirection).toBe('none');
   });

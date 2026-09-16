@@ -1,9 +1,12 @@
 import { BankState } from '../domain/bankState';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
+import { AssetProductType } from '../domain/enums';
+import { baseConfig } from '../config/baseConfig';
 import { Department, departmentSummary } from '../game/departments';
 import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
 import { periodHistory } from '../game/management';
 import { formatPct } from '../utils/formatters';
+import { parseMoneyInput } from '../utils/parsers';
 import { nelsonSiegelYield } from '../engine/ukMarketModel';
 import type { RegulatoryMetric } from './RegMetricsPanel';
 
@@ -27,7 +30,7 @@ const helpLinks:Record<Department,[string,string]>={
  Capital:['tier2-and-equity','How capital instruments differ'],
 };
 
-export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const competitorRates=department==='Customers'
@@ -44,9 +47,15 @@ export default function DepartmentOffice({department,state,history,form,errors,h
     ] as const
    : [];
  const selectedGiltMaturity = Math.max(.25, Number(form.giltDurationYears) || 5);
- const giltQuotedYield = department==='Treasury'
-  ? nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, selectedGiltMaturity)
-  : undefined;
+ const giltQuotedYield = department==='Treasury' ? nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, selectedGiltMaturity) : undefined;
+ const gilts=state.financial.balanceSheet.items.find(item=>item.productType===AssetProductType.Gilts);
+ const unencumberedGilts=Math.max(0,(gilts?.balance??0)-(gilts?.encumbrance?.encumberedAmount??0));
+ const queuedGiltSale=form.giltTradeDirection==='sell'?Math.max(0,parseMoneyInput(form.giltTradeAmount).value??0):0;
+ const giltsAfterQueuedSale=Math.max(0,unencumberedGilts-Math.min(unencumberedGilts,queuedGiltSale));
+ const boeHaircut=Math.min(.25,Math.max(baseConfig.behaviour.boeFunding?.levelAHaircut??.03,state.market.giltRepoHaircut));
+ const maxBoeFunding=giltsAfterQueuedSale*(1-boeHaircut);
+ const estimateCompliance=estimate?.risk.compliance;
+ const projectedBreach=Boolean(estimate&&(estimate.status.hasFailed||estimateCompliance?.cet1Breached||estimateCompliance?.ownFundsBreached||estimateCompliance?.leverageBreached||estimateCompliance?.lcrBreached||estimateCompliance?.nsfrBreached));
  const reports=reportLinks[department]??[];
  const [helpId,helpLabel]=helpLinks[department];
  return <div className="department-office">
@@ -54,7 +63,8 @@ export default function DepartmentOffice({department,state,history,form,errors,h
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
   <p className="department-consequence">{summary.explanation}</p>
   {competitorRates.length>0&&<section className="competitor-rates" aria-label="Competitor rates"><div><strong>Market reference</strong><small>Current competing offers</small></div><dl>{competitorRates.map(([label,rate])=><div key={label}><dt>{label}</dt><dd>{formatPct(rate)}</dd></div>)}</dl></section>}
-  <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
+  <ActionsPanel department={department} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} maxGiltSaleAmount={unencumberedGilts} maxBoeFundingAmount={maxBoeFunding}/>
+  {estimate&&<section className={`alert ${projectedBreach?'warning':'info'}`} aria-label="Next monthly close preview"><strong>Next monthly close</strong><div className="muted">Projected CET1 {formatPct(state.risk.riskMetrics.cet1Ratio)} → {formatPct(estimate.risk.riskMetrics.cet1Ratio)} · Leverage {formatPct(state.risk.riskMetrics.leverageRatio)} → {formatPct(estimate.risk.riskMetrics.leverageRatio)}</div><div className="muted">Projected LCR {formatPct(state.risk.riskMetrics.lcr)} → {formatPct(estimate.risk.riskMetrics.lcr)} · NSFR {formatPct(state.risk.riskMetrics.nsfr)} → {formatPct(estimate.risk.riskMetrics.nsfr)}</div><div className="muted">{projectedBreach?'The current decision set is projected to cross at least one prudential limit at the next close. Review the queued decisions before running.':'No prudential limit breach is projected at the next close.'}</div></section>}
   <section className="department-guidance" aria-label={`${labels[department]} decision guide`}><div><strong>Decision guide</strong><small>Open the relevant explanation without leaving this decision context behind.</small></div><button className="button ghost" onClick={()=>onHelp(helpId)}>{helpLabel} →</button></section>
   {reports.length>0&&<nav className="area-report-links" aria-label={`${labels[department]} reports`}><div><strong>Reports</strong><small>Open the detailed view when you need it.</small></div>{reports.map(([tab,label,metric])=><button key={`${tab}-${metric??label}`} className="button ghost" onClick={()=>onReport(tab,metric,department)}>{label} →</button>)}</nav>}
  </div>;
