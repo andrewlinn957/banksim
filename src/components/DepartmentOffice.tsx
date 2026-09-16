@@ -1,7 +1,7 @@
 import { BankState } from '../domain/bankState';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
-import { SimulationConfig } from '../domain/config';
 import { AssetProductType } from '../domain/enums';
+import { baseConfig } from '../config/baseConfig';
 import { Department, departmentSummary } from '../game/departments';
 import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
 import { periodHistory } from '../game/management';
@@ -10,7 +10,7 @@ import { nelsonSiegelYield } from '../engine/ukMarketModel';
 import type { RegulatoryMetric } from './RegMetricsPanel';
 
 interface Props {
- department:Department; state:BankState; history:BankState[]; form:ActionFormState; config:SimulationConfig;
+ department:Department; state:BankState; history:BankState[]; form:ActionFormState;
  errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean;
  onChange:(form:ActionFormState)=>void;
  onReport:(tab:string,metric?:RegulatoryMetric,origin?:Department)=>void; onHelp:(id:string)=>void; estimate:BankState|null;
@@ -29,7 +29,7 @@ const helpLinks:Record<Department,[string,string]>={
  Capital:['tier2-and-equity','How capital instruments differ'],
 };
 
-export default function DepartmentOffice({department,state,history,form,config,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const competitorRates=department==='Customers'
@@ -49,7 +49,7 @@ export default function DepartmentOffice({department,state,history,form,config,e
  const giltQuotedYield = department==='Treasury' ? nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, selectedGiltMaturity) : undefined;
  const gilts=state.financial.balanceSheet.items.find(item=>item.productType===AssetProductType.Gilts);
  const unencumberedGilts=Math.max(0,(gilts?.balance??0)-(gilts?.encumbrance?.encumberedAmount??0));
- const boeHaircut=Math.min(.25,Math.max(config.behaviour.boeFunding?.levelAHaircut??.03,state.market.giltRepoHaircut));
+ const boeHaircut=Math.min(.25,Math.max(baseConfig.behaviour.boeFunding?.levelAHaircut??.03,state.market.giltRepoHaircut));
  const maxBoeFunding=unencumberedGilts*(1-boeHaircut);
  const estimateCompliance=estimate?.risk.compliance;
  const projectedBreach=Boolean(estimate&&(estimate.status.hasFailed||estimateCompliance?.cet1Breached||estimateCompliance?.ownFundsBreached||estimateCompliance?.leverageBreached||estimateCompliance?.lcrBreached||estimateCompliance?.nsfrBreached));
