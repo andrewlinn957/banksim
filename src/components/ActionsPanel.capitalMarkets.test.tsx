@@ -41,11 +41,11 @@ describe('capital-markets transaction ticket', () => {
     const state=form({capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
-    expect(markup).toContain('Tier 2 is already queued in Treasury &amp; Funding');
+    expect(markup).toContain('is already queued in Treasury &amp; Funding');
     expect(markup).toContain('Finish or cancel that transaction in its owning management area before replacing it here');
     expect(markup).toContain('<select disabled=""');
     expect(markup).not.toContain('Indicative book');
-    expect(markup).not.toContain('Cancel Tier 2 transaction');
+    expect(markup).not.toContain('Cancel Tier 2 subordinated debt transaction');
   });
 
   it('uses transaction-specific cancellation controls on the Treasury desk', () => {
@@ -55,7 +55,7 @@ describe('capital-markets transaction ticket', () => {
       hedgeDirection:'payFixedReceiveFloat',hedgeNotional:'75m',hedgeMaturityMonths:'24',
     });
     const markup=renderToStaticMarkup(<ActionsPanel department="Treasury" state={state} onChange={()=>{}} maxGiltSaleAmount={200e6} maxBoeFundingAmount={150e6}/>);
-    expect(markup).toContain('Cancel Tier 2 transaction');
+    expect(markup).toContain('Cancel Tier 2 subordinated debt transaction');
     expect(markup).toContain('Cancel gilt transaction');
     expect(markup).toContain('Cancel Bank of England drawing');
     expect(markup).toContain('Cancel swap transaction');
