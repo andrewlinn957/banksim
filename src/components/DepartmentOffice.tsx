@@ -6,6 +6,7 @@ import { Department, departmentSummary } from '../game/departments';
 import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
 import { periodHistory } from '../game/management';
 import { formatPct } from '../utils/formatters';
+import { parseMoneyInput } from '../utils/parsers';
 import { nelsonSiegelYield } from '../engine/ukMarketModel';
 import type { RegulatoryMetric } from './RegMetricsPanel';
 
@@ -49,8 +50,10 @@ export default function DepartmentOffice({department,state,history,form,errors,h
  const giltQuotedYield = department==='Treasury' ? nelsonSiegelYield(state.market.giltCurve.nelsonSiegel, selectedGiltMaturity) : undefined;
  const gilts=state.financial.balanceSheet.items.find(item=>item.productType===AssetProductType.Gilts);
  const unencumberedGilts=Math.max(0,(gilts?.balance??0)-(gilts?.encumbrance?.encumberedAmount??0));
+ const queuedGiltSale=form.giltTradeDirection==='sell'?Math.max(0,parseMoneyInput(form.giltTradeAmount).value??0):0;
+ const giltsAfterQueuedSale=Math.max(0,unencumberedGilts-Math.min(unencumberedGilts,queuedGiltSale));
  const boeHaircut=Math.min(.25,Math.max(baseConfig.behaviour.boeFunding?.levelAHaircut??.03,state.market.giltRepoHaircut));
- const maxBoeFunding=unencumberedGilts*(1-boeHaircut);
+ const maxBoeFunding=giltsAfterQueuedSale*(1-boeHaircut);
  const estimateCompliance=estimate?.risk.compliance;
  const projectedBreach=Boolean(estimate&&(estimate.status.hasFailed||estimateCompliance?.cet1Breached||estimateCompliance?.ownFundsBreached||estimateCompliance?.leverageBreached||estimateCompliance?.lcrBreached||estimateCompliance?.nsfrBreached));
  const reports=reportLinks[department]??[];
