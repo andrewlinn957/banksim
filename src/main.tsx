@@ -5,6 +5,7 @@ import './styles.css';
 import './capitalDashboard.css';
 import './capitalDashboardTooltips.css';
 import './lcrResponsive.css';
+import './pokaYoke.css';
 
 const root = document.getElementById('root');
 
