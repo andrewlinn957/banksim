@@ -1,42 +1,30 @@
 import { Scenario } from '../config/scenarios';
+import { scenarioArtwork } from './scenarioArtwork';
 
 interface Props {
   scenarios: Scenario[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onStart: () => void;
-  description?: string;
 }
 
-const ScenarioSelector = ({ scenarios, selectedId, onSelect, onStart, description }: Props) => (
-  <div className="card scenario-card">
-    <div>
-      <div className="eyebrow">Scenario</div>
-      <h3>Guide the bank through different worlds</h3>
-    </div>
-    <div className="form-row" style={{ alignItems: 'flex-end' }}>
-      <div className="field">
-        <label htmlFor="scenario">Choose a scenario</label>
-        <select
-          id="scenario"
-          value={selectedId ?? ''}
-          onChange={(e) => onSelect(e.target.value)}
-        >
-          <option value="" disabled>
-            Select scenario...
-          </option>
-          {scenarios.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <button className="button primary" onClick={onStart} disabled={!selectedId}>
-        Start scenario
+const ScenarioSelector = ({ scenarios, selectedId, onSelect }: Props) => (
+  <div className="scenario-choices" role="group" aria-label="Choose a scenario">
+    {scenarios.map((scenario) => (
+      <button
+        key={scenario.id}
+        type="button"
+        className={`scenario-choice${selectedId === scenario.id ? ' selected' : ''}`}
+        aria-pressed={selectedId === scenario.id}
+        onClick={() => onSelect(scenario.id)}
+      >
+        {scenarioArtwork[scenario.id]&&<img src={scenarioArtwork[scenario.id]} alt="" loading="lazy" decoding="async" />}
+        <span className="scenario-choice-copy">
+          <strong>{scenario.name}</strong>
+          <small>{scenario.description}</small>
+        </span>
+        <span className="scenario-choice-mark" aria-hidden="true">↗</span>
       </button>
-    </div>
-    {description && <p className="muted">{description}</p>}
+    ))}
   </div>
 );
 

@@ -24,6 +24,8 @@ import { prepareScenarioSession } from './ui/scenarioSession';
 import { useRunSession } from './ui/useRunSession';
 import EventLog from './components/EventLog';
 import ScenarioSelector from './components/ScenarioSelector';
+import ScenarioBriefingPanel from './components/ScenarioBriefingPanel';
+import { buildScenarioBriefing } from './game/scenarioBriefing';
 import {
   getScenarioStepPayload,
   scenarios,
@@ -305,6 +307,7 @@ const App = () => {
     setHighlightedEventIds([]);
     setSelectedAttributionLine(null);
     setActiveScenarioId(scenarioId);
+    setSelectedScenarioId(scenarioId);
     runSession.reset(scenarioState);
     setActionForm(prepared.actionForm);
   };
@@ -377,102 +380,32 @@ const App = () => {
       )}
 
       {activeTab === 'Scenarios' && (
-        <section className="stack">
-          <h2>Scenarios</h2>
-          <div className="grid-two">
-            <ScenarioSelector
-              scenarios={scenarios}
-              selectedId={selectedScenarioId}
-              onSelect={(id) => setSelectedScenarioId(id)}
-              onStart={() => handleStartScenario()}
-              description={scenarios.find((s) => s.id === selectedScenarioId)?.description}
+        <section className="scenario-screen stack">
+          <header className="scenario-page-heading"><div><div className="eyebrow">Optional scenarios</div><h2>Choose the pressure</h2></div><span>Start a challenge from the bank simulator.</span></header>
+          <div className="scenario-layout">
+            <ScenarioSelector scenarios={scenarios} selectedId={selectedScenarioId} onSelect={setSelectedScenarioId}/>
+            <ScenarioBriefingPanel
+              scenario={selectedScenario ?? activeScenario}
+              briefing={scenarioBriefing}
+              isCurrent={!!activeScenario && (selectedScenario?.id ?? activeScenario.id) === activeScenario.id}
+              hasSelection={!!selectedScenario}
+              onStart={() => handleStartScenario(selectedScenarioId)}
             />
-            <div className="card stack">
-              <div className="eyebrow">What to expect</div>
-              <p className="muted">
-                Starting a scenario reloads the bank with tailored settings and scheduled shocks. You can still tweak pricing and
-                funding in the Departments once the scenario is active.
-              </p>
-              <div className="muted" style={{ marginTop: 8 }}>
-                {activeScenarioId ? `Currently running: ${activeScenarioId}` : 'No scenario running; sandbox mode active.'}
-              </div>
-              {scenarioBriefing && (
-                <div className="scenario-guidance-block">
-                  <div className="eyebrow">Briefing</div>
-                  <div style={{ fontWeight: 700 }}>Likely pressure points</div>
-                  <ul className="help-list">
-                    {scenarioBriefing.riskMap.map((item) => (
-                      <li key={`risk-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                  <div style={{ fontWeight: 700, marginTop: 4 }}>Likely failure modes</div>
-                  <ul className="help-list">
-                    {scenarioBriefing.failureModes.map((item) => (
-                      <li key={`fail-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                  <div style={{ fontWeight: 700, marginTop: 4 }}>Suggested first-step focus</div>
-                  <ul className="help-list">
-                    {scenarioBriefing.firstStepFocus.map((item) => (
-                      <li key={`focus-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {scenarioScore && (
-                <div className="stack" style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 700 }}>
-                    Objective score: {(scenarioScore.completionPct * 100).toFixed(1)}% ({scenarioScore.score.toFixed(1)}/
-                    {scenarioScore.maxScore.toFixed(1)})
-                  </div>
-                  <div className="muted">
-                    Horizon month: {scenarioScore.horizonMonths} | Status: {scenarioScore.passed ? 'On track' : 'At risk'}
-                  </div>
-                  <div className="muted">
-                    Raw objective score {scenarioScore.rawScore.toFixed(1)} / {scenarioScore.maxScore.toFixed(1)}.
-                    Forward-risk penalty {formatPct(scenarioScore.qualityPenalty)} (franchise{' '}
-                    {formatPct(scenarioScore.qualityPenaltyBreakdown.franchise)}, funding{' '}
-                    {formatPct(scenarioScore.qualityPenaltyBreakdown.funding)}, liquidity{' '}
-                    {formatPct(scenarioScore.qualityPenaltyBreakdown.liquidity)}).
-                  </div>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Objective</th>
-                        <th className="numeric">Current</th>
-                        <th className="numeric">Target</th>
-                        <th className="numeric">Progress</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {scenarioScore.details.map((detail) => (
-                        <tr key={detail.label}>
-                          <td>{detail.label}</td>
-                          <td className="numeric">{formatScenarioMetric(detail.current, detail.metric)}</td>
-                          <td className="numeric">{formatScenarioMetric(detail.target, detail.metric)}</td>
-                          <td className="numeric">{(detail.completion * 100).toFixed(0)}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {scenarioDebrief && (
-                <div className={`alert ${scenarioDebrief.severity}`}>
-                  <div style={{ fontWeight: 700 }}>{scenarioDebrief.title}</div>
-                  <div className="muted" style={{ marginTop: 4 }}>{scenarioDebrief.summary}</div>
-                  {scenarioDebrief.topDrivers.length > 0 && (
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      <strong>Top drivers:</strong> {scenarioDebrief.topDrivers.join(' | ')}</div>
-                  )}
-                  {scenarioDebrief.recommendedLevers.length > 0 && (
-                    <div className="muted" style={{ marginTop: 6 }}>
-                      <strong>Try next:</strong> {scenarioDebrief.recommendedLevers.join(' | ')}</div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
+          {activeScenario && <section className="scenario-run-card" aria-label={`Current run: ${activeScenario.name}`}>
+            <div className="scenario-run-heading">
+              <div><div className="eyebrow">Current run</div><h3>{activeScenario.name}</h3></div>
+              {scenarioScore&&<div className="scenario-run-score"><strong>{(scenarioScore.completionPct*100).toFixed(0)}%</strong><span>Objective progress · {scenarioScore.passed?'On track':'At risk'}</span></div>}
+            </div>
+            {scenarioScore&&<>
+              <div className="scenario-run-horizon">Month {Math.max(0, bankState.time.step - stateHistory[0].time.step)} of {scenarioScore.horizonMonths}</div>
+              <table className="data-table">
+                <thead><tr><th>Objective</th><th className="numeric">Current</th><th className="numeric">Target</th><th className="numeric">Progress</th></tr></thead>
+                <tbody>{scenarioScore.details.map((detail)=><tr key={detail.label}><td>{detail.label}</td><td className="numeric">{formatScenarioMetric(detail.current,detail.metric)}</td><td className="numeric">{formatScenarioMetric(detail.target,detail.metric)}</td><td className="numeric">{(detail.completion*100).toFixed(0)}%</td></tr>)}</tbody>
+              </table>
+            </>}
+            {scenarioDebrief&&<div className={`alert ${scenarioDebrief.severity}`}><strong>{scenarioDebrief.title}</strong><p>{scenarioDebrief.summary}</p>{scenarioDebrief.topDrivers.length>0&&<p><strong>Top drivers:</strong> {scenarioDebrief.topDrivers.join(' · ')}</p>}{scenarioDebrief.recommendedLevers.length>0&&<p><strong>Try next:</strong> {scenarioDebrief.recommendedLevers.join(' · ')}</p>}</div>}
+          </section>}
         </section>
       )}
 
@@ -873,12 +806,6 @@ const calculateNim = (state: BankState): number => {
   return (state.financial.incomeStatement.netInterestIncome * 12) / assets;
 };
 
-interface ScenarioBriefingView {
-  riskMap: string[];
-  failureModes: string[];
-  firstStepFocus: string[];
-}
-
 interface ScenarioDebriefView {
   severity: 'danger' | 'warning' | 'info';
   title: string;
@@ -886,72 +813,6 @@ interface ScenarioDebriefView {
   topDrivers: string[];
   recommendedLevers: string[];
 }
-
-const shockTypeDescription = (type: string): string | null => {
-  if (type === 'idiosyncraticRun') {
-    return 'Deposit outflows can accelerate quickly if confidence weakens.';
-  }
-  if (type === 'rolloverStress') {
-    return 'Wholesale maturities may refinance only partially and at higher spreads.';
-  }
-  if (type === 'marketSpreadShock') {
-    return 'Funding and credit spreads can widen, raising cost and liquidity pressure.';
-  }
-  if (type === 'macroDownturn') {
-    return 'PD/LGD stress can increase provisions and erode capital buffers.';
-  }
-  if (type === 'depositCompetition') {
-    return 'Competitor repricing can force faster deposit pass-through and margin pressure.';
-  }
-  if (type === 'counterpartyDefault') {
-    return 'Concentrated counterparty losses can hit earnings and CET1 abruptly.';
-  }
-  return null;
-};
-
-const buildScenarioBriefing = (scenario: Scenario | null): ScenarioBriefingView | null => {
-  if (!scenario) return null;
-
-  const riskMap = Array.from(
-    new Set(
-      [
-        ...scenario.scheduledShocks.map((entry) => shockTypeDescription(entry.shock.type)),
-        ...(scenario.arcStages ?? []).flatMap((stage) => stage.shocks.map((shock) => shockTypeDescription(shock.type))),
-      ].filter((line): line is string => Boolean(line))
-    )
-  ).slice(0, 3);
-
-  const failureModes: string[] = [];
-  const goals = scenario.goals?.objectives ?? [];
-  if (goals.some((goal) => goal.metric === 'cet1Ratio')) {
-    failureModes.push('CET1 buffer erosion after credit/provision shocks.');
-  }
-  if (goals.some((goal) => goal.metric === 'lcr' || goal.metric === 'nsfr')) {
-    failureModes.push('Liquidity/funding squeeze from runoff and rollover stress.');
-  }
-  if (goals.some((goal) => goal.metric === 'leverageRatio')) {
-    failureModes.push('Leverage backstop compression from asset growth and weak capital generation.');
-  }
-  if (goals.some((goal) => goal.metric === 'netIncome' || goal.metric === 'roe')) {
-    failureModes.push('Earnings drag from higher funding cost and impairment charges.');
-  }
-  if (failureModes.length === 0) {
-    failureModes.push('Mixed capital and liquidity constraints under scenario-triggered shocks.');
-  }
-
-  const firstStepFocus: string[] = [];
-  if (riskMap.some((line) => line.includes('outflows') || line.includes('refinance'))) {
-    firstStepFocus.push('Build liquidity headroom and reduce short-tenor funding dependence.');
-  }
-  if (riskMap.some((line) => line.includes('PD/LGD') || line.includes('counterparty'))) {
-    firstStepFocus.push('Tighten underwriting and preserve CET1 via conservative payouts.');
-  }
-  if (firstStepFocus.length === 0) {
-    firstStepFocus.push('Protect regulatory headroom first, then optimize earnings.');
-  }
-
-  return { riskMap, failureModes, firstStepFocus };
-};
 
 const buildScenarioDebrief = (args: {
   scenario: Scenario | null;

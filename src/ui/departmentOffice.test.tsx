@@ -51,4 +51,16 @@ describe('Department decision destinations',()=>{
   expect(html).toContain('Gilt transaction');expect(html).toContain('Buy gilts');expect(html).toContain('Sell gilts');
   expect(html).toContain('Gilt trade amount (£)');expect(html).toContain('Current simulated gilt yield:');
  });
+ it('renders the one-month forecast from the projected bank state',()=>{
+  const estimate=structuredClone(initialState);
+  estimate.risk.riskMetrics.cet1Ratio=.14;
+  estimate.risk.riskMetrics.lcr=1.92;
+  estimate.risk.riskMetrics.nsfr=1.43;
+  const html=renderToStaticMarkup(<DepartmentOffice department="Customers" state={initialState} history={[initialState]} form={form} errors={{}} hasErrors={false} onChange={noop} onReport={noop} onHelp={noop} estimate={estimate}/>);
+  expect(html).toContain('Next close');
+  expect(html).toContain('No breach projected');
+  expect(html).toContain('14.00%');
+  expect(html).toContain('192.00%');
+  expect(html).toContain('143.00%');
+ });
 });

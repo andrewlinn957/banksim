@@ -72,6 +72,10 @@ export interface Scenario {
   id: string;
   name: string;
   description: string;
+  briefing?: {
+    openingPressure: string;
+    firstDecision: string;
+  };
   goals?: ScenarioGoals;
   initialStateOverride?: Omit<Partial<BankState>, 'financial'> & {
     financial?: Omit<Partial<BankState['financial']>, 'balanceSheet'> & {
@@ -226,7 +230,11 @@ const applyInitialOverride = (
 export const scenarios: Scenario[] = [
   {
     id: 'supervisory-review', name: 'The supervisory review',
-    description: 'A fictional bank-specific capital decision raises the stakes: absorb a 1.5% Pillar 2A requirement and 1% PRA buffer while keeping the business profitable.',
+    description: 'Meet higher capital buffers while keeping earnings on track.',
+    briefing: {
+      openingPressure: 'Pillar 2A 1.5%; PRA buffer 1%.',
+      firstDecision: 'Check capital headroom before setting distributions.',
+    },
     configOverrides: { riskLimits: { pillar2A: { totalRatio: .015 }, praBufferRatio: .01 } },
     goals: { horizonMonths: 12, objectives: [
       { label: 'Finish with CET1 above 14%', metric: 'cet1Ratio', direction: 'min', target: .14, weight: 40 },
@@ -238,8 +246,11 @@ export const scenarios: Scenario[] = [
   {
     id: 'wholesale-funding-reliance',
     name: 'Wholesale Funding Reliance',
-    description:
-      'Bank leans on short-term wholesale funding with weaker deposits. Early market spread shock and liquidity run stress funding resilience.',
+    description: 'Protect liquidity as wholesale markets tighten.',
+    briefing: {
+      openingPressure: '£2.4bn of short-term wholesale funding; deposits are less diversified.',
+      firstDecision: 'Secure liquidity and lengthen funding.',
+    },
     goals: {
       horizonMonths: 12,
       objectives: [
@@ -307,8 +318,11 @@ export const scenarios: Scenario[] = [
   {
     id: 'corporate-credit-boom',
     name: 'Corporate Credit Boom',
-    description:
-      'Aggressive growth in corporate lending sets the stage for a downturn that hits PD/LGD hard.',
+    description: 'Rapid lending growth before a severe downturn.',
+    briefing: {
+      openingPressure: '£4bn in corporate loans.',
+      firstDecision: 'Tighten underwriting before credit quality turns.',
+    },
     goals: {
       horizonMonths: 18,
       objectives: [

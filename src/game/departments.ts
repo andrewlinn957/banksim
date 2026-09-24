@@ -56,7 +56,7 @@ export function departmentSummary(department: Department, state: BankState, hist
         metric('Fixed-term savings share', deposits > 0 ? term / deposits : 0, 'ratio'),
         metric('Largest depositor/group', m.largeDepositorShare ?? state.behaviour.largeDepositorShare ?? 0, 'ratio'),
       ],
-      explanation: 'Instant-access pricing protects the franchise; fixed-term savings buy contractual stability but create future maturities. Business deposits are less stable, so funding mix matters as much as the headline deposit total.',
+      explanation: 'Higher rates can attract deposits. Term savings stay longer but mature; business balances react faster to price gaps.',
       reportTab: 'Overview', reportLabel: 'Read bank overview report'
     };
   }
@@ -78,7 +78,7 @@ export function departmentSummary(department: Department, state: BankState, hist
         metric('Undrawn commitments', committed),
         metric('Stage 2 and 3 share', gross > 0 ? stressed / gross : 0, 'ratio'),
       ],
-      explanation: 'Choose where to deploy scarce balance sheet: mortgages are lower-loss and long-duration, personal credit is higher-yield and higher-loss, and SME lending is cyclical and capital-intensive. Pricing, selectivity and mortgage structure change new vintages rather than rewriting old loans.',
+      explanation: 'Mortgages are lower-loss and longer-term; personal credit earns more and loses more. Policy changes affect new lending only.',
       reportTab: 'Loans', reportLabel: 'Read loan portfolio report'
     };
   }
@@ -94,7 +94,7 @@ export function departmentSummary(department: Department, state: BankState, hist
         metric('Profit this quarter', profit),
         metric('Tier 2 capital', state.financial.capital.tier2 ?? 0),
       ],
-      explanation: 'Retained profit builds CET1. Equity strengthens every capital measure but dilutes holders; Tier 2 supports total capital only and does not repair CET1 or leverage. Use subordinated debt only when total-capital headroom is the actual constraint.',
+      explanation: 'Retained profit builds CET1. Equity lifts every capital ratio; Tier 2 lifts total capital only.',
       reportTab: 'Regulatory', reportLabel: 'Read capital and liquidity report'
     };
   }
@@ -112,7 +112,7 @@ export function departmentSummary(department: Department, state: BankState, hist
       metric('Funding due within 3 months', due),
       metric('Stable funding ratio', m.nsfr, 'ratio'),
     ],
-    explanation: 'Treasury chooses liquidity-buffer composition and duration first. Fixed-term savings provide the natural stable-funding base; long-term debt remains available for structural needs, while Bank of England secured funding is a collateralised liquidity tool rather than a substitute for a sound franchise.',
+    explanation: 'Reserves stay liquid. Gilts lock in yield and duration; term savings and long debt support stable funding.',
     reportTab: 'Regulatory', reportLabel: 'Read capital and liquidity report'
   };
 }

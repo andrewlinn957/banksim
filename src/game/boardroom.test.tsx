@@ -23,6 +23,18 @@ describe('Three-Year Plan board mandate', () => {
     expect(markup).not.toContain('Three-Year Plan');
   });
 
+  it('puts the open management area in a focused workspace with a return path', () => {
+    const noop = () => {};
+    const markup = renderToStaticMarkup(
+      <Boardroom state={initialState} history={[initialState]} department="Treasury" hasErrors={false} onDepartment={noop} onRisk={noop} onClose={noop} />
+    );
+    expect(markup).toContain('Bank overview');
+    expect(markup).toContain('Treasury &amp; Funding');
+    expect(markup).toContain('id="department-workspace"');
+    expect(markup).not.toContain('class="bank-map"');
+    expect(markup).not.toContain('class="department-building');
+  });
+
   it('shows the fixed quantitative mandate and live progress when plan mode is enabled', () => {
     const noop = () => {};
     const planned = structuredClone(initialState);
