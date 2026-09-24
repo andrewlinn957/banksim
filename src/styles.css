@@ -1761,3 +1761,63 @@ summary { cursor:pointer; }
   .decision-forecast dl>div:nth-child(odd) { padding-left:0; }
   .decision-forecast dd { font-size:14px; }
 }
+
+/* The simulator's opening screen puts the bank illustration in the work area. */
+.bank-map {
+  display:grid;
+  grid-template-columns:minmax(0,1.12fr) minmax(350px,.88fr);
+  grid-template-rows:auto 1fr auto;
+  grid-template-areas:"heading art" "departments art" "summary art";
+  min-height:500px;
+  overflow:hidden;
+  color:var(--text);
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:6px;
+  box-shadow:var(--card-shadow);
+}
+.bank-map::before { content:none; }
+.bank-map-heading { grid-area:heading; max-width:none; padding:25px 26px 12px; }
+.bank-map-heading .scene-kicker { color:var(--accent); font-size:9px; letter-spacing:.14em; }
+.bank-map-heading h1 { margin:7px 0 5px; color:var(--text); font-family:Georgia,'Times New Roman',serif; font-size:34px; font-weight:500; letter-spacing:-.03em; }
+.bank-map-heading p { max-width:42ch; margin:0; color:var(--muted); font-size:13px; line-height:1.45; }
+.bank-district-art { position:relative; grid-area:art; min-width:0; min-height:500px; overflow:hidden; border-left:1px solid var(--border); background:var(--bg-2); }
+.bank-district-art img { display:block; width:100%; height:100%; min-height:500px; object-fit:cover; object-position:center; }
+.bank-departments { grid-area:departments; grid-template-columns:repeat(2,minmax(0,1fr)); align-content:start; gap:8px; margin:4px 22px 16px; }
+.department-building { min-width:0; gap:3px; padding:11px 12px; color:var(--text); background:var(--bg-2); border:1px solid var(--border); border-left:3px solid transparent; border-radius:4px; box-shadow:none; transition:background .16s,border-color .16s,transform .16s; }
+.department-building:hover { transform:translateY(-1px); color:var(--text); background:var(--panel); border-color:var(--accent); }
+.department-building:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.department-building.selected { color:var(--text); background:var(--panel); border-color:var(--accent); border-left-color:var(--accent); box-shadow:none; }
+.department-name { margin-bottom:2px; color:var(--text); font-size:13px; }
+.department-building>strong { color:var(--text); font-size:20px; font-variant-numeric:tabular-nums; }
+.department-building>small { color:var(--muted); font-size:10px; }
+.department-status { margin-top:4px; padding-top:4px; color:var(--muted); font-size:9px; }
+.risk-area-building { grid-column:1/-1; color:var(--text); background:var(--bg-2); }
+.risk-area-building:hover { color:var(--text); background:var(--panel); }
+.bank-bottom-line { grid-area:summary; display:flex; align-items:center; flex-wrap:wrap; gap:18px; margin-top:0; padding:11px 22px; color:var(--muted); background:var(--bg-2); border-top:1px solid var(--border); font-size:11px; }
+.bank-bottom-line strong { color:var(--text); font-size:13px; font-variant-numeric:tabular-nums; }
+@media(max-width:900px) {
+  .bank-map { grid-template-columns:minmax(0,1.05fr) minmax(280px,.95fr); }
+  .bank-district-art,.bank-district-art img { min-height:500px; }
+  .bank-map-heading { padding-inline:20px; }
+  .bank-departments { margin-inline:16px; }
+}
+@media(max-width:760px) {
+  .bank-map {
+    grid-template-columns:minmax(0,1fr);
+    grid-template-rows:220px auto 1fr auto;
+    grid-template-areas:"art" "heading" "departments" "summary";
+    min-height:0;
+  }
+  .bank-district-art { min-height:0; border-left:0; border-bottom:1px solid var(--border); }
+  .bank-district-art img { min-height:0; height:220px; object-position:center 43%; }
+  .bank-map-heading { padding:19px 16px 12px; }
+  .bank-map-heading h1 { font-size:29px; }
+  .bank-departments { grid-template-columns:repeat(2,minmax(0,1fr)); margin:4px 12px 14px; gap:7px; }
+  .department-building { padding:9px; }
+  .department-name { font-size:12px; }
+  .department-building>strong { font-size:18px; }
+  .department-status { font-size:8px; }
+  .bank-bottom-line { display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:8px; padding:10px 12px; }
+  .bank-bottom-line strong { display:block; margin-top:2px; }
+}

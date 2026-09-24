@@ -4,6 +4,7 @@ import { Department, departmentSummary } from '../game/departments';
 import { periodHistory } from '../game/management';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import ThreeYearPlanPanel from './ThreeYearPlanPanel';
+import bankDistrictAtlas from '../assets/bank-district-atlas.webp';
 
 interface Props {
  state: BankState;
@@ -38,6 +39,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    <button className="button ghost" onClick={onClose}>← Bank overview</button>
    <span>Management area <strong>{areas.find(a=>a.department===department)?.label??department}</strong></span>
   </header> : <section className="bank-map" aria-label="Bank and functional areas">
+   <div className="bank-district-art"><img src={bankDistrictAtlas} alt="Hand-illustrated view of the City of London, centred on a classical bank."/></div>
    <div className="bank-map-heading"><span className="scene-kicker">CITY OF LONDON · THREADNEEDLE STREET</span><h1>Your bank</h1><p>Choose an area. Standing policies keep running until changed.</p></div>
    <nav className="bank-departments" aria-label="Bank functional areas">
     {areas.map(({department:d,label})=>{const summary=departmentSummary(d,state,history);return <button ref={el=>{departmentButtons.current[d]=el;}} key={d} className="department-building" onClick={()=>onDepartment(d)}><span className="department-name">{label}<span aria-hidden="true">↗</span></span><strong>{summary.metrics[0].value}</strong><small>{summary.metrics[0].label}</small><span className="department-status">{summary.status}</span></button>;})}
