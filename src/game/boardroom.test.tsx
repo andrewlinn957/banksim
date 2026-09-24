@@ -15,7 +15,8 @@ describe('Three-Year Plan board mandate', () => {
     expect(markup).toContain('Treasury &amp; Funding');
     expect(markup).toContain('Finance &amp; Capital');
     expect(markup).toContain('Bank functional areas');
-    expect(markup).toContain('Hand-illustrated view of the City of London');
+    expect(markup).toContain('Bank overview');
+    expect(markup.match(/class="department-art"/g)).toHaveLength(5);
     expect(markup).toContain('Risk &amp; Regulatory');
     expect(markup.match(/class="department-building/g)).toHaveLength(5);
     expect(markup).not.toContain('Board agenda');

@@ -41,7 +41,7 @@ export default function FunctionalNavigation({
   return (
     <nav className="functional-navigation" aria-label="Bank areas">
       <div className="functional-nav-group boardroom-nav-group">
-        <span className="functional-nav-label">Boardroom</span>
+        <span className="functional-nav-label">Overview</span>
         <button
           className={`functional-nav-button ${activeTab === 'Boardroom' && activeDepartment === null ? 'active' : ''}`}
           aria-current={activeTab === 'Boardroom' && activeDepartment === null ? 'page' : undefined}
@@ -51,18 +51,18 @@ export default function FunctionalNavigation({
         </button>
       </div>
       <div className="functional-nav-group">
-        <span className="functional-nav-label">Run the bank</span>
+        <span className="functional-nav-label">Operate</span>
         <DepartmentButton department="Customers" label="Deposits" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />
         <DepartmentButton department="Lending" label="Lending" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />
         <DepartmentButton department="Treasury" label="Treasury & Funding" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />
       </div>
       <div className="functional-nav-group">
-        <span className="functional-nav-label">Control the bank</span>
+        <span className="functional-nav-label">Oversight</span>
         <DepartmentButton department="Capital" label="Finance & Capital" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />
         <button className={`functional-nav-button ${riskActive ? 'active' : ''}`} aria-current={riskActive ? 'page' : undefined} onClick={() => onReport('Regulatory')}>Risk & Regulatory</button>
       </div>
       <div className="functional-nav-group functional-nav-group-secondary">
-        <span className="functional-nav-label">Other</span>
+        <span className="functional-nav-label">Review</span>
         <button className={`functional-nav-button ${activeTab === 'Scenarios' ? 'active' : ''}`} onClick={() => onReport('Scenarios')}>Scenarios</button>
         <button className={`functional-nav-button ${activeTab === 'Past games' ? 'active' : ''}`} onClick={() => onReport('Past games')}>Past games</button>
         <button className={`functional-nav-button ${activeTab === 'Help' ? 'active' : ''}`} onClick={() => onReport('Help')}>Help</button>

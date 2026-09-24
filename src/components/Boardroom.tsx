@@ -4,7 +4,11 @@ import { Department, departmentSummary } from '../game/departments';
 import { periodHistory } from '../game/management';
 import { formatCurrency, formatPct } from '../utils/formatters';
 import ThreeYearPlanPanel from './ThreeYearPlanPanel';
-import bankDistrictAtlas from '../assets/bank-district-atlas.webp';
+import depositsArt from '../assets/department-deposits-engraving.webp';
+import lendingArt from '../assets/scenario-corporate-credit-boom.webp';
+import treasuryArt from '../assets/scenario-wholesale-funding.webp';
+import capitalArt from '../assets/department-capital-engraving.webp';
+import regulatoryArt from '../assets/scenario-supervisory-review.webp';
 
 interface Props {
  state: BankState;
@@ -17,11 +21,11 @@ interface Props {
  children?: ReactNode;
 }
 
-const areas: Array<{department:Department;label:string}> = [
- {department:'Customers',label:'Deposits'},
- {department:'Lending',label:'Lending'},
- {department:'Treasury',label:'Treasury & Funding'},
- {department:'Capital',label:'Finance & Capital'},
+const areas: Array<{department:Department;label:string;artwork:string}> = [
+ {department:'Customers',label:'Deposits',artwork:depositsArt},
+ {department:'Lending',label:'Lending',artwork:lendingArt},
+ {department:'Treasury',label:'Treasury & Funding',artwork:treasuryArt},
+ {department:'Capital',label:'Finance & Capital',artwork:capitalArt},
 ];
 
 export default function Boardroom({state,history,department,hasErrors,onDepartment,onRisk,onClose,children}:Props) {
@@ -32,18 +36,17 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
  const risk=state.risk.riskMetrics;
  const compliance=state.risk.compliance;
  const riskNeedsAttention=compliance.cet1Breached||compliance.ownFundsBreached||compliance.leverageBreached||compliance.lcrBreached||compliance.nsfrBreached;
- const riskStatus=riskNeedsAttention?'Regulatory breach needs attention':'Within regulatory requirements';
+ const riskStatus=riskNeedsAttention?'Breach needs attention':'Buffers within limits';
  useEffect(()=>{ if(department){ panel.current?.focus({preventScroll:true}); if(window.matchMedia('(max-width:1150px)').matches) panel.current?.scrollIntoView({block:'start'}); } else if(priorDepartment.current) departmentButtons.current[priorDepartment.current]?.focus(); priorDepartment.current=department; },[department]);
  return <main className={`bank-workspace ${department?'with-department':''}`}>
   {department ? <header className="department-return-bar">
    <button className="button ghost" onClick={onClose}>← Bank overview</button>
    <span>Management area <strong>{areas.find(a=>a.department===department)?.label??department}</strong></span>
   </header> : <section className="bank-map" aria-label="Bank and functional areas">
-   <div className="bank-district-art"><img src={bankDistrictAtlas} alt="Hand-illustrated view of the City of London, centred on a classical bank."/></div>
-   <div className="bank-map-heading"><span className="scene-kicker">CITY OF LONDON · THREADNEEDLE STREET</span><h1>Your bank</h1><p>Choose an area. Standing policies keep running until changed.</p></div>
+   <div className="bank-map-heading"><span className="scene-kicker">BANK SIMULATOR</span><h1>Bank overview</h1><p>Choose an area to manage. Policies remain active as time advances.</p></div>
    <nav className="bank-departments" aria-label="Bank functional areas">
-    {areas.map(({department:d,label})=>{const summary=departmentSummary(d,state,history);return <button ref={el=>{departmentButtons.current[d]=el;}} key={d} className="department-building" onClick={()=>onDepartment(d)}><span className="department-name">{label}<span aria-hidden="true">↗</span></span><strong>{summary.metrics[0].value}</strong><small>{summary.metrics[0].label}</small><span className="department-status">{summary.status}</span></button>;})}
-    <button className="department-building risk-area-building" onClick={onRisk}><span className="department-name">Risk & Regulatory<span aria-hidden="true">↗</span></span><strong>{formatPct(risk.cet1Ratio)}</strong><small>CET1 ratio</small><span className="department-status">{riskStatus}</span></button>
+    {areas.map(({department:d,label,artwork})=>{const summary=departmentSummary(d,state,history);return <button ref={el=>{departmentButtons.current[d]=el;}} key={d} className="department-building" onClick={()=>onDepartment(d)}><span className="department-art" aria-hidden="true"><img src={artwork} alt="" decoding="async"/></span><span className="department-copy"><span className="department-name">{label}<span aria-hidden="true">↗</span></span><strong>{summary.metrics[0].value}</strong><small>{summary.metrics[0].label}</small><span className="department-status">{summary.status}</span></span></button>;})}
+    <button className="department-building risk-area-building" onClick={onRisk}><span className="department-art" aria-hidden="true"><img src={regulatoryArt} alt="" decoding="async"/></span><span className="department-copy"><span className="department-name">Risk & Regulatory<span aria-hidden="true">↗</span></span><strong>{formatPct(risk.cet1Ratio)}</strong><small>CET1 ratio</small><span className="department-status">{riskStatus}</span></span></button>
    </nav>
    <div className="bank-bottom-line" aria-label="Bank position"><span>{quarter?`${quarter.label} profit (${quarter.months}/3 months)`:'Opening profit'} <strong>{formatCurrency(quarter?.profit??0)}</strong></span><span>CET1 <strong>{formatPct(risk.cet1Ratio)}</strong></span><span>LCR <strong>{formatPct(risk.lcr)}</strong></span></div>
   </section>}

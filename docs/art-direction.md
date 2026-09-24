@@ -1,9 +1,15 @@
 # BankSim artwork
 
-Asset: `src/assets/bank-district.webp`, converted to WebP from the image_gen edit output. The exact user-selected dusk illustration was the edit source. The revision replaces the imaginary temple frontage and riverside with a stylised Bank of England and dense City streets. It is an illustration, not an architectural survey.
+The simulator overview uses a consistent engraved illustration for each operating area. Images are cropped as supporting details beside live metrics and controls, so the bank remains a working dashboard rather than a splash screen.
 
-Architecture references: [Bank architects](https://www.bankofengland.co.uk/museum/online-collections/blog/the-bank-of-englands-architects-and-architecture), [Building the Bank](https://www.bankofengland.co.uk/museum/whats-on/building-the-bank).
+| Area | Asset | Subject |
+| --- | --- | --- |
+| Deposits | `src/assets/department-deposits-engraving.webp` | Ledger and key at a City bank window |
+| Lending | `src/assets/scenario-corporate-credit-boom.webp` | City development and construction |
+| Treasury & Funding | `src/assets/scenario-wholesale-funding.webp` | City window, ledger and funding book |
+| Finance & Capital | `src/assets/department-capital-engraving.webp` | Bank façade, ledger and share certificates |
+| Risk & Regulatory | `src/assets/scenario-supervisory-review.webp` | Supervisory review in a traditional boardroom |
 
-## Image-generation prompt
+## Direction
 
-Use case: precise-object-edit. Edit target: the supplied selected BankSim dusk city image. Replace the main imaginary temple-like bank at approximately x65%,y53% with a recognisable architectural miniature of the REAL Bank of England on Threadneedle Street in the City of London. It must resemble the actual Herbert Baker building above John Soane's low windowless perimeter: a broad irregular city-block footprint, pale Portland stone, long fortress-like largely windowless ground-floor street walls with classical pilasters and restrained niches, the characteristic central recessed bronze entrance doorway on Threadneedle Street with paired Corinthian columns and sculptural details, rising behind it the much larger multi-storey Baker block with rows of rectangular windows, stepped attic storeys and light stone roofline. Do not substitute the Royal Exchange's Greek temple portico: remove the source's enormous projecting pediment and freestanding six-column temple, pitched mansard roof, grand garden and detached mansion proportions. It should read as the actual Bank of England, not a fictional palatial bank. Adapt immediate surroundings to dense Bank junction streets and closely packed City stone and modern office buildings, British road markings and black taxis, small pedestrians and subtle Underground entrance. Remove the geographically implausible riverside immediately behind the bank and use tightly packed City streets, roofscape and a distant City skyline instead. Preserve the original high-angle miniature strategy-game render, beautiful realistic stone textures, warm amber dusk windows and street lamps, cinematic deep forest-green and teal shadows, wide 1536x1024 composition, subject on right two-thirds and very quiet dark left third for live game text. Preserve overall atmospheric lighting and quality. No new labels, no text, no watermarks, no UI.
+A restrained steel engraving style ties the areas together: finely hatched linework, ink navy, warm parchment, dusty sage and muted rust. Keep compositions calm, legible at card scale and free of readable text, logos or watermarks. Use the same print language for any new operational areas.
