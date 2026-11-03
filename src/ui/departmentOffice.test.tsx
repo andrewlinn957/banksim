@@ -27,7 +27,7 @@ describe('Department decision destinations',()=>{
  it('keeps lending controls with inline market comparisons and contextual help',()=>{
   const html=renderToStaticMarkup(<DepartmentOffice department="Lending" {...props}/>);
   expect(html).toContain('Undrawn commitments');expect(html).toContain('Approvals this quarter');
-  expect(html).toContain('Mortgages');expect(html).toContain('value="5"');expect(html).toContain('Selectivity');
+  expect(html).toContain('Mortgages');expect(html).toContain('value="5"');expect(html).toContain('New lending selectivity');
   expect(html).toContain('input-with-suffix');expect(html).toContain('Market');expect(html).toContain('bp above market');expect(html).toContain('SME &amp; business');
   expect(html).toContain('How pricing and selectivity affect lending');
  });
