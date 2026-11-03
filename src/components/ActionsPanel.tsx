@@ -166,14 +166,14 @@ const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,a
   const dilution=bankState&&newShares>0?newShares/(bankState.equityMarket.sharesOutstanding+newShares):0;
   return <section className="policy-disclosure capital-markets-ticket" aria-label="Capital markets">
     <div className="policy-section-title"><h3>{title}</h3><span className="order-status">{definition?(validOrder?'Queued for next close':'Draft · enter valid terms'):'No transaction queued'}</span></div>
-    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is already queued in {otherArea}.</strong><div className="muted">Finish or cancel that transaction in its owning management area before replacing it here.</div></div>}
+    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is already queued in {otherArea}.</strong><div className="muted">Complete or cancel it there first.</div></div>}
     <div className="policy-fields policy-fields-primary">
-      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere} onChange={e=>selectInstrument(e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select><small></small></label>
+      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere} onChange={e=>selectInstrument(e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select></label>
       <MoneyField field="capitalMarketsTargetAmount" label="Target size (£)" hint="Accepts £, k, m or bn." state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
       {isDiscountPriced
         ? <PercentageField field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="Cancel if the discount exceeds this limit." state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxDiscount}/>
         : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="Cancel if the spread exceeds this limit." state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
-      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select><small>Longer terms lock in cost longer.</small></label>}
+      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select></label>}
     </div>
     {definition&&quote&&<div className={`capital-markets-book ${quote.status.startsWith('failed')?'warning':'info'}`}>
       <div className="forecast-heading"><strong>Indicative book · {definition.label}</strong><span>{quote.status==='filled'?'Full fill projected':quote.status==='partial'?'Partial fill projected':'Execution would fail'}</span></div>
@@ -186,9 +186,9 @@ const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,a
       {quote.recentIssuanceRatio>0&&<small>Recent issuance reduces capacity and worsens terms.</small>}
     </div>}
     {latestTransaction&&<details className="transaction-receipt"><summary>Last execution · {getCapitalMarketsInstrument(latestTransaction.instrument).label} · {latestTransaction.status==='filled'?'Executed':latestTransaction.status==='partial'?'Partially filled':'Failed'}</summary><dl className="deal-details"><div><dt>Date</dt><dd>{latestTransaction.date}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(latestTransaction.executedAmount)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(latestTransaction.netProceeds)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(latestTransaction.fees)}</dd></div></dl></details>}
-    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">One-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div><div className="muted">There is no direct Board Confidence effect: the transaction matters only through the plan metrics it changes.</div></div>}
+    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">One-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div></div>}
     {definition&&<button className="button ghost" disabled={disabled} onClick={()=>onChange({...state,capitalMarketsInstrument:'none',capitalMarketsTargetAmount:''})}>Cancel {definition.label} transaction</button>}
-    <p className="muted">Terms clear at close. A failed price limit settles nothing.</p>
+
   </section>;
 };
 
@@ -205,7 +205,7 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
   const setHedgeDirection=(value:ActionFormState['hedgeDirection'])=>onChange({...state,hedgeDirection:value,hedgeNotional:value==='none'?'':state.hedgeNotional,hedgeFixedRate:value==='none'?'':state.hedgeFixedRate});
 
   return <div className="stack department-policy-panel">
-    <div className="policy-section-title"><h3>{department==='Treasury'?'Treasury actions':'Standing policy'}</h3><small>{department==='Treasury'?'Cash stays in BoE reserves until invested. Trades execute once.':'Policies persist; one-off orders clear after close.'}</small></div>
+    <div className="policy-section-title"><h3>{department==='Treasury'?'Treasury actions':'Standing policy'}</h3></div>
     {hasLocalValidationErrors && <div role="alert" className="alert danger">Fix this management area's invalid input before advancing time.{firstError && <> <strong>{FIELD_LABELS[firstError[0]] ?? firstError[0]}:</strong> {firstError[1]}</>}</div>}
 
     {department==='Customers'&&<div className="decision-product-grid" aria-label="Deposit product policies">
@@ -213,8 +213,8 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
         ['retailCurrentAccountRate','Retail current accounts','Retail current account rate',bankState?.market.competitorRetailCurrentAccountRate,'Everyday, accessible balances'],
         ['termDepositRate','Fixed-term savings','Fixed-term savings offer',bankState?.market.competitorTermDepositRate,'Lock in funding and its cost'],
         ['corporateDepositRate','Business deposits','SME/business deposit offer',bankState?.market.competitorCorporateDepositRate??bankState?.market.competitorRetailCurrentAccountRate,'More sensitive to competing offers'],
-      ] as const).map(([field,title,label,market,description])=><section className="decision-product-card" key={field} aria-label={title}>
-        <header><h4>{title}</h4><small>{description}</small></header>
+      ] as const).map(([field,title,label,market])=><section className="decision-product-card" key={field} aria-label={title}>
+        <header><h4>{title}</h4></header>
         <PercentageField field={field} label={label} hint="" state={state} update={update} disabled={disabled} error={errors?.[field]}/>
         <RateComparison offer={state[field]} market={market}/>
         {field==='termDepositRate'&&<label className="field"><strong>Term</strong><select value={state.termDepositTenorMonths} disabled={disabled} onChange={e=>update('termDepositTenorMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="36">3 years</option></select><small>Market comparison uses the 1-year benchmark.</small></label>}
@@ -226,8 +226,8 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
         ['mortgageRate','mortgageUnderwritingTightness','Mortgages',bankState?.market.competitorMortgageRate,'Low loss · long duration'],
         ['consumerLoanRate','consumerUnderwritingTightness','Personal credit',bankState?.market.competitorConsumerLoanRate,'Higher yield · higher loss'],
         ['corporateLoanRate','corporateUnderwritingTightness','SME & business',bankState?bankState.market.riskFreeLong+bankState.market.corporateLoanSpread:undefined,'Cyclical · capital intensive'],
-      ] as const).map(([field,selectivity,title,market,description])=><section className="decision-product-card" key={field} aria-label={title}>
-        <header><h4>{title}</h4><small>{description}</small></header>
+      ] as const).map(([field,selectivity,title,market])=><section className="decision-product-card" key={field} aria-label={title}>
+        <header><h4>{title}</h4></header>
         <PercentageField field={field} label="New rate" hint="" state={state} update={update} disabled={disabled} error={errors?.[field]}/>
         <RateComparison offer={state[field]} market={market}/>
         <RatioField field={selectivity} label="Selectivity" state={state} update={update} disabled={disabled} error={errors?.[selectivity]}/>
@@ -236,14 +236,14 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
           <label className="field"><strong>Initial fixed period</strong><select value={state.mortgageFixedPeriodMonths} disabled={disabled} onChange={e=>update('mortgageFixedPeriodMonths',e.target.value)}><option value="24">2 years</option><option value="36">3 years</option><option value="60">5 years</option></select></label>
         </div>}
       </section>)}
-      <small className="decision-product-note">Policies affect new lending. Tighter selection reduces approvals and credit risk; higher LTV increases loss severity.</small>
+      <small className="decision-product-note">Applies to new lending.</small>
     </div>}
 
     {department==='Capital'&&<>
       <div className="policy-fields policy-fields-primary">
-        <PercentageField field="dividendPayoutRatio" label="Share of profit paid out" hint="Retained profit builds CET1. Restrictions may limit payouts." state={state} update={update} disabled={disabled} error={errors?.dividendPayoutRatio}/>
+        <PercentageField field="dividendPayoutRatio" label="Share of profit paid out" hint="Subject to payout restrictions." state={state} update={update} disabled={disabled} error={errors?.dividendPayoutRatio}/>
       </div>
-      <p className="muted">AT1 coupons are discretionary. New issues clear at market rates.</p>
+
     </>}
 
     {department==='Capital'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={capitalInstruments} title="Raise capital" otherArea="Treasury & Funding"/>}
@@ -251,14 +251,14 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
 
     {department==='Treasury'&&<>
       <div className="policy-fields policy-fields-primary">
-        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">No gilt trade queued</option><option value="buy">Buy gilts</option><option value="sell">Sell gilts</option></select><small>Buying invests BoE reserves; selling returns the proceeds to reserves.</small></label>
-        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="Executed once on the next monthly close." state={state} update={update} disabled={disabled||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
-        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}><option value="2">2 years</option><option value="5">5 years</option><option value="10">10 years</option></select><small>{state.giltTradeDirection==='sell'?'Sales reduce the existing unencumbered portfolio proportionally across its maturity ladder.':giltQuotedYield!==undefined?`Current simulated gilt yield: ${formatPct(giltQuotedYield)}. Purchases lock this coupon/yield into the new vintage.`:'Select Buy gilts to choose a purchase maturity.'}</small></label>
+        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">No gilt trade queued</option><option value="buy">Buy gilts</option><option value="sell">Sell gilts</option></select></label>
+        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="Next monthly close." state={state} update={update} disabled={disabled||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
+        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}><option value="2">2 years</option><option value="5">5 years</option><option value="10">10 years</option></select><small>{state.giltTradeDirection==='sell'?'Proportional sale across maturities.':giltQuotedYield!==undefined?`Yield: ${formatPct(giltQuotedYield)}`:''}</small></label>
       </div>
       {state.giltTradeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setGiltDirection('none')}>Cancel gilt transaction</button>}
-      <p className="muted">Reserves rise as deposits, repayments, interest and securities mature; lending draws them down.</p>
-      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><p className="muted">Secured funding for routine liquidity needs.</p><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">No drawing queued</option><option value="STR">STR · 1 week / Level A collateral</option><option value="ILTR">ILTR · 6 months</option></select><small>Secured reserves. Modelled as routine sterling liquidity management.</small></label><MoneyField field="boeFundingAmount" label="BoE drawing once (£)" hint="Limited by available eligible gilt collateral and haircut." state={state} update={update} disabled={disabled||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Cancel Bank of England drawing</button>}</details>
-      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><p className="muted">Use swaps to adjust remaining interest-rate risk after changing the balance sheet.</p><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">No swap queued</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="Executed once when a direction is selected." state={state} update={update} disabled={disabled||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="60">5 years</option></select><small>Longer swaps hedge more structural duration.</small></label></div>{state.hedgeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Cancel swap transaction</button>}</details>
+
+      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">No drawing queued</option><option value="STR">STR · 1 week / Level A collateral</option><option value="ILTR">ILTR · 6 months</option></select></label><MoneyField field="boeFundingAmount" label="BoE drawing once (£)" hint="Limited by eligible collateral." state={state} update={update} disabled={disabled||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Cancel Bank of England drawing</button>}</details>
+      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">No swap queued</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="Next monthly close." state={state} update={update} disabled={disabled||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="60">5 years</option></select></label></div>{state.hedgeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Cancel swap transaction</button>}</details>
     </>}
 
     <small className="policy-save-note">Changes apply at the next close. Editing pauses time.</small>

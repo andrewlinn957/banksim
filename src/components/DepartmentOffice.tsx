@@ -55,7 +55,7 @@ export default function DepartmentOffice({department,state,history,form,errors,h
  return <div className="department-office">
   <p className="office-status">{summary.status}<small>{period?`${period.label} · ${period.months}/3 months closed`:'Opening position · no months closed'}</small></p>
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
-  <p className="department-consequence">{summary.explanation}</p>
+
   <ActionsPanel department={department} bankState={state} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} maxGiltSaleAmount={unencumberedGilts} maxBoeFundingAmount={maxBoeFunding}/>
   {estimate&&<section className={`decision-forecast ${projectedBreach?'warning':'info'}`} aria-label="Next monthly close preview">
     <div className="forecast-heading"><strong>Next close</strong><span>{projectedBreach?'Projected breach':'No breach projected'}</span></div>
@@ -68,7 +68,7 @@ export default function DepartmentOffice({department,state,history,form,errors,h
     <div className="forecast-commercial-impact" aria-label="Commercial forecast"><strong>{department==='Customers'?'Funding & earnings':department==='Lending'?'Portfolio & credit':department==='Capital'?'Earnings & capital':'Cash & funding'}</strong><dl>{impact.map(([label,before,after])=><div key={label}><dt>{label}</dt><dd>{moneyMillions(before)} → <strong>{moneyMillions(after)}</strong></dd></div>)}</dl></div>
     {projectedBreach&&<small>Queued decisions put a prudential limit at risk.</small>}
   </section>}
-  <section className="department-guidance" aria-label={`${labels[department]} decision guide`}><div><strong>Decision guide</strong><small>Open the relevant explanation without leaving this decision context behind.</small></div><button className="button ghost" onClick={()=>onHelp(helpId)}>{helpLabel} →</button></section>
-  {department==='Treasury'&&<nav className="area-report-links" aria-label="Treasury reports"><div><strong>Reports</strong><small>Open the detailed view when needed.</small></div>{treasuryReports.map(([tab,label,metric])=><button key={metric} className="button ghost" onClick={()=>onReport(tab,metric,'Treasury')}>{label} →</button>)}</nav>}
+  <section className="department-guidance" aria-label={`${labels[department]} decision guide`}><div><strong>Decision guide</strong></div><button className="button ghost" onClick={()=>onHelp(helpId)}>{helpLabel} →</button></section>
+  {department==='Treasury'&&<nav className="area-report-links" aria-label="Treasury reports"><div><strong>Reports</strong></div>{treasuryReports.map(([tab,label,metric])=><button key={metric} className="button ghost" onClick={()=>onReport(tab,metric,'Treasury')}>{label} →</button>)}</nav>}
  </div>;
 }
