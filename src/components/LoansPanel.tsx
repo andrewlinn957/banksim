@@ -8,6 +8,7 @@ import { canonicalLoanGeography, UK_ITL1_LABELS, UK_ITL1_REGIONS } from '../doma
 import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
 import { getProduct } from '../products/catalogue';
 import { LoanProductType, productTypesWithCapability } from '../products/capabilities';
+import './LoanPortfolio.css';
 
 interface Props {
   items: BalanceSheetItem[];
@@ -728,7 +729,7 @@ useEffect(() => {
           <div className="muted">No cohort data available for this portfolio.</div>
         ) : (
           <>
-            <div className="grid-metrics">
+            <div className="grid-metrics cohort-summary-grid">
               <div className="metric-card">
                 <div className="metric-label">Cohorts</div>
                 <div className="metric-value">{cohortSummary.cohortCount}</div>
@@ -792,6 +793,9 @@ useEffect(() => {
               </div>
             </div>
 
+            <details className="loan-cohort-explorer">
+            <summary>Explore {portfolioCohorts.length} loan cohorts</summary>
+            <div className="loan-cohort-explorer-content">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
               <div className="muted">
                 Click column headers to sort. Filters support <code>&gt;</code>, <code>&lt;</code>, and ranges (<code>..</code>); rates in %, outstanding in £bn.
@@ -863,6 +867,8 @@ useEffect(() => {
                 )}
               </tbody>
             </table>
+            </div>
+            </details>
           </>
         )}
       </div>

@@ -91,6 +91,14 @@ const App = () => {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
   const [runPeriod, setRunPeriod] = useState('quarter');
+  const navigationDepartment: Department | null = activeTab==='Boardroom' ? (isActionsOpen ? activeDepartment : null) : activeTab==='Loans' ? 'Lending' : ['Performance','Accounts','Share Price','Costs'].includes(activeTab) ? 'Capital' : activeTab==='Regulatory' ? reportOriginDepartment : null;
+  const pendingActions = [
+    actionForm.capitalMarketsInstrument!=='none' ? `${getCapitalMarketsInstrument(actionForm.capitalMarketsInstrument).label}: ${actionForm.capitalMarketsTargetAmount || 'amount required'}` : null,
+    actionForm.giltTradeDirection!=='none' ? `${actionForm.giltTradeDirection==='buy'?'Buy':'Sell'} gilts: ${actionForm.giltTradeAmount || 'amount required'}` : null,
+    actionForm.boeFacility!=='none' ? `${actionForm.boeFacility} drawing: ${actionForm.boeFundingAmount || 'amount required'}` : null,
+    actionForm.hedgeDirection!=='none' ? `${actionForm.hedgeDirection==='payFixedReceiveFloat'?'Pay fixed':'Receive fixed'} swap: ${actionForm.hedgeNotional || 'notional required'}` : null,
+    pendingRiskAppetite!==undefined ? 'Update internal risk appetite' : null,
+  ].filter((item):item is string=>item!==null);
   const runSession = useRunSession(controller, initialState);
   const { savedRuns, currentTimeline, currentSnapshots } = runSession;
   const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);
@@ -326,7 +334,7 @@ const App = () => {
       </header>
       <FunctionalNavigation
         activeTab={activeTab}
-        activeDepartment={activeTab==='Boardroom'&&isActionsOpen?activeDepartment:null}
+        activeDepartment={navigationDepartment}
         onBoardroom={goToBoardroom}
         onDepartment={openDepartment}
         onReport={openReport}
@@ -336,7 +344,7 @@ const App = () => {
        <div className="clock-buttons"><button className="button" onClick={pauseClock} disabled={!clockRunning} aria-label="Pause simulation">Ⅱ Pause</button><label><span className="sr-only">Advance time</span><select aria-label="Advance time" value={runPeriod} disabled={clockRunning} onChange={e=>setRunPeriod(e.target.value)}><option value="month">One month</option><option value="quarter">To quarter end</option><option value="year">To year end</option><option value="auto">Continuous</option></select></label><button className="button primary" disabled={bankState.status.hasFailed||parsedActionForm.hasErrors||clockRunning} onClick={()=>startClock(runPeriod==='auto'?Infinity:runPeriod==='month'?1:monthsToPeriodEnd(bankState.time.step-stateHistory[0].time.step,runPeriod==='quarter'?3:12))}>▶ Run</button></div>
        <div className="clock-status" role="status">{clockRunning?Number.isFinite(autoRemaining)?`Running · ${autoRemaining} months remaining`:'Running continuously':pauseReason}</div>
       </section>
-      {activeTab==='Boardroom'&&isActionsOpen&&activeDepartment==='Capital'&&<nav className="area-report-links" aria-label="Finance & Capital reports"><div><strong>Reports</strong><small>Open the detailed view when you need it.</small></div><button className="button ghost" onClick={()=>openReport('Performance',undefined,'Capital')}>Performance →</button><button className="button ghost" onClick={()=>openReport('Accounts',undefined,'Capital')}>Accounts →</button><button className="button ghost" onClick={()=>openReport('Share Price',undefined,'Capital')}>Share price →</button><button className="button ghost" onClick={()=>openReport('Costs',undefined,'Capital')}>Costs →</button></nav>}
+
       {stateHistory.length>1&&<nav className="post-close-links" aria-label="Review last close"><strong>Review last close</strong><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button></nav>}
       {attentionReason(bankState,simConfig)&&!bankState.status.hasFailed&&<div className="attention-banner"><div><strong>Needs your attention</strong><span>{attentionReason(bankState,simConfig)}</span></div><button className="button" onClick={()=>openDepartment(responsibleDepartment)}>Manage {responsibleDepartment.toLowerCase()} →</button></div>}
 
@@ -359,10 +367,10 @@ const App = () => {
         </div>
       )}
 
-      <FunctionalReportNavigation activeTab={activeTab} onReport={openReport} onManage={openDepartment}/>
+      <FunctionalReportNavigation activeTab={activeTab} activeDepartment={navigationDepartment} regulatoryMetric={regulatoryMetric} onReport={openReport} onManage={openDepartment}/>
 
 
-      {activeTab === 'Boardroom' && <Boardroom state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
+      {activeTab === 'Boardroom' && <Boardroom attribution={lastAttribution} pendingActions={pendingActions} state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
         <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();setActionForm(next);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}

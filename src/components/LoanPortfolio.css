@@ -1,0 +1,8 @@
+.cohort-summary-grid{grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.55rem}
+.cohort-summary-grid .metric-card{padding:.65rem;min-height:72px}
+.cohort-summary-grid .metric-label{font-size:.75rem;line-height:1.25}
+.cohort-summary-grid .metric-value{font-size:1.05rem}
+.loan-cohort-explorer{margin-top:.75rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-3)}
+.loan-cohort-explorer>summary{cursor:pointer;padding:.8rem 1rem;font-weight:650}
+.loan-cohort-explorer-content{padding:0 1rem 1rem;overflow-x:auto}
+.loan-cohort-explorer .data-table{min-width:1000px}

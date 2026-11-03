@@ -1,0 +1,31 @@
+.decision-product-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:1rem 0}
+.decision-product-card{border:1px solid var(--line,#d8d1c6);border-radius:12px;padding:1rem;background:var(--surface,#fffdf8);display:flex;flex-direction:column;gap:.75rem;min-width:0}
+.decision-product-card header h4{margin:0 0 .25rem;font-size:1.05rem}
+.decision-product-card header small,.decision-product-card .field small{color:var(--muted,#6e6a63)}
+.rate-comparison{display:flex;align-items:center;justify-content:space-between;gap:.5rem;border-top:1px solid var(--line,#d8d1c6);padding-top:.65rem;font-size:.9rem}
+.rate-comparison span{color:var(--muted,#6e6a63)}
+.selectivity-inputs{display:grid;grid-template-columns:minmax(0,1fr) 5rem;align-items:center;gap:.75rem}
+.selectivity-inputs input[type=range]{width:100%;accent-color:var(--accent,#955b39)}
+.selectivity-labels{display:flex;justify-content:space-between;color:var(--muted,#6e6a63);font-size:.76rem}
+.mortgage-structure-controls{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;border-top:1px solid var(--line,#d8d1c6);padding-top:.65rem}
+.decision-product-note{grid-column:1/-1;color:var(--muted,#6e6a63)}
+.capital-markets-book{border-radius:10px;padding:1rem;background:#edf5ef;border:1px solid #bed5c2}
+.capital-markets-book.warning{background:#fbefeb;border-color:#e2b8a8}
+.order-status{font-size:.88rem;color:var(--muted,#6e6a63)}
+.deal-flow,.deal-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin:.8rem 0}
+.deal-details{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.deal-flow div,.deal-details div{background:rgba(255,255,255,.58);padding:.6rem;border-radius:8px}
+.deal-flow dt,.deal-details dt{font-size:.78rem;color:var(--muted,#6e6a63)}
+.deal-flow dd,.deal-details dd{margin:.2rem 0 0;font-weight:700}
+.book-coverage{display:grid;grid-template-columns:1fr auto;gap:.4rem;align-items:center}
+.book-coverage progress{grid-column:1/-1;width:100%;height:.65rem;accent-color:var(--accent,#955b39)}
+.transaction-receipt{margin:.75rem 0;padding:.7rem;border:1px solid var(--line,#d8d1c6);border-radius:8px}
+.transaction-receipt summary{cursor:pointer;font-weight:650}
+.policy-save-note{display:block;color:var(--muted,#6e6a63);padding:.5rem 0}
+.forecast-commercial-impact{margin-top:.75rem;padding:.75rem;background:var(--bg-3,#f5f2ec);border-radius:8px}
+.forecast-commercial-impact>strong{font-size:.85rem}
+.forecast-commercial-impact dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;margin:.5rem 0 0}
+.forecast-commercial-impact dl>div{display:grid;grid-template-columns:1fr auto;gap:.4rem}
+.forecast-commercial-impact dt{color:var(--muted,#6e6a63);font-size:.82rem}
+.forecast-commercial-impact dd{margin:0;font-size:.9rem;font-variant-numeric:tabular-nums}
+@media(max-width:850px){.decision-product-grid{grid-template-columns:1fr}.mortgage-structure-controls{grid-template-columns:1fr 1fr}}

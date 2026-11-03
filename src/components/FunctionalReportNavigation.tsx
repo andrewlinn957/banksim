@@ -1,35 +1,25 @@
 import { Department } from '../game/departments';
+import type { RegulatoryMetric } from './RegMetricsPanel';
 
 interface Props {
   activeTab: string;
-  onReport: (tab: string) => void;
+  activeDepartment?: Department | null;
+  regulatoryMetric?: RegulatoryMetric;
+  onReport: (tab: string, metric?: RegulatoryMetric, origin?: Department | null) => void;
   onManage: (department: Department) => void;
 }
+const financeReports = [['Performance','Performance'],['Accounts','Accounts'],['Share Price','Share price'],['Costs','Costs']] as const;
 
-const financeReports = [
-  ['Performance', 'Performance'],
-  ['Accounts', 'Accounts'],
-  ['Share Price', 'Share price'],
-  ['Costs', 'Costs'],
-] as const;
-
-const riskReports = [
-  ['Overview', 'Risk overview'],
-  ['Regulatory', 'Regulatory detail'],
-] as const;
-
-export default function FunctionalReportNavigation({ activeTab, onReport, onManage }: Props) {
-  if (activeTab === 'Loans') {
-    return <nav className="functional-report-navigation" aria-label="Lending reports"><strong>Lending</strong><button className="button ghost" onClick={() => onManage('Lending')}>Manage lending</button><button className="button primary" aria-current="page">Loan portfolio</button></nav>;
-  }
-
-  if (financeReports.some(([tab]) => tab === activeTab)) {
-    return <nav className="functional-report-navigation" aria-label="Finance and capital reports"><strong>Finance & Capital</strong><button className="button ghost" onClick={() => onManage('Capital')}>Manage capital</button>{financeReports.map(([tab,label]) => <button key={tab} className={`button ${activeTab === tab ? 'primary' : 'ghost'}`} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => onReport(tab)}>{label}</button>)}</nav>;
-  }
-
-  if (riskReports.some(([tab]) => tab === activeTab)) {
-    return <nav className="functional-report-navigation" aria-label="Risk and regulatory reports"><strong>Risk & Regulatory</strong>{riskReports.map(([tab,label]) => <button key={tab} className={`button ${activeTab === tab ? 'primary' : 'ghost'}`} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => onReport(tab)}>{label}</button>)}</nav>;
-  }
-
+export default function FunctionalReportNavigation({ activeTab, activeDepartment=null, regulatoryMetric, onReport, onManage }: Props) {
+  const department = activeDepartment ?? (activeTab==='Loans'?'Lending':financeReports.some(([tab])=>tab===activeTab)?'Capital':null);
+  const manage = (label:string, area:Department) => <button className={`button ${activeTab==='Boardroom'?'primary':'ghost'}`} aria-current={activeTab==='Boardroom'?'page':undefined} onClick={()=>onManage(area)}>{label}</button>;
+  const report = (tab:string,label:string,metric?:RegulatoryMetric,origin:Department|null=department) => {
+    const active=activeTab===tab&&(!metric||metric===regulatoryMetric);
+    return <button key={`${tab}-${metric??label}`} className={`button ${active?'primary':'ghost'}`} aria-current={active?'page':undefined} onClick={()=>onReport(tab,metric,origin)}>{label}</button>;
+  };
+  if(department==='Lending') return <nav className="functional-report-navigation" aria-label="Lending screens"><strong>Lending</strong>{manage('Pricing & policy','Lending')}{report('Loans','Loan portfolio')}</nav>;
+  if(department==='Capital') return <nav className="functional-report-navigation" aria-label="Finance and capital screens"><strong>Finance & Capital</strong>{manage('Capital & dividends','Capital')}{financeReports.map(([tab,label])=>report(tab,label))}</nav>;
+  if(department==='Treasury') return <nav className="functional-report-navigation" aria-label="Treasury screens"><strong>Treasury & Funding</strong>{manage('Treasury actions','Treasury')}{report('Regulatory','Liquidity coverage','lcr')}{report('Regulatory','Stable funding','nsfr')}</nav>;
+  if(activeTab==='Overview'||activeTab==='Regulatory') return <nav className="functional-report-navigation" aria-label="Risk and regulatory screens"><strong>Risk & Regulatory</strong>{report('Overview','Risk overview')}{report('Regulatory','Capital','capital')}{report('Regulatory','RWA','rwa')}{report('Regulatory','Leverage','leverage')}{report('Regulatory','LCR','lcr')}{report('Regulatory','NSFR','nsfr')}</nav>;
   return null;
 }

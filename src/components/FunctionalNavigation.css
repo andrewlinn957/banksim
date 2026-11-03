@@ -1,0 +1,11 @@
+.area-nav-entry { display: flex; align-items: center; position: relative; }
+.area-jump-menu { position: relative; }
+.area-jump-menu > summary { cursor: pointer; list-style: none; padding: 9px 7px; border-radius: 4px; color: var(--text); }
+.area-jump-menu > summary::-webkit-details-marker { display: none; }
+.area-jump-menu[open] > summary, .area-jump-menu > summary:hover { background: var(--bg-3); }
+.area-jump-menu > summary:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.area-jump-menu > div { position: absolute; right: 0; top: 100%; min-width: 200px; z-index: 80; display: grid; padding: 6px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 8px 24px #0003; border-radius: 6px; }
+.area-jump-menu button { text-align: left; background: transparent; color: var(--text); border: 0; border-radius: 4px; padding: 10px 12px; cursor: pointer; font: inherit; }
+.area-jump-menu button:hover, .area-jump-menu button:focus-visible { background: var(--bg-3); outline: 1px solid var(--border-strong); }
+.functional-report-navigation { flex-wrap: wrap; }
+@media(max-width:700px) { .functional-report-navigation { gap: 6px; padding: 10px; } .functional-report-navigation > strong { flex-basis: 100%; } .functional-report-navigation .button { padding: 8px 10px; } .area-jump-menu > div { right: auto; left: -100px; } }
