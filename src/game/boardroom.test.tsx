@@ -16,9 +16,9 @@ describe('Three-Year Plan board mandate', () => {
     expect(markup).toContain('Finance &amp; Capital');
     expect(markup).toContain('Bank functional areas');
     expect(markup).toContain('Bank overview');
-    expect(markup.match(/class="department-art"/g)).toHaveLength(5);
-    expect(markup).toContain('Risk &amp; Regulatory');
-    expect(markup.match(/class="department-building/g)).toHaveLength(5);
+    expect(markup.match(/class="home-department"/g)).toHaveLength(4);
+    expect(markup).toContain('Capital &amp; liquidity');
+    expect(markup).toContain('Quarter profit');
     expect(markup).not.toContain('Board agenda');
     expect(markup).not.toContain('Back proposal');
     expect(markup).not.toContain('12-month mandate');

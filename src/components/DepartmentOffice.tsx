@@ -20,6 +20,7 @@ interface Props {
 }
 
 const labels:Record<Department,string>={Customers:'Deposits',Lending:'Lending',Capital:'Finance & Capital',Treasury:'Treasury & Funding'};
+const treasuryReports:Array<[string,string,RegulatoryMetric]>=[['Regulatory','Liquidity coverage','lcr'],['Regulatory','Stable funding','nsfr']];
 const helpLinks:Record<Department,[string,string]>={
  Customers:['deposit-behaviour','How deposit pricing works'],
  Lending:['loan-pipeline','How pricing and selectivity affect lending'],
@@ -68,5 +69,6 @@ export default function DepartmentOffice({department,state,history,form,errors,h
     {projectedBreach&&<small>Queued decisions put a prudential limit at risk.</small>}
   </section>}
   <section className="department-guidance" aria-label={`${labels[department]} decision guide`}><div><strong>Decision guide</strong><small>Open the relevant explanation without leaving this decision context behind.</small></div><button className="button ghost" onClick={()=>onHelp(helpId)}>{helpLabel} →</button></section>
+  {department==='Treasury'&&<nav className="area-report-links" aria-label="Treasury reports"><div><strong>Reports</strong><small>Open the detailed view when needed.</small></div>{treasuryReports.map(([tab,label,metric])=><button key={metric} className="button ghost" onClick={()=>onReport(tab,metric,'Treasury')}>{label} →</button>)}</nav>}
  </div>;
 }

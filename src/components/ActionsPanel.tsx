@@ -210,7 +210,7 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
 
     {department==='Customers'&&<div className="decision-product-grid" aria-label="Deposit product policies">
       {([
-        ['retailCurrentAccountRate','Current accounts','Retail current account rate',bankState?.market.competitorRetailCurrentAccountRate,'Everyday, accessible balances'],
+        ['retailCurrentAccountRate','Retail current accounts','Retail current account rate',bankState?.market.competitorRetailCurrentAccountRate,'Everyday, accessible balances'],
         ['termDepositRate','Fixed-term savings','Fixed-term savings offer',bankState?.market.competitorTermDepositRate,'Lock in funding and its cost'],
         ['corporateDepositRate','Business deposits','SME/business deposit offer',bankState?.market.competitorCorporateDepositRate??bankState?.market.competitorRetailCurrentAccountRate,'More sensitive to competing offers'],
       ] as const).map(([field,title,label,market,description])=><section className="decision-product-card" key={field} aria-label={title}>

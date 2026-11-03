@@ -60,9 +60,9 @@ describe('functional navigation behaviour', () => {
     const onManage = vi.fn();
     const tree = FunctionalReportNavigation({ activeTab: 'Performance', onReport, onManage });
     expect(tree).not.toBeNull();
-    findButton(tree, 'Manage capital')!.props.onClick?.();
+    findButton(tree, 'Capital & dividends')!.props.onClick?.();
     findButton(tree, 'Accounts')!.props.onClick?.();
     expect(onManage).toHaveBeenCalledWith('Capital');
-    expect(onReport).toHaveBeenCalledWith('Accounts');
+    expect(onReport).toHaveBeenCalledWith('Accounts', undefined, 'Capital');
   });
 });

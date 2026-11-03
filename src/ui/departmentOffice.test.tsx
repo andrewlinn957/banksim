@@ -24,17 +24,16 @@ const findButton=(node:ReactNode,text:string):ReactElement|null=>{
 };
 
 describe('Department decision destinations',()=>{
- it('keeps lending controls and market references while providing contextual help',()=>{
+ it('keeps lending controls with inline market comparisons and contextual help',()=>{
   const html=renderToStaticMarkup(<DepartmentOffice department="Lending" {...props}/>);
   expect(html).toContain('Undrawn commitments');expect(html).toContain('Approvals this quarter');
   expect(html).toContain('Mortgages');expect(html).toContain('value="5"');expect(html).toContain('Selectivity');
-  expect(html).toContain('percentage points');
-  expect(html).toContain('Competitor rates');expect(html).toContain('New mortgages');expect(html).toContain('SME/business');
+  expect(html).toContain('input-with-suffix');expect(html).toContain('Market');expect(html).toContain('bp above market');expect(html).toContain('SME &amp; business');
   expect(html).toContain('How pricing and selectivity affect lending');
  });
- it('uses current-account language for the retail sight-deposit market reference',()=>{
+ it('uses current-account language for the inline retail sight-deposit market reference',()=>{
   const html=renderToStaticMarkup(<DepartmentOffice department="Customers" {...props}/>);
-  expect(html).toContain('Retail current accounts');expect(html).not.toContain('Instant savings');
+  expect(html).toContain('Retail current accounts');expect(html).toContain('Market');expect(html).not.toContain('Instant savings');
  });
  it('routes Treasury liquidity buttons to their intended regulatory metrics',()=>{
   const onReport=vi.fn();
