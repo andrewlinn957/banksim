@@ -41,7 +41,7 @@ describe('capital-markets transaction ticket', () => {
     const state=form({capitalMarketsInstrument:'senior',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}}/>);
     expect(markup).toContain('is already queued in Treasury &amp; Funding');
-    expect(markup).toContain('Finish or cancel that transaction in its owning management area before replacing it here');
+    expect(markup).toContain('Complete or cancel it there first.');
     expect(markup).toContain('<select disabled=""');
     expect(markup).not.toContain('Indicative book');
     expect(markup).not.toContain('Cancel Long-Term Debt transaction');
@@ -61,13 +61,14 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).not.toContain('Cancel queued transactions');
   });
 
-  it('only shows plan impact when supplied and states there is no direct Board Confidence effect', () => {
+  it('only shows quantified plan impact when supplied', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
     const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
     const withoutPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
     const withPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote} capitalMarketsPlanImpact={{cet1Before:.13,cet1After:.145,epsBefore:.08,epsAfter:.075}}/>);
     expect(withoutPlan).not.toContain('Three-Year Plan impact');
     expect(withPlan).toContain('Three-Year Plan impact');
-    expect(withPlan).toContain('no direct Board Confidence effect');
+    expect(withPlan).toContain('13.00% → 14.50%');
+    expect(withPlan).toContain('8.0p → 7.5p');
   });
 });

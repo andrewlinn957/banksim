@@ -48,7 +48,7 @@ describe('Department decision destinations',()=>{
  it('shows gilt investment as an explicit one-off trade with a live curve yield',()=>{
   const html=renderToStaticMarkup(<DepartmentOffice department="Treasury" {...props}/>);
   expect(html).toContain('Gilt transaction');expect(html).toContain('Buy gilts');expect(html).toContain('Sell gilts');
-  expect(html).toContain('Gilt trade amount (£)');expect(html).toContain('Current simulated gilt yield:');
+  expect(html).toContain('Gilt trade amount (£)');expect(html).toContain('Yield:');
  });
  it('renders the one-month forecast from the projected bank state',()=>{
   const estimate=structuredClone(initialState);
