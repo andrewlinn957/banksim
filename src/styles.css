@@ -1768,8 +1768,9 @@ summary { cursor:pointer; }
 .settings-menu>div { position:absolute; top:calc(100% + 7px); right:0; z-index:60; display:grid; gap:8px; min-width:260px; padding:12px; border:1px solid var(--border); border-radius:5px; background:var(--panel); box-shadow:var(--overlay-shadow); }
 .settings-menu label { display:grid; gap:5px; font-size:12px; }
 .settings-menu .clock-safety { display:flex; }
-.functional-navigation { display:flex; align-items:center; flex-wrap:nowrap; gap:4px; overflow-x:auto; padding:0 0 4px; border:0; border-bottom:1px solid var(--border); border-radius:0; background:transparent; box-shadow:none; scrollbar-width:thin; }
-.functional-nav-group { display:flex; flex:0 0 auto; align-items:center; gap:2px; padding-right:8px; border-right:1px solid var(--border); }
+.functional-navigation { position:relative; z-index:50; display:flex; align-items:center; flex-wrap:wrap; gap:4px; overflow:visible; padding:0 0 4px; border:0; border-bottom:1px solid var(--border); border-radius:0; background:transparent; box-shadow:none; }
+.functional-nav-group { position:relative; display:flex; flex:0 0 auto; align-items:center; gap:2px; padding-right:8px; border-right:1px solid var(--border); }
+.functional-nav-group:has(.area-jump-menu[open]) { z-index:81; }
 .functional-nav-group:last-child { padding-right:0; border-right:0; }
 .functional-nav-group-secondary { margin-left:auto; }
 .functional-nav-label { margin-right:3px; color:var(--dim); font-size:9px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; }
@@ -1897,8 +1898,8 @@ summary { cursor:pointer; }
   .brand-symbol { width:34px; height:34px; font-size:24px; }
   .brand small { font-size:7px; }
   .masthead-actions { margin-left:auto; }
-  .functional-navigation { flex-wrap:nowrap; overflow-x:auto; }
-  .functional-nav-group { flex-wrap:nowrap; }
+  .functional-navigation { flex-wrap:wrap; overflow:visible; }
+  .functional-nav-group { flex-wrap:wrap; }
   .functional-nav-label { display:none; }
   .bank-departments { grid-template-columns:minmax(0,1fr); }
   .department-building { grid-template-columns:104px minmax(0,1fr); min-height:112px; }
