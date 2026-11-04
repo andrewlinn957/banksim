@@ -80,6 +80,7 @@ const App = () => {
   const [helpSectionFocus, setHelpSectionFocus] = useState<string | null>(null);
   const [highlightedEventIds, setHighlightedEventIds] = useState<string[]>([]);
   const [selectedAttributionLine, setSelectedAttributionLine] = useState<AttributionLineSelection | null>(null);
+  const [extractStatus, setExtractStatus] = useState<'idle'|'copied'|'failed'>('idle');
   const responsibleDepartment:Department = bankState.risk.riskMetrics.internalCet1Headroom<0 || bankState.risk.riskMetrics.cet1Ratio<=bankState.risk.riskMetrics.cet1Requirement || bankState.risk.riskMetrics.praBufferBreached || bankState.risk.compliance.ownFundsBreached || bankState.risk.riskMetrics.leverageRatio<=Math.max(simConfig.riskLimits.minLeverageRatio,bankState.behaviour.riskAppetite?.leverage??simConfig.riskLimits.minLeverageRatio*1.05) ? 'Capital':'Treasury';
   const openDepartment = (department: Department) => { clock.stop('Paused for a policy decision.'); setReportOriginDepartment(null); setActiveDepartment(department); setIsActionsOpen(true); setActiveTab('Boardroom'); };
   const goToBoardroom = () => { clock.stop(); setReportOriginDepartment(null); setIsActionsOpen(false); setActiveTab('Boardroom'); };
@@ -298,6 +299,97 @@ const App = () => {
     ]);
   };
 
+  const handleExtractRun = async () => {
+    const summarizeState = (state: BankState) => {
+      const groupedBalances = (side: BalanceSheetSide) => Object.fromEntries(
+        Object.entries(state.financial.balanceSheet.items
+          .filter((item) => item.side === side)
+          .reduce<Record<string, number>>((totals, item) => {
+            totals[item.productType] = (totals[item.productType] ?? 0) + item.balance;
+            return totals;
+          }, {}))
+      );
+      const total = (side: BalanceSheetSide) => state.financial.balanceSheet.items
+        .filter((item) => item.side === side)
+        .reduce((sum, item) => sum + item.balance, 0);
+      const risk = state.risk.riskMetrics;
+      return {
+        date: state.time.date.toISOString(),
+        step: state.time.step,
+        balanceSheet: {
+          totalAssets: total(BalanceSheetSide.Asset),
+          totalLiabilities: total(BalanceSheetSide.Liability),
+          assetsByProduct: groupedBalances(BalanceSheetSide.Asset),
+          liabilitiesByProduct: groupedBalances(BalanceSheetSide.Liability),
+        },
+        capital: { ...state.financial.capital },
+        ratios: {
+          cet1: risk.cet1Ratio,
+          cet1Requirement: risk.cet1Requirement,
+          leverage: risk.leverageRatio,
+          lcr: risk.lcr,
+          nsfr: risk.nsfr,
+          riskWeightedAssets: risk.rwa,
+        },
+        incomeStatement: {
+          netInterestIncome: state.financial.incomeStatement.netInterestIncome,
+          feeIncome: state.financial.incomeStatement.feeIncome,
+          provisionCharge: state.financial.incomeStatement.provisionCharge,
+          operatingExpenses: state.financial.incomeStatement.operatingExpenses,
+          netIncome: state.financial.incomeStatement.netIncome,
+        },
+        equityMarket: {
+          sharePrice: state.equityMarket.sharePrice,
+          marketCap: state.equityMarket.marketCap,
+          epsTtm: state.equityMarket.epsTtm,
+        },
+        status: { ...state.status },
+      };
+    };
+    const opening = stateHistory[0] ?? bankState;
+    const extract = {
+      format: 'banksim-run-extract',
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      filename: `banksim-run-${bankState.time.date.toISOString().slice(0, 10)}.json`,
+      copilotPrompt: 'You are analysing a BankSim bank-management simulation. Explain what happened over the run in clear language. Start with the outcome, compare the opening and ending positions, then identify the main turning points. Link recorded player decisions and shocks to changes in earnings, the balance sheet, capital, liquidity and share price. Use the monthly history and event log as evidence. Separate direct effects supported by the data from plausible explanations, flag any missing evidence, and finish with the most consequential lessons for the bank’s management.',
+      run: {
+        period: {
+          start: opening.time.date.toISOString(),
+          end: bankState.time.date.toISOString(),
+          monthsElapsed: bankState.time.step - opening.time.step,
+          stepsElapsed: currentTimeline.length,
+        },
+        opening: summarizeState(opening),
+        ending: summarizeState(bankState),
+        monthlyHistory: stateHistory.map(summarizeState),
+        decisionsAndShocks: currentTimeline.map((entry) => ({
+          step: entry.step,
+          date: stateHistory.find((state) => state.time.step === entry.step)?.time.date.toISOString(),
+          actions: entry.actions,
+          shocks: entry.shocks,
+        })),
+        events: eventLog.map(({ severity, message, tags }) => ({ severity, message, tags: tags ?? [] })),
+      },
+    };
+    const text = JSON.stringify(extract, null, 2);
+    try {
+      await navigator.clipboard.writeText(text);
+      setExtractStatus('copied');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copied = document.execCommand('copy');
+      textarea.remove();
+      setExtractStatus(copied ? 'copied' : 'failed');
+    }
+    window.setTimeout(() => setExtractStatus('idle'), 2500);
+  };
+
   const handleStartScenario = (scenarioId: string | null = selectedScenarioId) => {
     if (bankState.time.step > stateHistory[0].time.step) handleSaveCurrentRun();
     clock.reset();
@@ -330,7 +422,7 @@ const App = () => {
     <div className="app-shell">
       <header className="masthead">
         <button className="brand" onClick={goToBoardroom} aria-label="BankSim bank overview"><span className="brand-symbol">B</span><span>BANKSIM<small>BANK MANAGEMENT SIMULATOR</small></span></button>
-        <div className="masthead-actions"><details className="settings-menu"><summary>Settings</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
+        <div className="masthead-actions"><button className="button ghost" onClick={() => void handleExtractRun()}>{extractStatus==='copied'?'Copied JSON':extractStatus==='failed'?'Copy failed':'Extract run'}</button><details className="settings-menu"><summary>Settings</summary><div><button className="button" onClick={handleSaveCurrentRun}>Save run</button><button className="button" onClick={() => handleStartScenario(null)}>Start a fresh bank</button><button className="button ghost" onClick={()=>openReport('Events')}>Event log</button><button className="button ghost" onClick={()=>openReport('Reconciliations')}>Reconciliations</button><button className="button ghost" onClick={()=>setTheme(t=>t==='light'?'dark':'light')}>Use {theme==='light'?'dark':'light'} theme</button><label className="clock-safety"><input type="checkbox" checked={threeYearPlanEnabled} disabled={!canToggleThreeYearPlan} onChange={e=>setThreeYearPlanMode(e.target.checked)}/>Three-year plan mode</label><label>Speed<select value={clockSpeed} onChange={e=>setClockSpeed(Number(e.target.value))}><option value={1500}>1×</option><option value={450}>3×</option></select></label><label className="clock-safety"><input type="checkbox" checked={safetyPause} onChange={e=>setSafetyPause(e.target.checked)}/>Pause when buffers need attention</label></div></details></div>
       </header>
       <FunctionalNavigation
         activeTab={activeTab}
