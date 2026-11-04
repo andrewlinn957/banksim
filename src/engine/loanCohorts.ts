@@ -86,6 +86,8 @@ export interface LoanCohortStepResult {
   nonCashInterest: number;
   nonCashInterestByProduct: Partial<Record<ProductType, number>>;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
+  /** One-off loan write-downs from shocks; separate from workout charge-offs and ECL movements. */
+  oneOffLoanWriteDownsByProduct: Partial<Record<ProductType, number>>;
   defaultedPrincipal: number;
   defaultsByProduct: Partial<Record<ProductType, number>>;
   defaultsByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number; stage?: LoanStage }>;
@@ -779,6 +781,7 @@ export const stepLoanCohorts = (args: {
       nonCashInterest: 0,
       nonCashInterestByProduct: {},
       recognizedLoanLosses: {},
+      oneOffLoanWriteDownsByProduct: {},
       defaultedPrincipal: 0,
       defaultsByProduct: {},
       defaultsByVintage: [],
@@ -801,6 +804,7 @@ export const stepLoanCohorts = (args: {
   if (!cash) throw new Error('Missing cash line item; cannot step loan cohorts');
 
   const recognizedLoanLosses: Partial<Record<ProductType, number>> = {};
+  const oneOffLoanWriteDownsByProduct: Partial<Record<ProductType, number>> = {};
   const loanInterestIncomeByProduct: Partial<Record<ProductType, number>> = {};
   const defaultsByProduct: Partial<Record<ProductType, number>> = {};
   const defaultsByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number; stage?: LoanStage }> = [];
@@ -1108,6 +1112,7 @@ export const stepLoanCohorts = (args: {
       c.outstandingPrincipal -= writeDown;
       remaining -= writeDown;
       recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + writeDown;
+      oneOffLoanWriteDownsByProduct[productType] = (oneOffLoanWriteDownsByProduct[productType] ?? 0) + writeDown;
     }
     cleanCohorts(cohorts);
   });
@@ -1121,6 +1126,7 @@ export const stepLoanCohorts = (args: {
     nonCashInterest,
     nonCashInterestByProduct,
     recognizedLoanLosses,
+    oneOffLoanWriteDownsByProduct,
     defaultedPrincipal,
     defaultsByProduct,
     defaultsByVintage,

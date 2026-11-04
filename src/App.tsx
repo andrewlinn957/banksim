@@ -302,6 +302,7 @@ const App = () => {
 
   const handleExtractRun = async () => {
     const round = (value: number) => Math.round(value * 100) / 100;
+    const roundPrecise = (value: number) => Math.round(value * 10_000) / 10_000;
     const millions = (value: number) => round(value / 1_000_000);
     const flowValue = (state: BankState, key: keyof NonNullable<BankState['periodFlows']>, product?: string): number => {
       const flow = state.periodFlows;
@@ -323,7 +324,9 @@ const App = () => {
         ...Object.keys(flow.prepaymentsByProduct),
         ...Object.keys(flow.defaultsByProduct),
         ...Object.keys(flow.recoveriesByProduct),
-        ...Object.keys(flow.recognizedLoanLossesByProduct),
+        ...Object.keys(flow.provisionBridge?.fundedAllowanceMovementByProduct ?? {}),
+        ...Object.keys(flow.provisionBridge?.workoutWriteoffsByProduct ?? {}),
+        ...Object.keys(flow.provisionBridge?.oneOffLoanWriteDownsByProduct ?? {}),
       ];
     }))].filter((product) => stateHistory.some((state) => {
       const flow = state.periodFlows;
@@ -337,9 +340,13 @@ const App = () => {
         flow.prepaymentsByProduct[product as keyof typeof flow.prepaymentsByProduct],
         flow.defaultsByProduct[product as keyof typeof flow.defaultsByProduct],
         flow.recoveriesByProduct[product as keyof typeof flow.recoveriesByProduct],
-        flow.recognizedLoanLossesByProduct[product as keyof typeof flow.recognizedLoanLossesByProduct],
+        flow.provisionBridge?.fundedAllowanceMovementByProduct[product as keyof typeof flow.provisionBridge.fundedAllowanceMovementByProduct],
+        flow.provisionBridge?.workoutWriteoffsByProduct[product as keyof typeof flow.provisionBridge.workoutWriteoffsByProduct],
+        flow.provisionBridge?.oneOffLoanWriteDownsByProduct[product as keyof typeof flow.provisionBridge.oneOffLoanWriteDownsByProduct],
       ].some((value) => Math.abs(value ?? 0) > 0.01);
     })).sort();
+    const loanProductKeys = periodProductKeys.filter((product) => Boolean(PRODUCTS[product as keyof typeof PRODUCTS]?.behaviour?.isLoan));
+    const sumMap = (map: Partial<Record<string, number>> | undefined) => Object.values(map ?? {}).reduce((sum, value) => sum + (value ?? 0), 0);
     const alignedFlowSeries = (metric: keyof NonNullable<BankState['periodFlows']>, product?: string) =>
       stateHistory.map((state, index) => index === 0 || !state.periodFlows
         ? null
@@ -418,7 +425,15 @@ const App = () => {
           return openingExposure > 0 ? round((defaults / openingExposure) * 100) : null;
         });
         row.rc = alignedFlowSeries('recoveriesByProduct', product);
-        row.cl = alignedFlowSeries('recognizedLoanLossesByProduct', product);
+        row.al = stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+          ? null
+          : millions(state.periodFlows.provisionBridge.fundedAllowanceMovementByProduct[product as keyof typeof state.periodFlows.provisionBridge.fundedAllowanceMovementByProduct] ?? 0));
+        row.wo = stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+          ? null
+          : millions(state.periodFlows.provisionBridge.workoutWriteoffsByProduct[product as keyof typeof state.periodFlows.provisionBridge.workoutWriteoffsByProduct] ?? 0));
+        row.xd = stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+          ? null
+          : millions(state.periodFlows.provisionBridge.oneOffLoanWriteDownsByProduct[product as keyof typeof state.periodFlows.provisionBridge.oneOffLoanWriteDownsByProduct] ?? 0));
       }
       return [product, row];
     }));
@@ -443,7 +458,7 @@ const App = () => {
         capitalM: { cet1: millions(state.financial.capital.cet1), at1: millions(state.financial.capital.at1), tier2: millions(state.financial.capital.tier2 ?? 0), oci: millions(state.financial.capital.accumulatedOCI), rwa: millions(risk.rwa) },
         ratiosPct: { cet1: round(risk.cet1Ratio * 100), cet1Requirement: round(risk.cet1Requirement * 100), leverage: round(risk.leverageRatio * 100), lcr: round(risk.lcr * 100), nsfr: round(risk.nsfr * 100) },
         lastMonthPnLM: { nii: millions(state.financial.incomeStatement.netInterestIncome), fees: millions(state.financial.incomeStatement.feeIncome), provisions: millions(state.financial.incomeStatement.provisionCharge), expenses: millions(state.financial.incomeStatement.operatingExpenses), net: millions(state.financial.incomeStatement.netIncome) },
-        share: { price: round(state.equityMarket.sharePrice), fairValue: round(state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice), marketCapM: millions(state.equityMarket.marketCap), eps: round(state.equityMarket.epsTtm), pe: round(state.equityMarket.peMultiple), pb: round(state.equityMarket.priceToBook ?? 0) },
+        share: { price: round(state.equityMarket.sharePrice), fairValue: round(state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice), marketCapM: millions(state.equityMarket.marketCap), eps: round(state.equityMarket.epsTtm), modelPe: round(state.equityMarket.peMultiple), quotedPe: state.equityMarket.epsTtm > 0 ? round(state.equityMarket.sharePrice / state.equityMarket.epsTtm) : null, pb: round(state.equityMarket.priceToBook ?? 0) },
         competitorPricingPct: Object.fromEntries(Object.entries(state.periodFlows?.competitorPricing ?? {
           retailCurrentAccount: state.market.competitorRetailCurrentAccountRate,
           retailTermDeposit: state.market.competitorTermDepositRate,
@@ -489,20 +504,100 @@ const App = () => {
       .filter((event) => event.severity !== 'info' || /filled|partial|capital|dividend|default|breach|failed|maturit|settled/i.test(event.message))
       .slice(-24)
       .map(({ severity, message, tags }) => [severity, message.slice(0, 180), ...(tags?.length ? [tags] : [])]);
+    const flowMaps = (select: (state: BankState) => Partial<Record<string, number>> | undefined) =>
+      stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+        ? null
+        : millionsPrecise(sumMap(select(state))));
+    const millionsPrecise = (value: number) => roundPrecise(value / 1_000_000);
+    const provisionBridge = {
+      note: 'Funded allowance is opening to closing ECL by stage and product; undrawn commitment ECL is shown separately. P&L provision charge components reconcile to the posted charge. Gross defaults enter workout and are not charge-offs. Workout write-offs are recorded when a bucket resolves, as principal less recoveries. One-off loan write-downs, securities impairment, and workout discount unwind are separate; discount unwind is included in the model provisionCharge field. Funded allowance movement is a portfolio ECL remeasurement, not a counterfactual decomposition of exposure, stage, PD, LGD, or macro effects.',
+      stageLegend: '[opening Stage 1, Stage 2, Stage 3 £m, closing Stage 1, Stage 2, Stage 3 £m]',
+      fundedAllowanceByStage: stateHistory.map((state, index) => {
+        const bridge = state.periodFlows?.provisionBridge;
+        if (index === 0 || !bridge) return null;
+        const opening = bridge.fundedAllowanceOpeningByStage;
+        const closing = bridge.fundedAllowanceClosingByStage;
+        return [opening.stage1, opening.stage2, opening.stage3, closing.stage1, closing.stage2, closing.stage3].map(millionsPrecise);
+      }),
+      fundedAllowanceByProduct: Object.fromEntries(loanProductKeys.map((product) => [product, stateHistory.map((state, index) => {
+        const bridge = state.periodFlows?.provisionBridge;
+        if (index === 0 || !bridge) return null;
+        const opening = bridge.fundedAllowanceOpeningByProduct[product as keyof typeof bridge.fundedAllowanceOpeningByProduct] ?? 0;
+        const closing = bridge.fundedAllowanceClosingByProduct[product as keyof typeof bridge.fundedAllowanceClosingByProduct] ?? 0;
+        const movement = bridge.fundedAllowanceMovementByProduct[product as keyof typeof bridge.fundedAllowanceMovementByProduct] ?? closing - opening;
+        return [opening, closing, movement].map(millionsPrecise);
+      })])),
+      fundedAllowanceProductLegend: '[opening, closing, movement £m]',
+      commitmentAllowance: stateHistory.map((state, index) => {
+        const bridge = state.periodFlows?.provisionBridge;
+        if (index === 0 || !bridge) return null;
+        return [bridge.commitmentAllowanceOpening, bridge.commitmentAllowanceClosing, bridge.commitmentAllowanceClosing - bridge.commitmentAllowanceOpening].map(millionsPrecise);
+      }),
+      commitmentAllowanceLegend: '[opening, closing, movement £m]',
+      pnlComponents: {
+        workoutWriteoffs: flowMaps((state) => state.periodFlows?.provisionBridge?.workoutWriteoffsByProduct),
+        oneOffLoanWriteDowns: flowMaps((state) => state.periodFlows?.provisionBridge?.oneOffLoanWriteDownsByProduct),
+        fundedAllowanceMovement: flowMaps((state) => state.periodFlows?.provisionBridge?.fundedAllowanceMovementByProduct),
+        commitmentAllowanceMovement: stateHistory.map((state, index) => {
+          const bridge = state.periodFlows?.provisionBridge;
+          return index === 0 || !bridge ? null : millionsPrecise(bridge.commitmentAllowanceClosing - bridge.commitmentAllowanceOpening);
+        }),
+        securitiesImpairment: flowMaps((state) => state.periodFlows?.provisionBridge?.securityImpairmentByProduct),
+        workoutDiscountUnwind: flowMaps((state) => state.periodFlows?.provisionBridge?.workoutDiscountUnwindByProduct),
+        provisionCharge: stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge ? null : millionsPrecise(state.periodFlows.provisionBridge.provisionCharge)),
+        reconciliationDifference: stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge ? null : millionsPrecise(state.periodFlows.provisionBridge.reconciliationDifference)),
+      },
+      writeoffsByProduct: Object.fromEntries(loanProductKeys.map((product) => [product, stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+        ? null
+        : millionsPrecise(state.periodFlows.provisionBridge.workoutWriteoffsByProduct[product as keyof typeof state.periodFlows.provisionBridge.workoutWriteoffsByProduct] ?? 0))])),
+      oneOffLoanWriteDownsByProduct: Object.fromEntries(loanProductKeys.map((product) => [product, stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+        ? null
+        : millionsPrecise(state.periodFlows.provisionBridge.oneOffLoanWriteDownsByProduct[product as keyof typeof state.periodFlows.provisionBridge.oneOffLoanWriteDownsByProduct] ?? 0))])),
+      workoutDiscountUnwindByProduct: Object.fromEntries(loanProductKeys.map((product) => [product, stateHistory.map((state, index) => index === 0 || !state.periodFlows?.provisionBridge
+        ? null
+        : millionsPrecise(state.periodFlows.provisionBridge.workoutDiscountUnwindByProduct[product as keyof typeof state.periodFlows.provisionBridge.workoutDiscountUnwindByProduct] ?? 0))])),
+    };
+    const macroAtValuation = {
+      gdpGrowthMoMPct: stateHistory.map((state, index) => index === 0 || !state.periodFlows?.shareValuation ? null : roundPrecise(state.periodFlows.shareValuation.gdpGrowthMoM * 100)),
+      unemploymentPct: stateHistory.map((state, index) => index === 0 || !state.periodFlows?.shareValuation ? null : roundPrecise(state.periodFlows.shareValuation.unemploymentRate * 100)),
+      creditSpreadPct: stateHistory.map((state, index) => index === 0 || !state.periodFlows?.shareValuation ? null : roundPrecise(state.periodFlows.shareValuation.creditSpread * 100)),
+    };
+    const valuationDiagnostics = {
+      legend: '[opening EPS, annualised period EPS, smoothing alpha, smoothed TTM EPS, BVPS, ROE proxy %, cost of equity %, profitability score, CET1 headroom pp, leverage headroom pp, capital score, macro score, deposit franchise, franchise score, weighted profitability, weighted capital, weighted macro, weighted franchise, raw weighted score, absolute-weight denominator, normalized score, model PE, model PB, stressed EPS, earnings value, book value, earnings reliability, earnings weight, book weight, pre-stress fair value, capital discount, failure discount, fair value, prior price, unconstrained price, max move factor, closing share price, quoted PE (price / unrounded smoothed EPS)]',
+      rows: stateHistory.map((state, index) => {
+        const v = state.periodFlows?.shareValuation;
+        if (index === 0 || !v) return null;
+        return [
+          v.epsTtmOpening, v.annualisedEps, v.epsAlpha, v.epsTtm, v.bvps,
+          v.roeProxy * 100, v.costOfEquity * 100, v.profitabilityScore,
+          v.cet1Headroom * 100, v.leverageHeadroom * 100, v.capitalScore,
+          v.macroScore, v.franchiseStrength, v.franchiseScore,
+          v.weightedProfitability, v.weightedCapital, v.weightedMacro, v.weightedFranchise,
+          v.rawWeightedScore, v.scoreWeightDenominator, v.normalizedScore,
+          v.modelPe, v.modelPb, v.stressedEarningsBase, v.earningsValue, v.bookValue,
+          v.earningsReliability, v.earningsWeight, v.bookWeight, v.fairValueBeforeStress,
+          v.capitalDiscount, v.failureDiscount, v.fairValue, v.priorSharePrice,
+          v.unconstrainedSharePrice, v.moveLimitFactor, v.sharePrice, v.quotedPe,
+        ].map((value) => value === null ? null : roundPrecise(value));
+      }),
+    };
     const extract = {
       format: 'banksim-run-extract',
-      formatVersion: 3,
+      formatVersion: 4,
       filename: `banksim-run-${bankState.time.date.toISOString().slice(0, 10)}.json`,
-      prompt: 'Analyse this BankSim run using the aligned monthly series, product flows and credit vintages. Explain the main turning points and link decisions or shocks to profit, lending, credit losses, funding, capital, liquidity and valuation. Cite dates and figures. Treat defaults as realised modelled principal defaults, separate from annual PD; treat LCR flows as 30-day regulatory-weighted projections and cash-flow statement categories as realised monthly net flows. Separate evidence from plausible explanations, flag gaps, then give three management lessons.',
+      prompt: 'Analyse this BankSim run using the monthly series, provision bridge, valuation components, product flows and credit vintages. Explain provision spikes using the allowance bridge and P&L components; separate gross defaults, allowance remeasurement, workout write-offs and recoveries. Explain share-price changes from the recorded score components and macro inputs. Distinguish model PE from quoted PE (price / unrounded smoothed EPS). Cite dates and figures, separate evidence from plausible explanations, flag remaining attribution limits, then give three management lessons.',
       run: {
         period: [opening.time.date.toISOString().slice(0, 10), bankState.time.date.toISOString().slice(0, 10), bankState.time.step - opening.time.step],
         opening: summarizeState(opening),
         ending: summarizeState(bankState),
         series: {
           months: stateHistory.map((s) => s.time.date.toISOString().slice(0, 7)),
-          note: 'Arrays align with months. Money is £m; rates are %. Opening-period flows are null. Cash-flow categories are signed monthly net flows; LCR is a regulatory-weighted 30-day projection.',
-          units: { assets: '£m', liabilities: '£m', loans: '£m', deposits: '£m', nii: '£m/period', netProfit: '£m/period', provisions: '£m/period', rwa: '£m', dividends: '£m/period', at1Coupons: '£m/period', cet1: '%', cet1Requirement: '%', leverage: '%', lcr: '%', nsfr: '%', sharePrice: '£', eps: '£/share', pe: 'multiple', pb: 'multiple', fairValue: '£/share', bvps: '£/share', marketCap: '£m', competitorPricing: '%' },
-          keys: { assets: 'total assets', liabilities: 'total liabilities', loans: 'gross loan book', deposits: 'customer deposits', nii: 'net interest income', netProfit: 'net profit', provisions: 'provision charge', rwa: 'risk-weighted assets', dividends: 'cash dividends paid', at1Coupons: 'AT1 coupons paid', cet1: 'CET1 ratio', cet1Requirement: 'CET1 requirement', leverage: 'leverage ratio', lcr: 'liquidity coverage ratio', nsfr: 'net stable funding ratio', sharePrice: 'share price', eps: 'smoothed TTM EPS', pe: 'PE multiple', pb: 'price/book multiple', fairValue: 'model fair value', bvps: 'book value/share', marketCap: 'market capitalisation', cashFlow: 'realised monthly net cash-flow statement category; negative is outflow', lcr30d: '30-day regulatory-weighted forecast' },
+          note: 'Arrays align with months. Money is £m; rates are %. Opening-period flows and diagnostics are null. Macro inputs in macroAtValuation and the valuation tuple are captured when price is calculated, before the market advances. Cash-flow categories are signed monthly net flows; LCR is a regulatory-weighted 30-day projection.',
+          units: { assets: '£m', liabilities: '£m', loans: '£m', deposits: '£m', nii: '£m/period', netProfit: '£m/period', creditLosses: '£m/period', provisions: '£m/period', rwa: '£m', dividends: '£m/period', at1Coupons: '£m/period', cet1: '%', cet1Requirement: '%', leverage: '%', lcr: '%', nsfr: '%', sharePrice: '£', eps: '£/share', modelPe: 'multiple', quotedPe: 'multiple', pb: 'multiple', fairValue: '£/share', bvps: '£/share', marketCap: '£m', competitorPricing: '%', macro: '%' },
+          keys: { assets: 'total assets', liabilities: 'total liabilities', loans: 'gross loan book', deposits: 'customer deposits', nii: 'net interest income', netProfit: 'net profit', creditLosses: 'credit losses expensed, including non-loan shock losses', provisions: 'posted provision charge; see provisionBridge for components', rwa: 'risk-weighted assets', dividends: 'cash dividends paid', at1Coupons: 'AT1 coupons paid', cet1: 'CET1 ratio', cet1Requirement: 'CET1 requirement', leverage: 'leverage ratio', lcr: 'liquidity coverage ratio', nsfr: 'net stable funding ratio', sharePrice: 'share price', eps: 'smoothed TTM EPS', modelPe: 'score-derived PE used to value earnings; not price/EPS', quotedPe: 'share price divided by unrounded smoothed EPS', pb: 'quoted price/book multiple', fairValue: 'model fair value', bvps: 'book value/share', marketCap: 'market capitalisation', cashFlow: 'realised monthly net cash-flow statement category; negative is outflow', lcr30d: '30-day regulatory-weighted forecast' },
+          macroAtValuation,
+          valuationDiagnostics,
+          provisionBridge,
           values: {
             assets: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset).reduce((n, i) => n + i.balance, 0))),
             liabilities: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability).reduce((n, i) => n + i.balance, 0))),
@@ -510,6 +605,7 @@ const App = () => {
             deposits: stateHistory.map((s) => millions(customerDeposits(s))),
             nii: stateHistory.map((s) => millions(s.financial.incomeStatement.netInterestIncome)),
             netProfit: stateHistory.map((s) => millions(s.financial.incomeStatement.netIncome)),
+            creditLosses: stateHistory.map((s) => millions(s.financial.incomeStatement.creditLosses)),
             provisions: stateHistory.map((s) => millions(s.financial.incomeStatement.provisionCharge)),
             cet1: stateHistory.map((s) => round(s.risk.riskMetrics.cet1Ratio * 100)),
             cet1Requirement: stateHistory.map((s) => round(s.risk.riskMetrics.cet1Requirement * 100)),
@@ -521,7 +617,13 @@ const App = () => {
             dividends: stateHistory.map((s) => millions(s.financial.incomeStatement.dividendsPaid)),
             at1Coupons: stateHistory.map((s) => millions(s.financial.incomeStatement.at1CouponExpense)),
             eps: stateHistory.map((s) => round(s.equityMarket.epsTtm)),
-            pe: stateHistory.map((s) => round(s.equityMarket.peMultiple)),
+            modelPe: stateHistory.map((s) => round(s.equityMarket.peMultiple)),
+            quotedPe: stateHistory.map((s, index) => {
+              const exact = index > 0 ? s.periodFlows?.shareValuation?.quotedPe : null;
+              const computed = s.equityMarket.epsTtm > 0 ? s.equityMarket.sharePrice / s.equityMarket.epsTtm : null;
+              const value = exact ?? computed;
+              return value === null ? null : round(value);
+            }),
             pb: stateHistory.map((s) => round(s.equityMarket.priceToBook ?? 0)),
             fairValue: stateHistory.map((s) => round(s.equityMarket.fairValuePerShare ?? s.equityMarket.sharePrice)),
             bvps: stateHistory.map((s) => round(s.equityMarket.bookValuePerShare ?? 0)),
@@ -553,14 +655,14 @@ const App = () => {
             },
           },
           productFlows: {
-            legend: { ii: 'interest income, including loan workout discount unwind', fc: 'funding cost', nl: 'new lending', rn: 'renewals/refinancing', sp: 'scheduled principal repayments', pp: 'prepayments including loan sales', df: 'gross principal defaults', dr: 'period defaults / opening gross loan exposure (%)', rc: 'recovery cash', cl: 'recognised loan loss/provision movement' },
+            legend: { ii: 'interest income, including loan workout discount unwind', fc: 'funding cost', nl: 'new lending', rn: 'renewals/refinancing', sp: 'scheduled principal repayments', pp: 'prepayments including loan sales', df: 'gross principal defaults entering workout', dr: 'period defaults / opening gross loan exposure (%)', rc: 'recovery cash', al: 'funded ECL allowance movement (closing less opening)', wo: 'realised workout charge-offs on resolution', xd: 'one-off loan write-downs from shocks' },
             rows: productFlows,
           },
           creditVintages,
           creditVintageLegend: '[product, origination year or pre-run, originations £m, gross defaults £m, recovery cash £m, realised workout losses £m, cumulative gross-default rate %]; pre-run denominator is opening gross exposure.',
         },
         shareValuationModel: {
-          formula: 'Normalized weighted score from ROE vs cost of equity, CET1/leverage headroom, GDP/unemployment/credit spreads, and deposit franchise sets PE and PB via neutral multiple × exp(sensitivity × score), then clamps to configured ranges. Fair value blends stressed EPS×PE and BVPS×PB; weak EPS reliability shifts weight to book value. Apply capital-breach and failure discounts and price floor. Share price mean-reverts exponentially toward fair value, subject to the monthly move cap.',
+          formula: 'A normalized weighted score from ROE vs cost of equity, CET1/leverage headroom, GDP/unemployment/credit spreads, and deposit franchise sets model PE and PB via neutral multiple × exp(sensitivity × score), then clamps them to configured ranges. Fair value blends stressed EPS×modelPE and BVPS×modelPB; weak EPS reliability shifts weight to book value. Apply capital-breach and failure discounts and price floor. Share price mean-reverts exponentially toward fair value, subject to the monthly move cap. Model PE is the score-derived earnings multiple; quoted PE is share price / unrounded smoothed EPS and can differ because price also uses book value and mean reversion.',
           parameters: simConfig.behaviour.sharePriceModel ? {
             costOfEquity: simConfig.behaviour.sharePriceModel.costOfEquity,
             scoreWeights: { profitability: simConfig.behaviour.sharePriceModel.profitabilityWeight, capital: simConfig.behaviour.sharePriceModel.capitalWeight, macro: simConfig.behaviour.sharePriceModel.macroWeight, franchise: simConfig.behaviour.sharePriceModel.franchiseWeight },

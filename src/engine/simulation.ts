@@ -12,7 +12,7 @@ import { commitmentEcl } from './impairment';
  * Most helpers in this file mutate `state` in-place and append human-readable `SimulationEvent`s.
  */
 import { BankState, ContractualMaturityBucket, InterestRateHedge } from '../domain/bankState';
-import type { PeriodFlowDiagnostics } from '../domain/periodFlows';
+import type { PeriodFlowDiagnostics, ShareValuationDiagnostics } from '../domain/periodFlows';
 import { BalanceSheet, BalanceSheetItem } from '../domain/balanceSheet';
 import {
   AssetProductType,
@@ -2311,10 +2311,10 @@ export const updateSharePrice = (
   state: BankState,
   config: SimulationConfig,
   dtMonths: number
-): void => {
+): ShareValuationDiagnostics | null => {
   ensureEquityMarketState(state, config);
   const model = config.behaviour.sharePriceModel;
-  if (!model) return;
+  if (!model) return null;
 
   const months = Math.max(1, Math.round(dtMonths));
   const epsSmoothing = clamp(model.epsSmoothingMonthly, 0, 1);
@@ -2327,7 +2327,8 @@ export const updateSharePrice = (
   const commonEquity = getCommonEquity(state);
   const bvps = commonEquity / shares;
   const annualisedEps = (state.financial.incomeStatement.netIncome * MONTHS_IN_YEAR) / shares;
-  const epsTtm = state.equityMarket.epsTtm * (1 - epsAlpha) + annualisedEps * epsAlpha;
+  const epsTtmOpening = state.equityMarket.epsTtm;
+  const epsTtm = epsTtmOpening * (1 - epsAlpha) + annualisedEps * epsAlpha;
 
   const roeProxy = bvps > 0 ? epsTtm / bvps : -1;
   const profitabilityScore = clamp((roeProxy - model.costOfEquity) / Math.max(1e-6, model.roeScale), -1, 1);
@@ -2359,11 +2360,11 @@ export const updateSharePrice = (
     1
   );
 
-  const rawScore =
-    model.profitabilityWeight * profitabilityScore +
-    model.capitalWeight * capitalScore +
-    model.macroWeight * macroScore +
-    model.franchiseWeight * franchiseScore;
+  const weightedProfitability = model.profitabilityWeight * profitabilityScore;
+  const weightedCapital = model.capitalWeight * capitalScore;
+  const weightedMacro = model.macroWeight * macroScore;
+  const weightedFranchise = model.franchiseWeight * franchiseScore;
+  const rawScore = weightedProfitability + weightedCapital + weightedMacro + weightedFranchise;
   const weightDenom = Math.max(
     1e-9,
     Math.abs(model.profitabilityWeight) +
@@ -2423,6 +2424,50 @@ export const updateSharePrice = (
     fairValuePerShare: fairPrice,
     sharePrice,
     marketCap: sharePrice * shares,
+  };
+
+  return {
+    gdpGrowthMoM: state.market.gdpGrowthMoM,
+    unemploymentRate: state.market.unemploymentRate,
+    creditSpread: state.market.creditSpread,
+    epsTtmOpening,
+    annualisedEps,
+    epsAlpha,
+    epsTtm,
+    bvps,
+    roeProxy,
+    costOfEquity: model.costOfEquity,
+    profitabilityScore,
+    cet1Headroom,
+    leverageHeadroom,
+    capitalScore,
+    macroScore,
+    franchiseStrength: state.behaviour.depositFranchiseStrength,
+    franchiseScore,
+    weightedProfitability,
+    weightedCapital,
+    weightedMacro,
+    weightedFranchise,
+    rawWeightedScore: rawScore,
+    scoreWeightDenominator: weightDenom,
+    normalizedScore,
+    modelPe: peMultiple,
+    modelPb: pbMultiple,
+    stressedEarningsBase,
+    earningsValue,
+    bookValue,
+    earningsReliability,
+    earningsWeight,
+    bookWeight,
+    fairValueBeforeStress,
+    capitalDiscount,
+    failureDiscount,
+    fairValue: fairPrice,
+    priorSharePrice: prevPrice,
+    unconstrainedSharePrice: unconstrainedPrice,
+    moveLimitFactor: moveLimit,
+    sharePrice,
+    quotedPe: epsTtm > 0 ? sharePrice / epsTtm : null,
   };
 };
 
@@ -2549,6 +2594,7 @@ export const createSimulationEngine = (): SimulationEngine => {
           nonCashInterest: 0,
           nonCashInterestByProduct: {},
           recognizedLoanLosses: {},
+          oneOffLoanWriteDownsByProduct: {},
           defaultedPrincipal: 0,
           defaultsByProduct: {},
           defaultsByVintage: [],
@@ -2597,10 +2643,12 @@ export const createSimulationEngine = (): SimulationEngine => {
       Object.assign(securitiesValuation.nonCashAdjustmentsByProduct, valuation.adjustments);
     }
     const losses = recogniseLosses(state, activeConfig, shockEffects, cohortStep.recognizedLoanLosses);
+    const securityImpairmentByProduct: ProductFlowMap = {};
     if (featureFlags.securitiesAccounting) {
       const impairment = recogniseSecurityImpairment(state, activeConfig);
       losses.creditLosses += impairment.expense;
       losses.provisionCharge += impairment.expense;
+      Object.assign(securityImpairmentByProduct, impairment.expenseByProduct);
       securitiesValuation.fvociOciMovement += impairment.oci;
       for (const [p, adjustment] of Object.entries(impairment.adjustments)) securitiesValuation.nonCashAdjustmentsByProduct[p as ProductType] = (securitiesValuation.nonCashAdjustmentsByProduct[p as ProductType] ?? 0) + adjustment;
       const recycling = state.financial.balanceSheet.items.reduce((sum,i)=>sum+(i.security?.pendingRecycling ?? 0),0);
@@ -2661,7 +2709,7 @@ export const createSimulationEngine = (): SimulationEngine => {
       applyCapitalPolicyDistributions(state, activeConfig, dtYears, events);
     }
     computeMetrics(state, activeConfig, shockEffects.lcrOutflowMultiplier, events, false, true);
-    updateSharePrice(state, activeConfig, dtMonths);
+    const shareValuation = updateSharePrice(state, activeConfig, dtMonths);
     const statements = buildStatements(inputState, state, activeConfig, cashStart, capitalClose, losses);
     const lcr30d = calculateCor011(state, activeConfig);
     const loanTradeOriginations: ProductFlowMap = {};
@@ -2671,6 +2719,51 @@ export const createSimulationEngine = (): SimulationEngine => {
       const target = trade.side === 'buy' ? loanTradeOriginations : loanTradePrepayments;
       target[trade.productType] = (target[trade.productType] ?? 0) + trade.executedAmount;
     });
+    const loanProducts = new Set<ProductType>([
+      ...inputState.financial.balanceSheet.items.map((item) => item.productType),
+      ...state.financial.balanceSheet.items.map((item) => item.productType),
+    ].filter((productType) => PRODUCTS[productType]?.behaviour?.isLoan));
+    const fundedAllowanceOpeningByProduct: ProductFlowMap = {};
+    const fundedAllowanceClosingByProduct: ProductFlowMap = {};
+    const fundedAllowanceMovementByProduct: ProductFlowMap = {};
+    loanProducts.forEach((productType) => {
+      const opening = inputState.financial.balanceSheet.items.find((item) => item.productType === productType)?.lossAllowance ?? 0;
+      const closing = state.financial.balanceSheet.items.find((item) => item.productType === productType)?.lossAllowance ?? 0;
+      fundedAllowanceOpeningByProduct[productType] = opening;
+      fundedAllowanceClosingByProduct[productType] = closing;
+      fundedAllowanceMovementByProduct[productType] = closing - opening;
+    });
+    const workoutWriteoffsByProduct: ProductFlowMap = {};
+    cohortStep.realizedLossesByVintage.forEach((flow) => {
+      workoutWriteoffsByProduct[flow.productType] = (workoutWriteoffsByProduct[flow.productType] ?? 0) + flow.amount;
+    });
+    const sumFlows = (flows: ProductFlowMap): number => Object.values(flows).reduce((sum, value) => sum + (value ?? 0), 0);
+    const commitmentAllowanceOpening = findItem(inputState.financial.balanceSheet, LiabilityProductType.CreditProvisions)?.balance ?? 0;
+    const commitmentAllowanceClosing = findItem(state.financial.balanceSheet, LiabilityProductType.CreditProvisions)?.balance ?? 0;
+    const commitmentAllowanceMovement = commitmentAllowanceClosing - commitmentAllowanceOpening;
+    const bridgedProvisionCharge =
+      sumFlows(workoutWriteoffsByProduct) +
+      sumFlows(cohortStep.oneOffLoanWriteDownsByProduct) +
+      sumFlows(fundedAllowanceMovementByProduct) +
+      commitmentAllowanceMovement +
+      sumFlows(securityImpairmentByProduct) +
+      sumFlows(cohortStep.nonCashInterestByProduct);
+    const provisionCharge = state.financial.incomeStatement.provisionCharge;
+    const provisionBridge = {
+      fundedAllowanceOpeningByStage: { ...inputState.financial.provisionStock },
+      fundedAllowanceClosingByStage: { ...state.financial.provisionStock },
+      fundedAllowanceOpeningByProduct,
+      fundedAllowanceClosingByProduct,
+      fundedAllowanceMovementByProduct,
+      commitmentAllowanceOpening,
+      commitmentAllowanceClosing,
+      workoutWriteoffsByProduct,
+      oneOffLoanWriteDownsByProduct: { ...cohortStep.oneOffLoanWriteDownsByProduct },
+      securityImpairmentByProduct,
+      workoutDiscountUnwindByProduct: { ...cohortStep.nonCashInterestByProduct },
+      provisionCharge,
+      reconciliationDifference: provisionCharge - bridgedProvisionCharge,
+    };
     const periodFlows: PeriodFlowDiagnostics = {
       periodMonths: dtMonths,
       competitorPricing: periodCompetitorPricing,
@@ -2694,7 +2787,8 @@ export const createSimulationEngine = (): SimulationEngine => {
       recoveriesByProduct: cohortStep.recoveriesByProduct,
       recoveriesByVintage: cohortStep.recoveriesByVintage,
       realizedLossesByVintage: cohortStep.realizedLossesByVintage,
-      recognizedLoanLossesByProduct: losses.recognizedLoanLosses,
+      provisionBridge,
+      shareValuation,
       lcr30d: {
         weightedOutflows: lcr30d.outflows.reduce((sum, line) => sum + line.weighted, 0),
         weightedInflows: lcr30d.inflows.reduce((sum, line) => sum + line.weighted, 0),

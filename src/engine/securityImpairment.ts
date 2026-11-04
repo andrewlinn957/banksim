@@ -21,13 +21,14 @@ export const securityEcl = (item: BalanceSheetItem, config: SimulationConfig) =>
 export const recogniseSecurityImpairment = (state: BankState, config: SimulationConfig) => {
   let expense=0,oci=0;
   const adjustments: Record<string,number>={};
+  const expenseByProduct: Record<string,number>={};
   for(const item of state.financial.balanceSheet.items){
     const s=item.security;if(!s)continue;
     s.amortisedCost ??= item.balance;
     const target=securityEcl(item,config),delta=target-(s.lossAllowance ?? 0);
-    s.lossAllowance=target;expense+=delta;
+    s.lossAllowance=target;expense+=delta;expenseByProduct[item.productType]=(expenseByProduct[item.productType] ?? 0)+delta;
     if(s.classification==='FVOCI')oci+=delta;
     else if(s.classification==='HTM'){item.balance-=delta;adjustments[item.productType]=delta;}
   }
-  return {expense,oci,adjustments};
+  return {expense,oci,adjustments,expenseByProduct};
 };
