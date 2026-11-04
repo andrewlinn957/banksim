@@ -2,7 +2,7 @@ import DepartmentOffice from './components/DepartmentOffice';
 import RiskAppetiteEditor, { RiskAppetite } from './components/RiskAppetiteEditor';
 import PerformanceReport from './components/PerformanceReport';
 import { Department } from './game/departments';
-import { attentionReason, monthsToPeriodEnd } from './game/management';
+import { attentionReason, customerDeposits, monthsToPeriodEnd } from './game/management';
 import Boardroom from './components/Boardroom';
 import FunctionalNavigation from './components/FunctionalNavigation';
 import FunctionalReportNavigation from './components/FunctionalReportNavigation';
@@ -52,6 +52,7 @@ import AttributionMechanicExplainer from './components/AttributionMechanicExplai
 import { createDefaultThreeYearPlan } from './config/threeYearPlan';
 import { buildCapitalMarketsBook } from './engine/capitalMarkets';
 import { getCapitalMarketsInstrument } from './capitalMarkets/catalogue';
+import { PRODUCTS } from './products/catalogue';
 
 
 
@@ -300,79 +301,112 @@ const App = () => {
   };
 
   const handleExtractRun = async () => {
+    const round = (value: number) => Math.round(value * 100) / 100;
+    const millions = (value: number) => round(value / 1_000_000);
     const summarizeState = (state: BankState) => {
-      const groupedBalances = (side: BalanceSheetSide) => Object.fromEntries(
-        Object.entries(state.financial.balanceSheet.items
-          .filter((item) => item.side === side)
-          .reduce<Record<string, number>>((totals, item) => {
-            totals[item.productType] = (totals[item.productType] ?? 0) + item.balance;
-            return totals;
-          }, {}))
-      );
-      const total = (side: BalanceSheetSide) => state.financial.balanceSheet.items
+      const byProduct = (side: BalanceSheetSide) => state.financial.balanceSheet.items
         .filter((item) => item.side === side)
-        .reduce((sum, item) => sum + item.balance, 0);
+        .reduce<Record<string, number>>((totals, item) => {
+          totals[item.productType] = round((totals[item.productType] ?? 0) + item.balance / 1_000_000);
+          return totals;
+        }, {});
+      const total = (side: BalanceSheetSide) => millions(state.financial.balanceSheet.items
+        .filter((item) => item.side === side)
+        .reduce((sum, item) => sum + item.balance, 0));
+      const loans = millions(state.financial.balanceSheet.items
+        .filter((item) => item.side === BalanceSheetSide.Asset && PRODUCTS[item.productType]?.behaviour?.isLoan)
+        .reduce((sum, item) => sum + item.balance, 0));
       const risk = state.risk.riskMetrics;
       return {
-        date: state.time.date.toISOString(),
+        date: state.time.date.toISOString().slice(0, 10),
         step: state.time.step,
-        balanceSheet: {
-          totalAssets: total(BalanceSheetSide.Asset),
-          totalLiabilities: total(BalanceSheetSide.Liability),
-          assetsByProduct: groupedBalances(BalanceSheetSide.Asset),
-          liabilitiesByProduct: groupedBalances(BalanceSheetSide.Liability),
-        },
-        capital: { ...state.financial.capital },
-        ratios: {
-          cet1: risk.cet1Ratio,
-          cet1Requirement: risk.cet1Requirement,
-          leverage: risk.leverageRatio,
-          lcr: risk.lcr,
-          nsfr: risk.nsfr,
-          riskWeightedAssets: risk.rwa,
-        },
-        incomeStatement: {
-          netInterestIncome: state.financial.incomeStatement.netInterestIncome,
-          feeIncome: state.financial.incomeStatement.feeIncome,
-          provisionCharge: state.financial.incomeStatement.provisionCharge,
-          operatingExpenses: state.financial.incomeStatement.operatingExpenses,
-          netIncome: state.financial.incomeStatement.netIncome,
-        },
-        equityMarket: {
-          sharePrice: state.equityMarket.sharePrice,
-          marketCap: state.equityMarket.marketCap,
-          epsTtm: state.equityMarket.epsTtm,
-        },
+        balanceSheetM: { assets: total(BalanceSheetSide.Asset), liabilities: total(BalanceSheetSide.Liability), loans, deposits: millions(customerDeposits(state)), assetsByProduct: byProduct(BalanceSheetSide.Asset), liabilitiesByProduct: byProduct(BalanceSheetSide.Liability) },
+        capitalM: { cet1: millions(state.financial.capital.cet1), at1: millions(state.financial.capital.at1), tier2: millions(state.financial.capital.tier2 ?? 0), oci: millions(state.financial.capital.accumulatedOCI) },
+        ratiosPct: { cet1: round(risk.cet1Ratio * 100), cet1Requirement: round(risk.cet1Requirement * 100), leverage: round(risk.leverageRatio * 100), lcr: round(risk.lcr * 100), nsfr: round(risk.nsfr * 100) },
+        lastMonthPnLM: { nii: millions(state.financial.incomeStatement.netInterestIncome), fees: millions(state.financial.incomeStatement.feeIncome), provisions: millions(state.financial.incomeStatement.provisionCharge), expenses: millions(state.financial.incomeStatement.operatingExpenses), net: millions(state.financial.incomeStatement.netIncome) },
+        share: { price: round(state.equityMarket.sharePrice), marketCapM: millions(state.equityMarket.marketCap), eps: round(state.equityMarket.epsTtm) },
         status: { ...state.status },
       };
     };
     const opening = stateHistory[0] ?? bankState;
+    const compactAction = (action: PlayerAction): unknown[] => {
+      switch (action.type) {
+        case 'adjustRate': return ['rate', action.productType, round(action.newRate * 100)];
+        case 'buySellAsset': return ['asset', action.productType, millions(action.amountDelta), action.rate === undefined ? null : round(action.rate * 100), action.tenorMonths ?? null];
+        case 'launchCapitalMarketsTransaction': return ['issue', action.instrument, millions(action.targetAmount), action.maxDiscount === undefined ? null : round(action.maxDiscount * 100), action.maxSpreadBps ?? null, action.tenorMonths ?? null];
+        case 'drawBoeFunding': return ['boe', action.facility, millions(action.amount)];
+        case 'setUnderwriting': return ['underwriting', action.productType, round(action.tightness * 100)];
+        case 'setMortgagePolicy': return ['mortgage', round(action.maxLtv * 100), action.fixedPeriodMonths];
+        case 'setTermDepositPolicy': return ['term', action.tenorMonths];
+        case 'enterHedge': return ['hedge', action.direction, millions(action.notional), round(action.fixedRate * 100), action.maturityMonths ?? null];
+        case 'setCapitalPolicy': return ['capitalPolicy', round(action.dividendPayoutRatio * 100), action.at1CouponMode ?? null];
+        case 'setRiskAppetite': return ['targets', action.targets ? Object.fromEntries(Object.entries(action.targets).map(([key, value]) => [key, value === undefined ? null : round(value * 100)])) : null];
+      }
+    };
+    const compactShock = (shock: import('./domain/shocks').Shock): unknown[] => {
+      switch (shock.type) {
+        case 'depositCompetition': return ['depositCompetition', round(shock.retailRateIncrease * 100), shock.corporateRateIncrease === undefined ? null : round(shock.corporateRateIncrease * 100)];
+        case 'marketSpreadShock': return ['marketSpread', shock.wholesaleSpreadBps, shock.loanSpreadBps, round(shock.repoHaircutIncreasePct)];
+        case 'idiosyncraticRun': return ['depositRun', round(shock.outflowRateMultiplier * 100)];
+        case 'macroDownturn': return ['downturn', round(shock.pdMultiplier * 100), round(shock.lgdMultiplier * 100)];
+        case 'counterpartyDefault': return ['counterpartyDefault', shock.productType, millions(shock.lossAmount)];
+        case 'rolloverStress': return ['rolloverStress', round(shock.accessMultiplier * 100), shock.spreadBps];
+      }
+    };
+    const decisions = currentTimeline.map((entry) => [
+      entry.step - opening.time.step,
+      entry.actions.map(compactAction),
+      entry.shocks.map(compactShock),
+    ] as [number, unknown[][], unknown[][]]).filter((entry) => entry[1].length || entry[2].length);
+    const notableEvents = eventLog
+      .filter((event) => event.severity !== 'info' || /filled|partial|capital|dividend|default|breach|failed|maturit|settled/i.test(event.message))
+      .slice(-40)
+      .map(({ severity, message, tags }) => [severity, message.slice(0, 240), ...(tags?.length ? [tags] : [])]);
     const extract = {
       format: 'banksim-run-extract',
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
+      formatVersion: 2,
       filename: `banksim-run-${bankState.time.date.toISOString().slice(0, 10)}.json`,
-      copilotPrompt: 'You are analysing a BankSim bank-management simulation. Explain what happened over the run in clear language. Start with the outcome, compare the opening and ending positions, then identify the main turning points. Link recorded player decisions and shocks to changes in earnings, the balance sheet, capital, liquidity and share price. Use the monthly history and event log as evidence. Separate direct effects supported by the data from plausible explanations, flag any missing evidence, and finish with the most consequential lessons for the bank’s management.',
+      prompt: 'Explain this BankSim run: compare start and finish, describe the main turning points, and connect recorded decisions or shocks to changes in profit, balance sheet, capital, liquidity and share price. Cite dates and figures from the series. Distinguish evidence from plausible explanation; flag missing data. End with three management lessons.',
       run: {
-        period: {
-          start: opening.time.date.toISOString(),
-          end: bankState.time.date.toISOString(),
-          monthsElapsed: bankState.time.step - opening.time.step,
-          stepsElapsed: currentTimeline.length,
-        },
+        period: [opening.time.date.toISOString().slice(0, 10), bankState.time.date.toISOString().slice(0, 10), bankState.time.step - opening.time.step],
         opening: summarizeState(opening),
         ending: summarizeState(bankState),
-        monthlyHistory: stateHistory.map(summarizeState),
-        decisionsAndShocks: currentTimeline.map((entry) => ({
-          step: entry.step,
-          date: stateHistory.find((state) => state.time.step === entry.step)?.time.date.toISOString(),
-          actions: entry.actions,
-          shocks: entry.shocks,
-        })),
-        events: eventLog.map(({ severity, message, tags }) => ({ severity, message, tags: tags ?? [] })),
+        series: {
+          months: stateHistory.map((s) => s.time.date.toISOString().slice(0, 7)),
+          note: 'Each value array aligns by index with months. Ratios are percentages; monetary series are £m.',
+          units: { assets: '£m', liabilities: '£m', loans: '£m', deposits: '£m', nii: '£m/month', netProfit: '£m/month', provisions: '£m/month', cet1: '%', cet1Requirement: '%', leverage: '%', lcr: '%', nsfr: '%', sharePrice: '£' },
+          keys: { assets: 'total assets', liabilities: 'total liabilities', loans: 'gross loan book', deposits: 'customer deposits', nii: 'net interest income', netProfit: 'net profit', provisions: 'provision charge', cet1: 'CET1 ratio', cet1Requirement: 'CET1 requirement', leverage: 'leverage ratio', lcr: 'liquidity coverage ratio', nsfr: 'net stable funding ratio', sharePrice: 'share price' },
+          values: {
+            assets: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset).reduce((n, i) => n + i.balance, 0))),
+            liabilities: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability).reduce((n, i) => n + i.balance, 0))),
+            loans: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset && PRODUCTS[i.productType]?.behaviour?.isLoan).reduce((n, i) => n + i.balance, 0))),
+            deposits: stateHistory.map((s) => millions(customerDeposits(s))),
+            nii: stateHistory.map((s) => millions(s.financial.incomeStatement.netInterestIncome)),
+            netProfit: stateHistory.map((s) => millions(s.financial.incomeStatement.netIncome)),
+            provisions: stateHistory.map((s) => millions(s.financial.incomeStatement.provisionCharge)),
+            cet1: stateHistory.map((s) => round(s.risk.riskMetrics.cet1Ratio * 100)),
+            cet1Requirement: stateHistory.map((s) => round(s.risk.riskMetrics.cet1Requirement * 100)),
+            leverage: stateHistory.map((s) => round(s.risk.riskMetrics.leverageRatio * 100)),
+            lcr: stateHistory.map((s) => round(s.risk.riskMetrics.lcr * 100)),
+            nsfr: stateHistory.map((s) => round(s.risk.riskMetrics.nsfr * 100)),
+            sharePrice: stateHistory.map((s) => round(s.equityMarket.sharePrice)),
+          },
+        },
+        decisionLegend: {
+          tuple: '[elapsed month, action tuples, shock tuples]; elapsed month 1 is the first simulated month.',
+          actions: {
+            rate: '[type, product, new rate %]', asset: '[type, product, amount £m, rate %, tenor months]', issue: '[type, instrument, target £m, max discount %, max spread bp, tenor months]', boe: '[type, facility, amount £m]', underwriting: '[type, product, selectivity %]', mortgage: '[type, max LTV %, fixed months]', term: '[type, term months]', hedge: '[type, direction, notional £m, fixed rate %, maturity months]', capitalPolicy: '[type, dividend payout % of positive profit, AT1 coupon mode]', targets: '[type, risk targets as percentages or null]'
+          },
+          shocks: {
+            depositCompetition: '[type, retail rate increase pp, corporate rate increase pp]', marketSpread: '[type, wholesale spread bp, loan spread bp, repo haircut increase]', depositRun: '[type, outflow multiplier %]', downturn: '[type, PD multiplier %, LGD multiplier %]', counterpartyDefault: '[type, product, loss £m]', rolloverStress: '[type, access multiplier %, spread bp]'
+          },
+        },
+        decisions,
+        eventLegend: ['[severity, message, optional tags]'],
+        events: notableEvents,
       },
     };
-    const text = JSON.stringify(extract, null, 2);
+    const text = JSON.stringify(extract);
     try {
       await navigator.clipboard.writeText(text);
       setExtractStatus('copied');
