@@ -2516,6 +2516,7 @@ export const createSimulationEngine = (): SimulationEngine => {
       corporateDeposit: state.market.competitorCorporateDepositRate ?? null,
       mortgage: state.market.competitorMortgageRate,
       consumerLoan: state.market.competitorConsumerLoanRate,
+      corporateLoan: state.market.riskFreeLong + state.market.corporateLoanSpread,
     };
     if (featureFlags.depositSegmentation) {
       applyDepositBehaviour(state, activeConfig, dtMonths, events);

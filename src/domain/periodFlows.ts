@@ -18,6 +18,7 @@ export interface PeriodFlowDiagnostics {
     corporateDeposit: number | null;
     mortgage: number;
     consumerLoan: number;
+    corporateLoan: number;
   };
   openingLoanExposureByProduct: Partial<Record<ProductType, number>>;
   interestIncomeByProduct: Partial<Record<ProductType, number>>;
