@@ -535,15 +535,17 @@ const addWorkoutBucket = (state: BankState, productType: ProductType, incoming: 
   const buckets = getWorkoutBucketsArray(state, productType);
   const sector = incoming.sector ?? fallbackSectorForProduct(productType);
   const geography = incoming.geography ?? fallbackGeographyForCohort(incoming.sourceCohortId);
+  const incomingVintageMix = incoming.vintageBreakdown?.map((vintage) => ({ ...vintage })) ?? [
+    { originationStep: incoming.originationStep ?? null, defaultedPrincipal: Math.max(0, incoming.defaultedPrincipal) },
+  ];
   const existing = buckets.find((bucket) =>
     bucket.monthsToResolution === incoming.monthsToResolution &&
     bucket.stageAtDefault === incoming.stageAtDefault &&
-    bucket.originationStep === incoming.originationStep &&
     (bucket.sector ?? fallbackSectorForProduct(productType)) === sector &&
     (bucket.geography ?? fallbackGeographyForCohort(bucket.sourceCohortId)) === geography
   );
   if (!existing) {
-    buckets.push({ ...incoming, sector, geography });
+    buckets.push({ ...incoming, vintageBreakdown: incomingVintageMix, sector, geography });
     return;
   }
 
@@ -557,6 +559,15 @@ const addWorkoutBucket = (state: BankState, productType: ProductType, incoming: 
   existing.effectiveInterestRate =
     ((existing.effectiveInterestRate ?? 0) * oldPrincipal + (incoming.effectiveInterestRate ?? 0) * newPrincipal) /
     combined;
+  const vintageMix = new Map<number | null, number>();
+  const existingMix = existing.vintageBreakdown ?? [
+    { originationStep: existing.originationStep ?? null, defaultedPrincipal: oldPrincipal },
+  ];
+  [...existingMix, ...incomingVintageMix].forEach((vintage) => {
+    vintageMix.set(vintage.originationStep, (vintageMix.get(vintage.originationStep) ?? 0) + Math.max(0, vintage.defaultedPrincipal));
+  });
+  existing.vintageBreakdown = [...vintageMix].map(([originationStep, defaultedPrincipal]) => ({ originationStep, defaultedPrincipal }));
+  existing.originationStep = undefined;
   existing.sector = sector;
   existing.geography = geography;
 };
@@ -567,7 +578,7 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
   cohorts.forEach((cohort) => {
     const sector = cohort.sector ?? fallbackSectorForProduct(cohort.productType);
     const geography = cohort.geography ?? fallbackGeographyForCohort(cohort.cohortId);
-    const key = [cohort.productType, cohort.originationStep ?? 'pre-run', cohort.stage, cohort.termMonths, sector, geography].join('|');
+    const key = [cohort.productType, cohort.stage, cohort.termMonths, sector, geography].join('|');
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, { ...cohort, sector, geography });
@@ -704,14 +715,25 @@ const stepWorkoutPipelines = (args: {
       const recoveryRate = recoveryRateFor(bucket);
       const recovered = principal * recoveryRate;
       const chargeOff = principal - recovered;
+      const vintageMix = bucket.vintageBreakdown?.length ? bucket.vintageBreakdown : [
+        { originationStep: bucket.originationStep ?? null, defaultedPrincipal: principal },
+      ];
+      const vintageTotal = vintageMix.reduce((sum, vintage) => sum + Math.max(0, vintage.defaultedPrincipal), 0);
+      vintageMix.forEach((vintage) => {
+        const share = vintageTotal > 0 ? Math.max(0, vintage.defaultedPrincipal) / vintageTotal : 0;
+        if (recovered > 0 && share > 0) {
+          recoveriesByVintage.push({ productType, originationStep: vintage.originationStep, amount: recovered * share });
+        }
+        if (chargeOff > 0 && share > 0) {
+          realizedLossesByVintage.push({ productType, originationStep: vintage.originationStep, amount: chargeOff * share });
+        }
+      });
       if (recovered > 0) {
         cash.balance += recovered;
         recoveryCashByProduct[productType] = (recoveryCashByProduct[productType] ?? 0) + recovered;
-        recoveriesByVintage.push({ productType, originationStep: bucket.originationStep ?? null, amount: recovered });
       }
       if (chargeOff > 0) {
         recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + chargeOff;
-        realizedLossesByVintage.push({ productType, originationStep: bucket.originationStep ?? null, amount: chargeOff });
       }
       recoveryCash += recovered;
       resolvedWorkoutPrincipal += principal;

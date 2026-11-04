@@ -119,7 +119,10 @@ const cloneWorkoutPipelines = (raw: LoanWorkoutPipelineMap): LoanWorkoutPipeline
   const out: LoanWorkoutPipelineMap = {};
   const entries = Object.entries(raw) as Array<[ProductType, LoanWorkoutBucket[]]>;
   entries.forEach(([productType, buckets]) => {
-    out[productType] = buckets.map((bucket) => ({ ...bucket }));
+    out[productType] = buckets.map((bucket) => ({
+      ...bucket,
+      vintageBreakdown: bucket.vintageBreakdown?.map((vintage) => ({ ...vintage })),
+    }));
   });
   return out;
 };

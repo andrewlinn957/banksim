@@ -49,6 +49,8 @@ export interface LoanWorkoutBucket {
   sourceCohortId: number;
   /** Simulation step at origination; absent for the opening portfolio. */
   originationStep?: number;
+  /** Vintage principal mix retained when similar workout balances are compacted together. */
+  vintageBreakdown?: Array<{ originationStep: number | null; defaultedPrincipal: number }>;
   stageAtDefault: LoanStage;
   defaultedPrincipal: number;
   expectedRecoveryRate: number;
