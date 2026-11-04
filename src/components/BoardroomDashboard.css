@@ -20,6 +20,7 @@
 .home-ratio-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.6rem}
 .home-ratio{border:1px solid var(--line,#d8d1c6);border-radius:9px;padding:.75rem;text-align:left;color:inherit;background:#fff;display:grid;gap:.3rem;cursor:pointer}
 .home-ratio>span:first-child{color:var(--muted,#6e6a63)}
+.home-ratio-key{display:flex;gap:1rem;font-size:.78rem}.home-ratio-key>span{display:inline-flex;align-items:center;gap:.35rem}.home-ratio-key i{display:inline-block;width:13px;height:7px;border-radius:4px;background:#56836a}.home-ratio-key b{display:inline-block;width:2px;height:12px;background:#333}
 .home-ratio strong{font-size:1.15rem}
 .home-ratio-track{height:7px;border-radius:8px;background:#e5e0d8;position:relative;display:block;overflow:visible}
 .home-ratio-track i{display:block;height:100%;border-radius:8px;background:#56836a}

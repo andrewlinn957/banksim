@@ -74,13 +74,13 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    <nav className="home-departments" aria-label="Bank functional areas">
     {areas.map(({department:d,label,artwork})=>{const metrics=summary[d].metrics;const primary=d==='Capital'?metrics[2]:metrics[0];const detail=d==='Customers'?`${signedMoney(depositChange)} last month`:d==='Lending'?`${signedMoney(loanChange)} last month`:d==='Treasury'?`${moneyMillions(metrics[2].rawValue)} due within 3 months`:`${metrics[1].value} CET1 target headroom`;return <button ref={el=>{departmentButtons.current[d]=el;}} key={d} className="home-department" onClick={()=>onDepartment(d)}><img src={artwork} alt=""/><span className="home-department-copy"><span>{label} ↗</span><strong>{d==='Capital'?moneyMillions(primary.rawValue):primary.value}</strong><small>{primary.label}</small><span className="home-department-detail">{detail}</span></span></button>;})}
    </nav>
-   <section className="home-resilience" aria-label="Capital and liquidity headroom"><div className="home-section-heading"><h2>Capital & liquidity</h2><button className="button ghost" onClick={onRisk}>Risk & regulatory →</button></div><div className="home-ratio-grid">
+   <section className="home-resilience" aria-label="Capital and liquidity headroom"><div className="home-section-heading"><h2>Capital & liquidity</h2><button className="button ghost" onClick={onRisk}>Risk & regulatory →</button></div><p className="home-helper home-ratio-key"><span><i aria-hidden="true"/>Current</span><span><b aria-hidden="true"/>Target</span></p><div className="home-ratio-grid">
     {([
      ['CET1',risk.cet1Ratio,risk.internalCet1TargetRatio],
      ['Leverage',risk.leverageRatio,risk.internalLeverageTargetRatio??state.behaviour.riskAppetite?.leverage??baseConfig.riskLimits.minLeverageRatio*1.05],
      ['LCR',risk.lcr,risk.internalLcrTargetRatio??state.behaviour.riskAppetite?.lcr??baseConfig.riskLimits.minLcr*1.1],
      ['NSFR',risk.nsfr,risk.internalNsfrTargetRatio??state.behaviour.riskAppetite?.nsfr??baseConfig.riskLimits.minNsfr*1.05],
-    ] as const).map(([label,value,target])=>{const max=Math.max(value,target)*1.2;return <button className={`home-ratio ${value<target?'needs-attention':''}`} onClick={onRisk} key={label}><span>{label}</span><strong>{formatPct(value)}</strong><span className="home-ratio-track" aria-hidden="true"><i style={{width:`${Math.min(100,value/max*100)}%`}}/><b style={{left:`${target/max*100}%`}}/></span><small>Target {formatPct(target)} · {value>=target?'+':''}{((value-target)*100).toFixed(2)} pp headroom</small></button>;})}
+    ] as const).map(([label,value,target])=>{const max=({CET1:.3,Leverage:.15,LCR:3,NSFR:2.5} as const)[label];return <button className={`home-ratio ${value<target?'needs-attention':''}`} onClick={onRisk} key={label}><span>{label}</span><strong>{formatPct(value)}</strong><span className="home-ratio-track" role="img" aria-label={`${label}: current ${formatPct(value)}, target ${formatPct(target)}`}><i style={{width:`${Math.min(100,value/max*100)}%`}}/><b style={{left:`${Math.min(100,target/max*100)}%`}}/></span><small>Target {formatPct(target)} · {value>=target?'+':''}{((value-target)*100).toFixed(2)} pp headroom</small></button>;})}
    </div></section>
    <div className="home-detail-grid">
     <section className="home-attention" aria-label="Developments needing attention"><h2>On your desk</h2>
@@ -90,11 +90,11 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
      <button onClick={()=>onDepartment('Lending')} className="home-attention-item"><strong>{summary.Lending.metrics[3].value} of loans in Stage 2 or 3</strong><span>{moneyMillions(summary.Lending.metrics[2].rawValue)} undrawn commitments</span><b>Review lending →</b></button>
     </section>
     <section className="home-trends" aria-label="Recent monthly trends"><h2>Recent months</h2><p className="home-helper">Monthly trends · independent scales</p>
-     <Trend label="Monthly profit" values={recent.slice(1).map(s=>s.financial.incomeStatement.netIncome)} format={moneyMillions}/>
-     <Trend label="Customer deposits" values={recent.map(customerDeposits)} format={formatCurrency}/>
-     <Trend label="Gross loans" values={recent.map(grossLoans)} format={formatCurrency}/>
-     <Trend label="CET1" values={recent.map(s=>s.risk.riskMetrics.cet1Ratio)} format={formatPct}/>
-     <Trend label="LCR" values={recent.map(s=>s.risk.riskMetrics.lcr)} format={formatPct}/>
+     <Trend label="Monthly profit" points={recent.slice(1).map(s=>({date:s.time.date,value:s.financial.incomeStatement.netIncome}))} format={moneyMillions}/>
+     <Trend label="Customer deposits" points={recent.map(s=>({date:s.time.date,value:customerDeposits(s)}))} format={formatCurrency}/>
+     <Trend label="Gross loans" points={recent.map(s=>({date:s.time.date,value:grossLoans(s)}))} format={formatCurrency}/>
+     <Trend label="CET1" points={recent.map(s=>({date:s.time.date,value:s.risk.riskMetrics.cet1Ratio}))} format={formatPct}/>
+     <Trend label="LCR" points={recent.map(s=>({date:s.time.date,value:s.risk.riskMetrics.lcr}))} format={formatPct}/>
     </section>
    </div>
    <div className="home-detail-grid">
@@ -109,10 +109,12 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
  </main>;
 }
 
-function Trend({label,values,format}:{label:string;values:number[];format:(value:number)=>string}) {
- const finite=values.filter(Number.isFinite);
+function Trend({label,points,format}:{label:string;points:Array<{date:Date;value:number}>;format:(value:number)=>string}) {
+ const finite=points.filter(point=>Number.isFinite(point.value));
  if(finite.length<2)return <div className="home-trend"><span>{label}</span><small>Awaiting two months</small></div>;
- const min=Math.min(...finite),max=Math.max(...finite),range=max-min;
- const points=finite.map((value,i)=>`${4+i/(finite.length-1)*172},${range?38-(value-min)/range*32:22}`).join(' ');
- return <div className="home-trend"><span>{label}<small>{format(finite[0])} → {format(finite.at(-1)!)}</small></span><svg viewBox="0 0 180 44" role="img" aria-label={`${label}: ${finite.map(format).join(', ')}`}><path d="M4 40H176" stroke="currentColor" opacity=".15"/><polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke"/></svg></div>;
+ const min=Math.min(...finite.map(point=>point.value)),max=Math.max(...finite.map(point=>point.value)),range=max-min;
+ const coords=finite.map(({value},i)=>`${4+i/(finite.length-1)*172},${range?38-(value-min)/range*32:22}`).join(' ');
+ const month=(date:Date)=>new Date(date).toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+ const first=finite[0],last=finite.at(-1)!;
+ return <div className="home-trend"><span>{label}<small>{format(first.value)} ({month(first.date)}) → {format(last.value)} ({month(last.date)})</small></span><svg viewBox="0 0 180 44" role="img" aria-label={`${label}, ${month(first.date)} to ${month(last.date)}: ${finite.map(point=>format(point.value)).join(', ')}`}><path d="M4 40H176" stroke="currentColor" opacity=".15"/><polyline points={coords} fill="none" stroke="currentColor" strokeWidth="2" vectorEffect="non-scaling-stroke"/></svg></div>;
 }
