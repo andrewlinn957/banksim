@@ -12,6 +12,7 @@ import { commitmentEcl } from './impairment';
  * Most helpers in this file mutate `state` in-place and append human-readable `SimulationEvent`s.
  */
 import { BankState, ContractualMaturityBucket, InterestRateHedge } from '../domain/bankState';
+import type { PeriodFlowDiagnostics } from '../domain/periodFlows';
 import { BalanceSheet, BalanceSheetItem } from '../domain/balanceSheet';
 import {
   AssetProductType,
@@ -51,6 +52,7 @@ import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 import { customerDepositProductsForBenchmark, requireLoanProductForBenchmark } from '../products/benchmarks';
 import { liquidityTagForProduct } from '../products/regulatory';
 import { calculateRiskMetrics } from './metrics';
+import { calculateCor011 } from './cor011';
 import { advanceSupervisoryAssessmentsAtClose } from './supervisoryAssessments';
 import { checkInvariants } from './invariants';
 import { cloneBankState } from './clone';
@@ -319,6 +321,16 @@ export interface SimulationEngine {
 
 // Time conversion helper (the model uses months for behavioural dynamics, years for rates/PDs).
 const MONTHS_IN_YEAR = 12;
+
+type ProductFlowMap = Partial<Record<ProductType, number>>;
+
+const sumProductFlowMaps = (...maps: Array<ProductFlowMap | undefined>): ProductFlowMap => {
+  const totals: ProductFlowMap = {};
+  maps.forEach((map) => Object.entries(map ?? {}).forEach(([product, amount]) => {
+    totals[product as ProductType] = (totals[product as ProductType] ?? 0) + (amount ?? 0);
+  }));
+  return totals;
+};
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
@@ -1624,6 +1636,8 @@ export interface LoanBehaviourResult {
   approvedNotional: number;
   requestedDrawdown: number;
   originatedNotional: number;
+  originatedByProduct: Partial<Record<ProductType, number>>;
+  prepaidByProduct: Partial<Record<ProductType, number>>;
   cancelledNotional: number;
   selectionPressureNotional: number;
   selectionPressureIndex: number;
@@ -1674,6 +1688,8 @@ export const applyLoanBehaviour = (
     approvedNotional: 0,
     requestedDrawdown: 0,
     originatedNotional: 0,
+    originatedByProduct: {},
+    prepaidByProduct: {},
     cancelledNotional: 0,
     selectionPressureNotional: 0,
     selectionPressureIndex: 0,
@@ -1782,6 +1798,7 @@ export const applyLoanBehaviour = (
         result.approvedNotional += approved;
         result.requestedDrawdown += requestedDrawdown;
         result.originatedNotional += originated;
+        result.originatedByProduct[productType] = (result.originatedByProduct[productType] ?? 0) + originated;
         result.cancelledNotional += cancelled;
         result.selectionPressureNotional +=
           originated * Math.max(0, adverseSelection.multiplier - 1);
@@ -1837,6 +1854,7 @@ export const applyLoanBehaviour = (
           lgd: params.lossGivenDefault,
         });
         result.originatedNotional += executed;
+        result.originatedByProduct[productType] = (result.originatedByProduct[productType] ?? 0) + executed;
         result.selectionPressureNotional +=
           executed * Math.max(0, adverseSelection.multiplier - 1);
         if (executed + 1e-6 < requested) {
@@ -1856,7 +1874,8 @@ export const applyLoanBehaviour = (
           );
         }
       } else if (delta < 0) {
-        applyExtraPrepayment({ state, productType: item.productType, amount: Math.abs(delta) });
+        const prepaid = applyExtraPrepayment({ state, productType: item.productType, amount: Math.abs(delta) });
+        result.prepaidByProduct[productType] = (result.prepaidByProduct[productType] ?? 0) + prepaid;
       }
       events.push(
         createEvent('info', `Behaviour: ${meta.label} growth ${(growthFactor - 1).toFixed(4)} this step`)
@@ -1885,6 +1904,8 @@ export interface PnLAccrualResult {
   liabilities: BalanceSheetItem[];
   interestIncome: number;
   interestExpense: number;
+  interestIncomeByProduct: Partial<Record<ProductType, number>>;
+  interestExpenseByProduct: Partial<Record<ProductType, number>>;
 }
 
 /**
@@ -1896,13 +1917,21 @@ export interface PnLAccrualResult {
 export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult => {
   const assets = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset);
   const liabilities = state.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability);
+  const interestIncomeByProduct: Partial<Record<ProductType, number>> = {};
+  const interestExpenseByProduct: Partial<Record<ProductType, number>> = {};
   const interestIncome = assets
     .filter((a) => !PRODUCTS[a.productType]?.behaviour?.isLoan)
-    .reduce((sum, a) => sum + (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears, 0);
+    .reduce((sum, a) => {
+      const income = (a.security?.amortisedCost ?? a.balance) * a.interestRate * dtYears;
+      interestIncomeByProduct[a.productType] = (interestIncomeByProduct[a.productType] ?? 0) + income;
+      return sum + income;
+    }, 0);
   const interestExpense = liabilities.reduce((sum, liability) => {
     const buckets = state.fundingLadders[liability.productType] ?? [];
     if (buckets.length === 0) {
-      return sum + liability.balance * liability.interestRate * dtYears;
+      const expense = liability.balance * liability.interestRate * dtYears;
+      interestExpenseByProduct[liability.productType] = (interestExpenseByProduct[liability.productType] ?? 0) + expense;
+      return sum + expense;
     }
 
     const contractualNotional = buckets.reduce(
@@ -1920,10 +1949,12 @@ export const accruePnL = (state: BankState, dtYears: number): PnLAccrualResult =
     );
     const unbucketedBalance = Math.max(0, fundedBalance - coveredNotional);
 
-    return sum + contractualExpense + unbucketedBalance * liability.interestRate * dtYears;
+    const expense = contractualExpense + unbucketedBalance * liability.interestRate * dtYears;
+    interestExpenseByProduct[liability.productType] = (interestExpenseByProduct[liability.productType] ?? 0) + expense;
+    return sum + expense;
   }, 0);
 
-  return { assets, liabilities, interestIncome, interestExpense };
+  return { assets, liabilities, interestIncome, interestExpense, interestIncomeByProduct, interestExpenseByProduct };
 };
 
 export interface LossRecognitionResult {
@@ -2452,6 +2483,16 @@ export const createSimulationEngine = (): SimulationEngine => {
     state.time.stepLengthMonths = dtMonths;
     const dtYears = dtMonths / MONTHS_IN_YEAR;
     const cashStart = findItem(inputState.financial.balanceSheet, AssetProductType.CashReserves)?.balance ?? 0;
+    const openingLoanExposureByProduct: ProductFlowMap = {};
+    Object.entries(inputState.loanCohorts ?? {}).forEach(([product, cohorts]) => {
+      const productType = product as ProductType;
+      const performing = (cohorts ?? []).reduce((sum, cohort) => sum + Math.max(0, cohort.outstandingPrincipal), 0);
+      const workouts = (inputState.workoutPipelines?.[productType] ?? []).reduce(
+        (sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal),
+        0
+      );
+      openingLoanExposureByProduct[productType] = performing + workouts;
+    });
 
     // Floating treasury assets reprice at the start of the accrual period.
     syncFloatingTreasuryAssetRates(state);
@@ -2469,6 +2510,13 @@ export const createSimulationEngine = (): SimulationEngine => {
     // Do not automatically re-apply treasury allocation here. If the player takes no treasury
     // action, cash and gilts retain the consequences of ordinary balance-sheet flows.
     stepCompetitorReaction(state, activeConfig, dtMonths, events);
+    const periodCompetitorPricing = {
+      retailCurrentAccount: state.market.competitorRetailCurrentAccountRate,
+      retailTermDeposit: state.market.competitorTermDepositRate,
+      corporateDeposit: state.market.competitorCorporateDepositRate ?? null,
+      mortgage: state.market.competitorMortgageRate,
+      consumerLoan: state.market.competitorConsumerLoanRate,
+    };
     if (featureFlags.depositSegmentation) {
       applyDepositBehaviour(state, activeConfig, dtMonths, events);
     }
@@ -2479,6 +2527,8 @@ export const createSimulationEngine = (): SimulationEngine => {
           approvedNotional: 0,
           requestedDrawdown: 0,
           originatedNotional: 0,
+          originatedByProduct: {},
+          prepaidByProduct: {},
           cancelledNotional: 0,
           selectionPressureNotional: 0,
           selectionPressureIndex: 0,
@@ -2494,12 +2544,22 @@ export const createSimulationEngine = (): SimulationEngine => {
         })
       : {
           loanInterestIncome: 0,
+          loanInterestIncomeByProduct: {},
           nonCashInterest: 0,
+          nonCashInterestByProduct: {},
           recognizedLoanLosses: {},
           defaultedPrincipal: 0,
+          defaultsByProduct: {},
+          defaultsByVintage: [],
           renewedPrincipal: 0,
+          renewalsByProduct: {},
           prepaidPrincipal: 0,
+          prepaymentsByProduct: {},
+          scheduledRepaymentsByProduct: {},
           recoveryCash: 0,
+          recoveriesByProduct: {},
+          recoveriesByVintage: [],
+          realizedLossesByVintage: [],
           resolvedWorkoutPrincipal: 0,
           selectionPressureNotional: 0,
           selectionPressureIndex: 0,
@@ -2602,6 +2662,46 @@ export const createSimulationEngine = (): SimulationEngine => {
     computeMetrics(state, activeConfig, shockEffects.lcrOutflowMultiplier, events, false, true);
     updateSharePrice(state, activeConfig, dtMonths);
     const statements = buildStatements(inputState, state, activeConfig, cashStart, capitalClose, losses);
+    const lcr30d = calculateCor011(state, activeConfig);
+    const loanTradeOriginations: ProductFlowMap = {};
+    const loanTradePrepayments: ProductFlowMap = {};
+    actionExecutions.assetTrades.forEach((trade) => {
+      if (!PRODUCTS[trade.productType]?.behaviour?.isLoan || trade.executedAmount <= 0) return;
+      const target = trade.side === 'buy' ? loanTradeOriginations : loanTradePrepayments;
+      target[trade.productType] = (target[trade.productType] ?? 0) + trade.executedAmount;
+    });
+    const periodFlows: PeriodFlowDiagnostics = {
+      periodMonths: dtMonths,
+      competitorPricing: periodCompetitorPricing,
+      openingLoanExposureByProduct,
+      interestIncomeByProduct: sumProductFlowMaps(
+        accruals.interestIncomeByProduct,
+        cohortStep.loanInterestIncomeByProduct,
+        cohortStep.nonCashInterestByProduct
+      ),
+      fundingCostByProduct: accruals.interestExpenseByProduct,
+      newLendingByProduct: sumProductFlowMaps(loanBehaviour.originatedByProduct, loanTradeOriginations),
+      renewalsByProduct: cohortStep.renewalsByProduct,
+      scheduledRepaymentsByProduct: cohortStep.scheduledRepaymentsByProduct,
+      prepaymentsByProduct: sumProductFlowMaps(
+        cohortStep.prepaymentsByProduct,
+        loanBehaviour.prepaidByProduct,
+        loanTradePrepayments
+      ),
+      defaultsByProduct: cohortStep.defaultsByProduct,
+      defaultsByVintage: cohortStep.defaultsByVintage,
+      recoveriesByProduct: cohortStep.recoveriesByProduct,
+      recoveriesByVintage: cohortStep.recoveriesByVintage,
+      realizedLossesByVintage: cohortStep.realizedLossesByVintage,
+      recognizedLoanLossesByProduct: losses.recognizedLoanLosses,
+      lcr30d: {
+        weightedOutflows: lcr30d.outflows.reduce((sum, line) => sum + line.weighted, 0),
+        weightedInflows: lcr30d.inflows.reduce((sum, line) => sum + line.weighted, 0),
+        netOutflow: lcr30d.c76.netLiquidityOutflow,
+        hqla: lcr30d.c76.liquidityBuffer,
+      },
+    };
+    state.periodFlows = periodFlows;
     invariants(state, activeConfig, events, statements);
     if (featureFlags.threeYearPlan && state.threeYearPlan?.enabled) {
       const review = reviewThreeYearPlan(state, bankThreeYearPlanMetricRegistry);

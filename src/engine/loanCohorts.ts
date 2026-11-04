@@ -82,12 +82,22 @@ const isLoanProduct = (productType: ProductType): boolean => Boolean(PRODUCTS[pr
  */
 export interface LoanCohortStepResult {
   loanInterestIncome: number;
+  loanInterestIncomeByProduct: Partial<Record<ProductType, number>>;
   nonCashInterest: number;
+  nonCashInterestByProduct: Partial<Record<ProductType, number>>;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
   defaultedPrincipal: number;
+  defaultsByProduct: Partial<Record<ProductType, number>>;
+  defaultsByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number; stage?: LoanStage }>;
   renewedPrincipal: number;
+  renewalsByProduct: Partial<Record<ProductType, number>>;
   prepaidPrincipal: number;
+  prepaymentsByProduct: Partial<Record<ProductType, number>>;
+  scheduledRepaymentsByProduct: Partial<Record<ProductType, number>>;
   recoveryCash: number;
+  recoveriesByProduct: Partial<Record<ProductType, number>>;
+  recoveriesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }>;
+  realizedLossesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }>;
   resolvedWorkoutPrincipal: number;
   selectionPressureNotional: number;
   selectionPressureIndex: number;
@@ -406,6 +416,7 @@ export const upsertOriginationCohort = (args: {
     cohorts.push({
       productType,
       cohortId,
+      originationStep: state.time.step + 1,
       originalPrincipal: fundedPrincipal,
       outstandingPrincipal: fundedPrincipal,
       annualInterestRate: Math.max(0, args.annualInterestRate),
@@ -527,6 +538,7 @@ const addWorkoutBucket = (state: BankState, productType: ProductType, incoming: 
   const existing = buckets.find((bucket) =>
     bucket.monthsToResolution === incoming.monthsToResolution &&
     bucket.stageAtDefault === incoming.stageAtDefault &&
+    bucket.originationStep === incoming.originationStep &&
     (bucket.sector ?? fallbackSectorForProduct(productType)) === sector &&
     (bucket.geography ?? fallbackGeographyForCohort(bucket.sourceCohortId)) === geography
   );
@@ -555,7 +567,7 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
   cohorts.forEach((cohort) => {
     const sector = cohort.sector ?? fallbackSectorForProduct(cohort.productType);
     const geography = cohort.geography ?? fallbackGeographyForCohort(cohort.cohortId);
-    const key = [cohort.productType, cohort.stage, cohort.termMonths, sector, geography].join('|');
+    const key = [cohort.productType, cohort.originationStep ?? 'pre-run', cohort.stage, cohort.termMonths, sector, geography].join('|');
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, { ...cohort, sector, geography });
@@ -643,7 +655,15 @@ const stepWorkoutPipelines = (args: {
   config: SimulationConfig;
   cash: BalanceSheetItem;
   recognizedLoanLosses: Partial<Record<ProductType, number>>;
-}): { recoveryCash: number; resolvedWorkoutPrincipal: number; nonCashInterest: number } => {
+}): {
+  recoveryCash: number;
+  recoveryCashByProduct: Partial<Record<ProductType, number>>;
+  recoveriesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }>;
+  realizedLossesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }>;
+  resolvedWorkoutPrincipal: number;
+  nonCashInterest: number;
+  nonCashInterestByProduct: Partial<Record<ProductType, number>>;
+} => {
   const { state, config, cash, recognizedLoanLosses } = args;
   const workoutConfig = getWorkoutConfig(config);
   const products = new Set<ProductType>([
@@ -654,6 +674,10 @@ const stepWorkoutPipelines = (args: {
   let recoveryCash = 0;
   let nonCashInterest = 0;
   let resolvedWorkoutPrincipal = 0;
+  const recoveryCashByProduct: Partial<Record<ProductType, number>> = {};
+  const nonCashInterestByProduct: Partial<Record<ProductType, number>> = {};
+  const recoveriesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }> = [];
+  const realizedLossesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }> = [];
 
   products.forEach((productType) => {
     if (!PRODUCTS[productType]?.behaviour?.isLoan) return;
@@ -663,7 +687,9 @@ const stepWorkoutPipelines = (args: {
     const recoveryRateFor = workoutRecoveryEstimator(state, config, productType);
     const surviving: LoanWorkoutBucket[] = [];
     buckets.forEach((bucket) => {
-      nonCashInterest += workoutPresentValue(state, config, productType, bucket, recoveryRateFor(bucket)) * Math.max(0, bucket.effectiveInterestRate ?? 0) / 12;
+      const bucketInterest = workoutPresentValue(state, config, productType, bucket, recoveryRateFor(bucket)) * Math.max(0, bucket.effectiveInterestRate ?? 0) / 12;
+      nonCashInterest += bucketInterest;
+      nonCashInterestByProduct[productType] = (nonCashInterestByProduct[productType] ?? 0) + bucketInterest;
       const nextMonths = bucket.monthsToResolution - 1;
       if (nextMonths > 0) {
         surviving.push({
@@ -680,9 +706,12 @@ const stepWorkoutPipelines = (args: {
       const chargeOff = principal - recovered;
       if (recovered > 0) {
         cash.balance += recovered;
+        recoveryCashByProduct[productType] = (recoveryCashByProduct[productType] ?? 0) + recovered;
+        recoveriesByVintage.push({ productType, originationStep: bucket.originationStep ?? null, amount: recovered });
       }
       if (chargeOff > 0) {
         recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + chargeOff;
+        realizedLossesByVintage.push({ productType, originationStep: bucket.originationStep ?? null, amount: chargeOff });
       }
       recoveryCash += recovered;
       resolvedWorkoutPrincipal += principal;
@@ -691,7 +720,24 @@ const stepWorkoutPipelines = (args: {
     state.workoutPipelines[productType] = surviving;
   });
 
-  return { recoveryCash, resolvedWorkoutPrincipal, nonCashInterest };
+  return { recoveryCash, recoveryCashByProduct, recoveriesByVintage, realizedLossesByVintage, resolvedWorkoutPrincipal, nonCashInterest, nonCashInterestByProduct };
+};
+
+const addVintageFlow = <T extends { productType: ProductType; originationStep: number | null; amount: number }>(
+  rows: T[],
+  productType: ProductType,
+  originationStep: number | null,
+  amount: number,
+  stage?: LoanStage
+): void => {
+  if (amount <= 0) return;
+  const row = rows.find((item) =>
+    item.productType === productType &&
+    item.originationStep === originationStep &&
+    ('stage' in item ? item.stage === stage : stage === undefined)
+  );
+  if (row) row.amount += amount;
+  else rows.push({ productType, originationStep, amount, ...(stage ? { stage } : {}) } as T);
 };
 
 export const stepLoanCohorts = (args: {
@@ -707,12 +753,22 @@ export const stepLoanCohorts = (args: {
   if (dtMonths === 0) {
     return {
       loanInterestIncome: 0,
+      loanInterestIncomeByProduct: {},
       nonCashInterest: 0,
+      nonCashInterestByProduct: {},
       recognizedLoanLosses: {},
       defaultedPrincipal: 0,
+      defaultsByProduct: {},
+      defaultsByVintage: [],
       renewedPrincipal: 0,
+      renewalsByProduct: {},
       prepaidPrincipal: 0,
+      prepaymentsByProduct: {},
+      scheduledRepaymentsByProduct: {},
       recoveryCash: 0,
+      recoveriesByProduct: {},
+      recoveriesByVintage: [],
+      realizedLossesByVintage: [],
       resolvedWorkoutPrincipal: 0,
       selectionPressureNotional: 0,
       selectionPressureIndex: 0,
@@ -723,6 +779,12 @@ export const stepLoanCohorts = (args: {
   if (!cash) throw new Error('Missing cash line item; cannot step loan cohorts');
 
   const recognizedLoanLosses: Partial<Record<ProductType, number>> = {};
+  const loanInterestIncomeByProduct: Partial<Record<ProductType, number>> = {};
+  const defaultsByProduct: Partial<Record<ProductType, number>> = {};
+  const defaultsByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number; stage?: LoanStage }> = [];
+  const renewalsByProduct: Partial<Record<ProductType, number>> = {};
+  const prepaymentsByProduct: Partial<Record<ProductType, number>> = {};
+  const scheduledRepaymentsByProduct: Partial<Record<ProductType, number>> = {};
   let loanInterestIncome = 0;
   let nonCashInterest = 0;
   let defaultedPrincipal = 0;
@@ -731,6 +793,10 @@ export const stepLoanCohorts = (args: {
   let recoveryCash = 0;
   let resolvedWorkoutPrincipal = 0;
   let selectionPressureNotional = 0;
+  const recoveriesByProduct: Partial<Record<ProductType, number>> = {};
+  const recoveriesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }> = [];
+  const realizedLossesByVintage: Array<{ productType: ProductType; originationStep: number | null; amount: number }> = [];
+  const nonCashInterestByProduct: Partial<Record<ProductType, number>> = {};
 
   for (let m = 0; m < dtMonths; m++) {
     const workoutStep = stepWorkoutPipelines({
@@ -742,6 +808,14 @@ export const stepLoanCohorts = (args: {
     recoveryCash += workoutStep.recoveryCash;
     nonCashInterest += workoutStep.nonCashInterest;
     resolvedWorkoutPrincipal += workoutStep.resolvedWorkoutPrincipal;
+    Object.entries(workoutStep.recoveryCashByProduct).forEach(([p, value]) => {
+      recoveriesByProduct[p as ProductType] = (recoveriesByProduct[p as ProductType] ?? 0) + (value ?? 0);
+    });
+    Object.entries(workoutStep.nonCashInterestByProduct).forEach(([p, value]) => {
+      nonCashInterestByProduct[p as ProductType] = (nonCashInterestByProduct[p as ProductType] ?? 0) + (value ?? 0);
+    });
+    recoveriesByVintage.push(...workoutStep.recoveriesByVintage);
+    realizedLossesByVintage.push(...workoutStep.realizedLossesByVintage);
 
     const loanProductTypes = new Set<ProductType>([
       ...Object.keys(state.loanCohorts ?? {}),
@@ -782,8 +856,10 @@ export const stepLoanCohorts = (args: {
       cohorts.forEach((cohort) => {
         if (cohort.outstandingPrincipal <= 0) return;
         if (cohort.stage === 'stage3') {
-          addWorkoutBucket(state, productType, { productType, sourceCohortId: cohort.cohortId, stageAtDefault: 'stage3', defaultedPrincipal: cohort.outstandingPrincipal, expectedRecoveryRate: 1 - (cohort.effectiveLgd ?? cohort.lgd), effectiveInterestRate: cohort.annualInterestRate, monthsToResolution: Math.max(1, Math.round(workoutConfig.baseResolutionLagMonths)), sector: cohort.sector, geography: cohort.geography });
+          addWorkoutBucket(state, productType, { productType, sourceCohortId: cohort.cohortId, originationStep: cohort.originationStep, stageAtDefault: 'stage3', defaultedPrincipal: cohort.outstandingPrincipal, expectedRecoveryRate: 1 - (cohort.effectiveLgd ?? cohort.lgd), effectiveInterestRate: cohort.annualInterestRate, monthsToResolution: Math.max(1, Math.round(workoutConfig.baseResolutionLagMonths)), sector: cohort.sector, geography: cohort.geography });
           defaultedPrincipal += cohort.outstandingPrincipal;
+          defaultsByProduct[productType] = (defaultsByProduct[productType] ?? 0) + cohort.outstandingPrincipal;
+          addVintageFlow(defaultsByVintage, productType, cohort.originationStep ?? null, cohort.outstandingPrincipal, 'stage3');
           cohort.outstandingPrincipal = 0;
           return;
         }
@@ -808,6 +884,8 @@ export const stepLoanCohorts = (args: {
         cohort.outstandingPrincipal -= principal;
         cash.balance += interest + principal;
         loanInterestIncome += interest;
+        loanInterestIncomeByProduct[productType] = (loanInterestIncomeByProduct[productType] ?? 0) + interest;
+        scheduledRepaymentsByProduct[productType] = (scheduledRepaymentsByProduct[productType] ?? 0) + principal;
 
         const couponIncentive = Math.max(0, cohort.annualInterestRate - benchmarkRate);
         const baseAnnualPd = config.productParameters[productType]?.baseDefaultRate ?? cohort.annualPd;
@@ -829,6 +907,7 @@ export const stepLoanCohorts = (args: {
           cohort.outstandingPrincipal -= prepaid;
           cash.balance += prepaid;
           prepaidPrincipal += prepaid;
+          prepaymentsByProduct[productType] = (prepaymentsByProduct[productType] ?? 0) + prepaid;
         }
 
         const affordabilityCurrent = clamp(
@@ -885,10 +964,12 @@ export const stepLoanCohorts = (args: {
             );
             cohort.outstandingPrincipal -= renewalPrincipal;
             renewedPrincipal += renewalPrincipal;
+            renewalsByProduct[productType] = (renewalsByProduct[productType] ?? 0) + renewalPrincipal;
             selectionPressureNotional += renewalPrincipal * Math.max(0, renewalSelection.multiplier - 1);
             renewalAdds.push({
               productType,
               cohortId: nextRenewalCohortId++,
+              originationStep: state.time.step + 1,
               originalPrincipal: renewalPrincipal,
               outstandingPrincipal: renewalPrincipal,
               annualInterestRate: offeredRate,
@@ -946,6 +1027,8 @@ export const stepLoanCohorts = (args: {
         if (defaulted > 0) {
           cohort.outstandingPrincipal -= defaulted;
           defaultedPrincipal += defaulted;
+          defaultsByProduct[productType] = (defaultsByProduct[productType] ?? 0) + defaulted;
+          addVintageFlow(defaultsByVintage, productType, cohort.originationStep ?? null, defaulted, cohort.stage);
           const stressedLgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
           const expectedRecoveryRate = clamp(
             1 - stressedLgd,
@@ -963,6 +1046,7 @@ export const stepLoanCohorts = (args: {
           addWorkoutBucket(state, productType, {
             productType,
             sourceCohortId: cohort.cohortId,
+            originationStep: cohort.originationStep,
             stageAtDefault: cohort.stage,
             defaultedPrincipal: defaulted,
             expectedRecoveryRate,
@@ -1011,12 +1095,22 @@ export const stepLoanCohorts = (args: {
     renewedPrincipal > 0 ? selectionPressureNotional / renewedPrincipal : 0;
   return {
     loanInterestIncome,
+    loanInterestIncomeByProduct,
     nonCashInterest,
+    nonCashInterestByProduct,
     recognizedLoanLosses,
     defaultedPrincipal,
+    defaultsByProduct,
+    defaultsByVintage,
     renewedPrincipal,
+    renewalsByProduct,
     prepaidPrincipal,
+    prepaymentsByProduct,
+    scheduledRepaymentsByProduct,
     recoveryCash,
+    recoveriesByProduct,
+    recoveriesByVintage,
+    realizedLossesByVintage,
     resolvedWorkoutPrincipal,
     selectionPressureNotional,
     selectionPressureIndex,

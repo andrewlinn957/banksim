@@ -7,6 +7,7 @@ import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
 import { ProductType } from './enums';
 import type { ThreeYearPlanState } from './threeYearPlan';
 import type { CapitalMarketsState } from './capitalMarkets';
+import type { PeriodFlowDiagnostics } from './periodFlows';
 
 export type LoanCohortsMap = Partial<Record<ProductType, LoanCohort[]>>;
 
@@ -141,5 +142,7 @@ export interface BankState {
   fundingLadders: FundingLadderMap;
   /** Contractual maturity ladders for assets; separated from liability funding ladders. */
   assetMaturityLadders?: AssetMaturityLadderMap;
+  /** Last closed period's compact product, credit, market and liquidity flows. */
+  periodFlows?: PeriodFlowDiagnostics;
   status: SimulationStatus;
 }

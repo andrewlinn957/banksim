@@ -22,6 +22,8 @@ export type LoanGeography = UkItl1Region | LegacyLoanGeography;
 export interface LoanCohort {
   productType: ProductType;
   cohortId: number;
+  /** Simulation step at origination; absent for the opening portfolio. */
+  originationStep?: number;
   originalPrincipal: number;
   outstandingPrincipal: number;
   annualInterestRate: number;
@@ -45,6 +47,8 @@ export interface LoanCohort {
 export interface LoanWorkoutBucket {
   productType: ProductType;
   sourceCohortId: number;
+  /** Simulation step at origination; absent for the opening portfolio. */
+  originationStep?: number;
   stageAtDefault: LoanStage;
   defaultedPrincipal: number;
   expectedRecoveryRate: number;

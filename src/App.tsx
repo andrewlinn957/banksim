@@ -303,6 +303,125 @@ const App = () => {
   const handleExtractRun = async () => {
     const round = (value: number) => Math.round(value * 100) / 100;
     const millions = (value: number) => round(value / 1_000_000);
+    const flowValue = (state: BankState, key: keyof NonNullable<BankState['periodFlows']>, product?: string): number => {
+      const flow = state.periodFlows;
+      if (!flow || product === undefined) return 0;
+      const field = flow[key];
+      return typeof field === 'object' && field !== null && product in field
+        ? Number((field as Record<string, unknown>)[product] ?? 0)
+        : 0;
+    };
+    const periodProductKeys = [...new Set(stateHistory.flatMap((state) => {
+      const flow = state.periodFlows;
+      if (!flow) return [];
+      return [
+        ...Object.keys(flow.interestIncomeByProduct),
+        ...Object.keys(flow.fundingCostByProduct),
+        ...Object.keys(flow.newLendingByProduct),
+        ...Object.keys(flow.renewalsByProduct),
+        ...Object.keys(flow.scheduledRepaymentsByProduct),
+        ...Object.keys(flow.prepaymentsByProduct),
+        ...Object.keys(flow.defaultsByProduct),
+        ...Object.keys(flow.recoveriesByProduct),
+        ...Object.keys(flow.recognizedLoanLossesByProduct),
+      ];
+    }))].filter((product) => stateHistory.some((state) => {
+      const flow = state.periodFlows;
+      if (!flow) return false;
+      return [
+        flow.interestIncomeByProduct[product as keyof typeof flow.interestIncomeByProduct],
+        flow.fundingCostByProduct[product as keyof typeof flow.fundingCostByProduct],
+        flow.newLendingByProduct[product as keyof typeof flow.newLendingByProduct],
+        flow.renewalsByProduct[product as keyof typeof flow.renewalsByProduct],
+        flow.scheduledRepaymentsByProduct[product as keyof typeof flow.scheduledRepaymentsByProduct],
+        flow.prepaymentsByProduct[product as keyof typeof flow.prepaymentsByProduct],
+        flow.defaultsByProduct[product as keyof typeof flow.defaultsByProduct],
+        flow.recoveriesByProduct[product as keyof typeof flow.recoveriesByProduct],
+        flow.recognizedLoanLossesByProduct[product as keyof typeof flow.recognizedLoanLossesByProduct],
+      ].some((value) => Math.abs(value ?? 0) > 0.01);
+    })).sort();
+    const alignedFlowSeries = (metric: keyof NonNullable<BankState['periodFlows']>, product?: string) =>
+      stateHistory.map((state, index) => index === 0 || !state.periodFlows
+        ? null
+        : millions(flowValue(state, metric, product)));
+    const vintageTotals = new Map<string, { product: string; vintage: string; originations: number; defaults: number; recoveries: number; realizedLosses: number }>();
+    const vintageLabel = (originationStep: number | null, fallbackDate: Date) => {
+      if (originationStep === null || originationStep <= (stateHistory[0]?.time.step ?? 0)) return 'pre-run';
+      const origination = stateHistory.find((state) => state.time.step === originationStep)?.time.date ?? fallbackDate;
+      return String(origination.getUTCFullYear());
+    };
+    const vintageTotal = (product: string, vintage: string) => {
+      const key = `${product}|${vintage}`;
+      let value = vintageTotals.get(key);
+      if (!value) {
+        value = { product, vintage, originations: 0, defaults: 0, recoveries: 0, realizedLosses: 0 };
+        vintageTotals.set(key, value);
+      }
+      return value;
+    };
+    stateHistory.slice(1).forEach((state) => {
+      const flow = state.periodFlows;
+      if (!flow) return;
+      const originatedProducts = new Set([
+        ...Object.keys(flow.newLendingByProduct),
+        ...Object.keys(flow.renewalsByProduct),
+      ]);
+      originatedProducts.forEach((product) => {
+        const total = vintageTotal(product, vintageLabel(state.time.step, state.time.date));
+        total.originations += (flow.newLendingByProduct[product as keyof typeof flow.newLendingByProduct] ?? 0) +
+          (flow.renewalsByProduct[product as keyof typeof flow.renewalsByProduct] ?? 0);
+      });
+      flow.defaultsByVintage.forEach((row) => {
+        vintageTotal(row.productType, vintageLabel(row.originationStep, state.time.date)).defaults += row.amount;
+      });
+      flow.recoveriesByVintage.forEach((row) => {
+        vintageTotal(row.productType, vintageLabel(row.originationStep, state.time.date)).recoveries += row.amount;
+      });
+      flow.realizedLossesByVintage.forEach((row) => {
+        vintageTotal(row.productType, vintageLabel(row.originationStep, state.time.date)).realizedLosses += row.amount;
+      });
+    });
+    const firstPeriodFlows = stateHistory.find((state) => state.periodFlows)?.periodFlows;
+    if (firstPeriodFlows) {
+      Object.entries(firstPeriodFlows.openingLoanExposureByProduct).forEach(([product, exposure]) => {
+        vintageTotal(product, 'pre-run').originations = exposure ?? 0;
+      });
+    }
+    const creditVintages = [...vintageTotals.values()]
+      .sort((a, b) => a.vintage.localeCompare(b.vintage) || a.product.localeCompare(b.product))
+      .map((row) => [
+        row.product,
+        row.vintage,
+        millions(row.originations),
+        millions(row.defaults),
+        millions(row.recoveries),
+        millions(row.realizedLosses),
+        row.originations > 0 ? round((row.defaults / row.originations) * 100) : null,
+      ]);
+    const productFlows = Object.fromEntries(periodProductKeys.map((product) => {
+      const isLoan = Boolean(PRODUCTS[product as keyof typeof PRODUCTS]?.behaviour?.isLoan);
+      const hasInterestIncome = stateHistory.some((state) => Math.abs(flowValue(state, 'interestIncomeByProduct', product)) > 0.01);
+      const hasFundingCost = stateHistory.some((state) => Math.abs(flowValue(state, 'fundingCostByProduct', product)) > 0.01);
+      const row: Record<string, (number | null)[]> = {};
+      if (hasInterestIncome) row.ii = alignedFlowSeries('interestIncomeByProduct', product);
+      if (hasFundingCost) row.fc = alignedFlowSeries('fundingCostByProduct', product);
+      if (isLoan) {
+        row.nl = alignedFlowSeries('newLendingByProduct', product);
+        row.rn = alignedFlowSeries('renewalsByProduct', product);
+        row.sp = alignedFlowSeries('scheduledRepaymentsByProduct', product);
+        row.pp = alignedFlowSeries('prepaymentsByProduct', product);
+        row.df = alignedFlowSeries('defaultsByProduct', product);
+        row.dr = stateHistory.map((state, index) => {
+          if (index === 0 || !state.periodFlows) return null;
+          const defaults = flowValue(state, 'defaultsByProduct', product);
+          const openingExposure = state.periodFlows.openingLoanExposureByProduct[product as keyof typeof state.periodFlows.openingLoanExposureByProduct] ?? 0;
+          return openingExposure > 0 ? round((defaults / openingExposure) * 100) : null;
+        });
+        row.rc = alignedFlowSeries('recoveriesByProduct', product);
+        row.cl = alignedFlowSeries('recognizedLoanLossesByProduct', product);
+      }
+      return [product, row];
+    }));
     const summarizeState = (state: BankState) => {
       const byProduct = (side: BalanceSheetSide) => state.financial.balanceSheet.items
         .filter((item) => item.side === side)
@@ -321,10 +440,17 @@ const App = () => {
         date: state.time.date.toISOString().slice(0, 10),
         step: state.time.step,
         balanceSheetM: { assets: total(BalanceSheetSide.Asset), liabilities: total(BalanceSheetSide.Liability), loans, deposits: millions(customerDeposits(state)), assetsByProduct: byProduct(BalanceSheetSide.Asset), liabilitiesByProduct: byProduct(BalanceSheetSide.Liability) },
-        capitalM: { cet1: millions(state.financial.capital.cet1), at1: millions(state.financial.capital.at1), tier2: millions(state.financial.capital.tier2 ?? 0), oci: millions(state.financial.capital.accumulatedOCI) },
+        capitalM: { cet1: millions(state.financial.capital.cet1), at1: millions(state.financial.capital.at1), tier2: millions(state.financial.capital.tier2 ?? 0), oci: millions(state.financial.capital.accumulatedOCI), rwa: millions(risk.rwa) },
         ratiosPct: { cet1: round(risk.cet1Ratio * 100), cet1Requirement: round(risk.cet1Requirement * 100), leverage: round(risk.leverageRatio * 100), lcr: round(risk.lcr * 100), nsfr: round(risk.nsfr * 100) },
         lastMonthPnLM: { nii: millions(state.financial.incomeStatement.netInterestIncome), fees: millions(state.financial.incomeStatement.feeIncome), provisions: millions(state.financial.incomeStatement.provisionCharge), expenses: millions(state.financial.incomeStatement.operatingExpenses), net: millions(state.financial.incomeStatement.netIncome) },
-        share: { price: round(state.equityMarket.sharePrice), marketCapM: millions(state.equityMarket.marketCap), eps: round(state.equityMarket.epsTtm) },
+        share: { price: round(state.equityMarket.sharePrice), fairValue: round(state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice), marketCapM: millions(state.equityMarket.marketCap), eps: round(state.equityMarket.epsTtm), pe: round(state.equityMarket.peMultiple), pb: round(state.equityMarket.priceToBook ?? 0) },
+        competitorPricingPct: Object.fromEntries(Object.entries(state.periodFlows?.competitorPricing ?? {
+          retailCurrentAccount: state.market.competitorRetailCurrentAccountRate,
+          retailTermDeposit: state.market.competitorTermDepositRate,
+          corporateDeposit: state.market.competitorCorporateDepositRate ?? null,
+          mortgage: state.market.competitorMortgageRate,
+          consumerLoan: state.market.competitorConsumerLoanRate,
+        }).map(([key, value]) => [key, value === null ? null : round(value * 100)])),
         status: { ...state.status },
       };
     };
@@ -360,22 +486,22 @@ const App = () => {
     ] as [number, unknown[][], unknown[][]]).filter((entry) => entry[1].length || entry[2].length);
     const notableEvents = eventLog
       .filter((event) => event.severity !== 'info' || /filled|partial|capital|dividend|default|breach|failed|maturit|settled/i.test(event.message))
-      .slice(-40)
-      .map(({ severity, message, tags }) => [severity, message.slice(0, 240), ...(tags?.length ? [tags] : [])]);
+      .slice(-24)
+      .map(({ severity, message, tags }) => [severity, message.slice(0, 180), ...(tags?.length ? [tags] : [])]);
     const extract = {
       format: 'banksim-run-extract',
-      formatVersion: 2,
+      formatVersion: 3,
       filename: `banksim-run-${bankState.time.date.toISOString().slice(0, 10)}.json`,
-      prompt: 'Explain this BankSim run: compare start and finish, describe the main turning points, and connect recorded decisions or shocks to changes in profit, balance sheet, capital, liquidity and share price. Cite dates and figures from the series. Distinguish evidence from plausible explanation; flag missing data. End with three management lessons.',
+      prompt: 'Analyse this BankSim run using the aligned monthly series, product flows and credit vintages. Explain the main turning points and link decisions or shocks to profit, lending, credit losses, funding, capital, liquidity and valuation. Cite dates and figures. Treat defaults as realised modelled principal defaults, separate from annual PD; treat LCR flows as 30-day regulatory-weighted projections and cash-flow statement categories as realised monthly net flows. Separate evidence from plausible explanations, flag gaps, then give three management lessons.',
       run: {
         period: [opening.time.date.toISOString().slice(0, 10), bankState.time.date.toISOString().slice(0, 10), bankState.time.step - opening.time.step],
         opening: summarizeState(opening),
         ending: summarizeState(bankState),
         series: {
           months: stateHistory.map((s) => s.time.date.toISOString().slice(0, 7)),
-          note: 'Each value array aligns by index with months. Ratios are percentages; monetary series are £m.',
-          units: { assets: '£m', liabilities: '£m', loans: '£m', deposits: '£m', nii: '£m/month', netProfit: '£m/month', provisions: '£m/month', cet1: '%', cet1Requirement: '%', leverage: '%', lcr: '%', nsfr: '%', sharePrice: '£' },
-          keys: { assets: 'total assets', liabilities: 'total liabilities', loans: 'gross loan book', deposits: 'customer deposits', nii: 'net interest income', netProfit: 'net profit', provisions: 'provision charge', cet1: 'CET1 ratio', cet1Requirement: 'CET1 requirement', leverage: 'leverage ratio', lcr: 'liquidity coverage ratio', nsfr: 'net stable funding ratio', sharePrice: 'share price' },
+          note: 'Arrays align with months. Money is £m; rates are %. Opening-period flows are null.',
+          units: { assets: '£m', liabilities: '£m', loans: '£m', deposits: '£m', nii: '£m/period', netProfit: '£m/period', provisions: '£m/period', rwa: '£m', dividends: '£m/period', cet1: '%', cet1Requirement: '%', leverage: '%', lcr: '%', nsfr: '%', sharePrice: '£', eps: '£/share', pe: 'multiple', pb: 'multiple', fairValue: '£/share', bvps: '£/share', marketCap: '£m', competitorPricing: '%' },
+          keys: { assets: 'total assets', liabilities: 'total liabilities', loans: 'gross loan book', deposits: 'customer deposits', nii: 'net interest income', netProfit: 'net profit', provisions: 'provision charge', rwa: 'risk-weighted assets', dividends: 'cash dividends paid', cet1: 'CET1 ratio', cet1Requirement: 'CET1 requirement', leverage: 'leverage ratio', lcr: 'liquidity coverage ratio', nsfr: 'net stable funding ratio', sharePrice: 'share price', eps: 'smoothed TTM EPS', pe: 'PE multiple', pb: 'price/book multiple', fairValue: 'model fair value', bvps: 'book value/share', marketCap: 'market capitalisation', cashFlow: 'realised monthly net cash-flow statement category', lcr30d: '30-day regulatory-weighted forecast' },
           values: {
             assets: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Asset).reduce((n, i) => n + i.balance, 0))),
             liabilities: stateHistory.map((s) => millions(s.financial.balanceSheet.items.filter((i) => i.side === BalanceSheetSide.Liability).reduce((n, i) => n + i.balance, 0))),
@@ -390,7 +516,61 @@ const App = () => {
             lcr: stateHistory.map((s) => round(s.risk.riskMetrics.lcr * 100)),
             nsfr: stateHistory.map((s) => round(s.risk.riskMetrics.nsfr * 100)),
             sharePrice: stateHistory.map((s) => round(s.equityMarket.sharePrice)),
+            rwa: stateHistory.map((s) => millions(s.risk.riskMetrics.rwa)),
+            dividends: stateHistory.map((s) => millions(s.financial.incomeStatement.dividendsPaid)),
+            eps: stateHistory.map((s) => round(s.equityMarket.epsTtm)),
+            pe: stateHistory.map((s) => round(s.equityMarket.peMultiple)),
+            pb: stateHistory.map((s) => round(s.equityMarket.priceToBook ?? 0)),
+            fairValue: stateHistory.map((s) => round(s.equityMarket.fairValuePerShare ?? s.equityMarket.sharePrice)),
+            bvps: stateHistory.map((s) => round(s.equityMarket.bookValuePerShare ?? 0)),
+            marketCap: stateHistory.map((s) => millions(s.equityMarket.marketCap)),
+            periodMonths: stateHistory.map((s, index) => index === 0 ? null : s.periodFlows?.periodMonths ?? null),
+            competitorPricingPct: {
+              retailCurrentAccount: stateHistory.map((s, index) => round((index > 0 && s.periodFlows ? s.periodFlows.competitorPricing.retailCurrentAccount : s.market.competitorRetailCurrentAccountRate) * 100)),
+              retailTermDeposit: stateHistory.map((s, index) => round((index > 0 && s.periodFlows ? s.periodFlows.competitorPricing.retailTermDeposit : s.market.competitorTermDepositRate) * 100)),
+              corporateDeposit: stateHistory.map((s, index) => {
+                const rate = index > 0 && s.periodFlows ? s.periodFlows.competitorPricing.corporateDeposit : s.market.competitorCorporateDepositRate ?? null;
+                return rate === null ? null : round(rate * 100);
+              }),
+              mortgage: stateHistory.map((s, index) => round((index > 0 && s.periodFlows ? s.periodFlows.competitorPricing.mortgage : s.market.competitorMortgageRate) * 100)),
+              consumerLoan: stateHistory.map((s, index) => round((index > 0 && s.periodFlows ? s.periodFlows.competitorPricing.consumerLoan : s.market.competitorConsumerLoanRate) * 100)),
+            },
+            cashFlowM: {
+              operating: stateHistory.map((s) => millions(s.financial.cashFlowStatement.operatingCashFlow)),
+              investing: stateHistory.map((s) => millions(s.financial.cashFlowStatement.investingCashFlow)),
+              financing: stateHistory.map((s) => millions(s.financial.cashFlowStatement.financingCashFlow)),
+              netChange: stateHistory.map((s) => millions(s.financial.cashFlowStatement.netChange)),
+              cashEnd: stateHistory.map((s) => millions(s.financial.balanceSheet.items.find((i) => i.productType === AssetProductType.CashReserves)?.balance ?? 0)),
+            },
+            lcr30dM: {
+              weightedOutflows: stateHistory.map((s) => s.periodFlows ? millions(s.periodFlows.lcr30d.weightedOutflows) : null),
+              weightedInflows: stateHistory.map((s) => s.periodFlows ? millions(s.periodFlows.lcr30d.weightedInflows) : null),
+              netOutflow: stateHistory.map((s) => s.periodFlows ? millions(s.periodFlows.lcr30d.netOutflow) : null),
+              hqla: stateHistory.map((s) => s.periodFlows ? millions(s.periodFlows.lcr30d.hqla) : null),
+            },
           },
+          productFlows: {
+            legend: { ii: 'interest income, including loan workout discount unwind', fc: 'funding cost', nl: 'new lending', rn: 'renewals/refinancing', sp: 'scheduled principal repayments', pp: 'prepayments including loan sales', df: 'gross principal defaults', dr: 'period defaults / opening gross loan exposure (%)', rc: 'recovery cash', cl: 'recognised loan loss/provision movement' },
+            rows: productFlows,
+          },
+          creditVintages,
+          creditVintageLegend: '[product, origination year or pre-run, originations £m, gross defaults £m, recovery cash £m, realised workout losses £m, cumulative gross-default rate %]; pre-run denominator is opening gross exposure.',
+        },
+        shareValuationModel: {
+          formula: 'Normalized weighted score from ROE vs cost of equity, CET1/leverage headroom, GDP/unemployment/credit spreads, and deposit franchise sets PE and PB via neutral multiple × exp(sensitivity × score), then clamps to configured ranges. Fair value blends stressed EPS×PE and BVPS×PB; weak EPS reliability shifts weight to book value. Apply capital-breach and failure discounts and price floor. Share price mean-reverts exponentially toward fair value, subject to the monthly move cap.',
+          parameters: simConfig.behaviour.sharePriceModel ? {
+            costOfEquity: simConfig.behaviour.sharePriceModel.costOfEquity,
+            scoreWeights: { profitability: simConfig.behaviour.sharePriceModel.profitabilityWeight, capital: simConfig.behaviour.sharePriceModel.capitalWeight, macro: simConfig.behaviour.sharePriceModel.macroWeight, franchise: simConfig.behaviour.sharePriceModel.franchiseWeight },
+            pe: { neutral: simConfig.behaviour.sharePriceModel.peNeutral, min: simConfig.behaviour.sharePriceModel.peMin, max: simConfig.behaviour.sharePriceModel.peMax, scoreSensitivity: simConfig.behaviour.sharePriceModel.peScoreSensitivity },
+            pb: { neutral: simConfig.behaviour.sharePriceModel.pbNeutral, min: simConfig.behaviour.sharePriceModel.pbMin, max: simConfig.behaviour.sharePriceModel.pbMax, scoreSensitivity: simConfig.behaviour.sharePriceModel.pbScoreSensitivity },
+            valuationWeights: { earnings: simConfig.behaviour.sharePriceModel.earningsValuationWeight, book: simConfig.behaviour.sharePriceModel.bookValuationWeight },
+            epsSmoothingMonthly: simConfig.behaviour.sharePriceModel.epsSmoothingMonthly,
+            meanReversionMonthly: simConfig.behaviour.sharePriceModel.meanReversionSpeedMonthly,
+            maxMonthlyMove: simConfig.behaviour.sharePriceModel.maxMonthlyMove,
+            capitalBreachDiscount: simConfig.behaviour.sharePriceModel.capitalBreachDiscount,
+            failurePriceFactor: simConfig.behaviour.sharePriceModel.failurePriceFactor,
+            priceFloor: simConfig.behaviour.sharePriceModel.priceFloor,
+          } : null,
         },
         decisionLegend: {
           tuple: '[elapsed month, action tuples, shock tuples]; elapsed month 1 is the first simulated month.',
