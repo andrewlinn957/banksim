@@ -62,7 +62,10 @@ export const createBorrowerLoan = (
     !Number.isInteger(args.termMonths) || args.termMonths < 1 || args.termMonths > 420)
     throw new Error('Invalid borrower loan parameters');
   const existing = state.loanCohorts[args.productType] ?? [];
-  const id = existing.reduce((max, cohort) => Math.max(max, cohort.cohortId), 0) + 1;
+  // Pool origination uses simulation step as a positive cohort ID. Keep
+  // individually serviced borrower IDs in a separate negative namespace.
+  let id = -1_000_000;
+  while (existing.some(cohort => cohort.cohortId === id)) id--;
   const cohort: LoanCohort = {
     productType: args.productType, cohortId: id, originationStep: state.time.step + 1,
     borrowerId: args.borrowerId,
