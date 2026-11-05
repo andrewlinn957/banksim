@@ -23,6 +23,12 @@ export const creditStageDiagnostics = (state: BankState) => {
     for (const b of buckets ?? []) stageGross.stage3 += Math.max(0,
       b.defaultedPrincipal + (b.modificationAdjustment ?? 0));
   }
+  // Purchased/originated credit-impaired loans are Stage 3 from recognition.
+  // Gross is initial-recovery-PV plus signed cumulative lifetime ECL changes.
+  for (const asset of state.pociAssets ?? []) {
+    stageGross.stage3 += Math.max(0,
+      asset.netCarryingAmount + asset.cumulativeLossAllowance);
+  }
   return {
     stageGross,
     performingReferenceAnnualPd: performingGross > 0 ? referencePdSum / performingGross : null,
