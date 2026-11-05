@@ -52,6 +52,8 @@ describe('Fractional cohort arrears lifecycle', () => {
     c.arrears = { days1to30: 200_000, days31to60: 600_000, days61to89: 400_000 };
     state.loanCohorts = { [product]: [c] };
     state.workoutPipelines = {};
+    // This focused test replaces the seeded book; clear its seeded allowance.
+    state.financial.balanceSheet.items.find(x => x.productType === product)!.lossAllowance = 0;
     const gross0 = c.outstandingPrincipal;
     const capital0 = creditStageDiagnostics(state);
     expect(capital0.stageGross.stage2).toBeCloseTo(1_000_000, 4);
