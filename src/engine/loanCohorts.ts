@@ -485,15 +485,26 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
   return (outstandingPrincipal * r) / denom;
 };
 
-/** Annual-PD ratio is a simplified SICR proxy; cure requires sustained improvement. */
+/** Lifetime default risk over the same remaining contractual period. */
+export const remainingLifetimeDefaultRisk = (annualPd: number, monthsRemaining: number): number =>
+  1 - (1 - clamp(annualPd, 0, .999999)) ** (Math.max(1, monthsRemaining) / 12);
+
+/** SICR compares lifetime default risk with its origination expectation. */
 export const updateCohortStage = (cohort: LoanCohort, config: SimulationConfig): LoanStage => {
   if (cohort.stage === 'stage3') return 'stage3';
-  const reference = Math.max(1e-6, cohort.sicrReferenceAnnualPd ?? cohort.annualPd);
-  const ratio = (cohort.effectiveAnnualPd ?? cohort.annualPd) / reference;
+  if ((cohort.daysPastDue ?? 0) >= 90 || cohort.unlikelyToPay === true) {
+    cohort.sicrCureMonths = 0;
+    return 'stage3';
+  }
+  const remainingMonths = Math.max(1, cohort.termMonths - cohort.ageMonths);
+  const reference = remainingLifetimeDefaultRisk(cohort.sicrReferenceAnnualPd ?? cohort.annualPd, remainingMonths);
+  const current = remainingLifetimeDefaultRisk(cohort.effectiveAnnualPd ?? cohort.annualPd, remainingMonths);
+  const ratio = current / Math.max(1e-9, reference);
   const threshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
   const cureRatio = Math.min(threshold, config.behaviour.ifrs9?.sicrCurePdMultiplier ?? 1.1);
   const cureMonths = Math.max(1, Math.round(config.behaviour.ifrs9?.sicrCureMonths ?? 3));
-  if (ratio >= threshold) {
+  // IFRS 9's more-than-30-days-past-due SICR presumption is a backstop.
+  if (ratio >= threshold || (cohort.daysPastDue ?? 0) > 30) {
     cohort.sicrCureMonths = 0;
     return 'stage2';
   }
@@ -714,6 +725,30 @@ const stepWorkoutPipelines = (args: {
     const recoveryRateFor = workoutRecoveryEstimator(state, config, productType);
     const surviving: LoanWorkoutBucket[] = [];
     buckets.forEach((bucket) => {
+      // IFRS 9 5.4.4: derecognise irrecoverable principal as soon as there is no
+      // reasonable expectation of recovery, including before legal resolution.
+      const expectedRecovery = recoveryRateFor(bucket);
+      const threshold = config.behaviour.creditRiskDynamics?.workoutPipeline?.earlyWriteoffRecoveryThreshold ?? 0;
+      if (!bucket.earlyWriteoffApplied && bucket.monthsToResolution > 1 &&
+          (bucket.noReasonableExpectationOfRecovery === true || expectedRecovery < threshold)) {
+        const before = Math.max(0, bucket.defaultedPrincipal);
+        const writtenOff = before * (1 - expectedRecovery);
+        if (writtenOff > 0) {
+          bucket.defaultedPrincipal = before - writtenOff;
+          // The remaining contractual balance represents recoverable principal.
+          // Further deterioration can still produce losses on final resolution.
+          bucket.expectedRecoveryRate = bucket.defaultedPrincipal > 0 ? 1 : 0;
+          bucket.earlyWriteoffApplied = true;
+          recognizedLoanLosses[productType] = (recognizedLoanLosses[productType] ?? 0) + writtenOff;
+          const mix = bucket.vintageBreakdown?.length ? bucket.vintageBreakdown :
+            [{ originationStep: bucket.originationStep ?? null, defaultedPrincipal: before }];
+          const mixTotal = mix.reduce((sum, v) => sum + Math.max(0, v.defaultedPrincipal), 0);
+          mix.forEach(v => {
+            const share = mixTotal > 0 ? Math.max(0, v.defaultedPrincipal) / mixTotal : 0;
+            if (share > 0) realizedLossesByVintage.push({ productType, originationStep: v.originationStep, amount: writtenOff * share });
+          });
+        }
+      }
       const bucketInterest = workoutPresentValue(state, config, productType, bucket, recoveryRateFor(bucket)) * Math.max(0, bucket.effectiveInterestRate ?? 0) / 12;
       nonCashInterest += bucketInterest;
       nonCashInterestByProduct[productType] = (nonCashInterestByProduct[productType] ?? 0) + bucketInterest;
@@ -905,6 +940,14 @@ export const stepLoanCohorts = (args: {
         }
         if (cohort.ageMonths >= cohort.termMonths) return;
         cohort.stage = normaliseStage(cohort.stage);
+        // Explicit arrears roll forward while repayment difficulty persists.
+        // Cohorts supplied with arrears can cure before the 90-day default backstop.
+        if ((cohort.daysPastDue ?? 0) > 0) {
+          const baselinePd = cohort.sicrReferenceAnnualPd ?? cohort.annualPd;
+          const cured = (cohort.affordabilityIndex ?? 1) <= 1 &&
+            (cohort.effectiveAnnualPd ?? cohort.annualPd) <= baselinePd * 1.1;
+          cohort.daysPastDue = cured ? 0 : Math.min(120, (cohort.daysPastDue ?? 0) + 30);
+        }
         cohort.sector = normaliseSector(productType, cohort.cohortId, cohort.sector);
         cohort.geography = normaliseGeography(cohort.cohortId, cohort.geography);
         cohort.affordabilityIndex = clamp(
@@ -919,10 +962,15 @@ export const stepLoanCohorts = (args: {
         const pmt = monthlyPayment(cohort.outstandingPrincipal, cohort.annualInterestRate, remainingMonths);
         const r = cohort.annualInterestRate / MONTHS_IN_YEAR;
         const interest = cohort.outstandingPrincipal * r;
-        const principal = Math.min(cohort.outstandingPrincipal, Math.max(0, pmt - interest));
+        const isInArrears = (cohort.daysPastDue ?? 0) > 0;
+        const principal = isInArrears ? 0 :
+          Math.min(cohort.outstandingPrincipal, Math.max(0, pmt - interest));
 
         cohort.outstandingPrincipal -= principal;
-        cash.balance += interest + principal;
+        // Non-payment accrues a receivable on the gross book; Stage 2 interest
+        // still uses gross carrying amount, while no cash receipt is invented.
+        if (isInArrears) cohort.outstandingPrincipal += interest;
+        else cash.balance += interest + principal;
         loanInterestIncome += interest;
         loanInterestIncomeByProduct[productType] = (loanInterestIncomeByProduct[productType] ?? 0) + interest;
         scheduledRepaymentsByProduct[productType] = (scheduledRepaymentsByProduct[productType] ?? 0) + principal;
@@ -1063,7 +1111,10 @@ export const stepLoanCohorts = (args: {
         cohort.stage = updateCohortStage(cohort, config);
 
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
-        const defaulted = Math.max(0, cohort.outstandingPrincipal * pdMonth);
+        // Observed delinquency and qualitative unlikeliness-to-pay take precedence
+        // over the portfolio expected-default flow.
+        const defaulted = cohort.stage === 'stage3' ? cohort.outstandingPrincipal :
+          Math.max(0, cohort.outstandingPrincipal * pdMonth);
         if (defaulted > 0) {
           cohort.outstandingPrincipal -= defaulted;
           defaultedPrincipal += defaulted;
@@ -1418,7 +1469,7 @@ export const calculateProvisionTargetFromCohorts = (args: { state: BankState; co
   const out: ProvisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
   for (const [product, cohorts] of Object.entries(state.loanCohorts ?? {})) {
     if (args.productType && product !== args.productType) continue;
-    for (const cohort of cohorts ?? []) out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config);
+    for (const cohort of cohorts ?? []) out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config, state.market);
   }
   for (const [product, buckets] of Object.entries(state.workoutPipelines ?? {})) {
     if (args.productType && product !== args.productType) continue;
