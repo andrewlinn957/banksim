@@ -104,14 +104,16 @@ export const applyLoanModification = (
   if (!cohort) throw new Error('No loan cohort with this ID');
   if (![feeReceived, modificationCostPaid].every(Number.isFinite) ||
     feeReceived < 0 || modificationCostPaid < 0) throw new Error('Invalid modification fees');
+  const cash = state.financial.balanceSheet.items
+    .find(item => item.productType === 'CashReserves');
+  // Validate cash before mutating the cohort; rejected actions are atomic.
+  if ((feeReceived > 0 || modificationCostPaid > 0) &&
+      (!cash || cash.balance + feeReceived < modificationCostPaid))
+    throw new Error('Insufficient cash for modification costs');
   const result = remeasureModifiedCohort(cohort, newAnnualCoupon, newRemainingMonths);
   // Capitalise integral costs and origination/modification fees over the new term.
   // The separate modification gain/loss remains discounted at original EIR.
   if (feeReceived > 0 || modificationCostPaid > 0) {
-    const cash = state.financial.balanceSheet.items
-      .find(item => item.productType === 'CashReserves');
-    if (!cash || cash.balance + feeReceived < modificationCostPaid)
-      throw new Error('Insufficient cash for modification costs');
     const amount = modificationCostPaid - feeReceived;
     cash.balance -= amount;
     cohort.modificationAdjustment = (cohort.modificationAdjustment ?? 0) + amount;
