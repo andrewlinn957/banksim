@@ -173,6 +173,16 @@ export interface FundingLadderParameters {
 
 export interface Ifrs9Parameters {
   sicrPdMultiplierThreshold: number;
+  /** Expected flow between arrears buckets, calibrated as a portfolio approximation. */
+  delinquency?: {
+    enabled: boolean;
+    monthlyEntryPdMultiplier: number;
+    days1to30RollRate: number;
+    days31to60RollRate: number;
+    days61to89DefaultRate: number;
+    directDefaultShare: number;
+    affordabilityRollSensitivity: number;
+  };
   /** Model cure policy: consecutive months below the lower PD ratio. */
   sicrCurePdMultiplier?: number;
   sicrCureMonths?: number;

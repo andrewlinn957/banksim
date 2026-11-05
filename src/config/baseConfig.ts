@@ -390,6 +390,15 @@ const behaviour: BehaviourParameters = {
   },
   ifrs9: {
     sicrPdMultiplierThreshold: 1.75,
+    delinquency: {
+      enabled: true,
+      monthlyEntryPdMultiplier: 1.2,
+      days1to30RollRate: 0.33,
+      days31to60RollRate: 0.38,
+      days61to89DefaultRate: 0.52,
+      directDefaultShare: 0.80,
+      affordabilityRollSensitivity: 0.18,
+    },
     sicrCurePdMultiplier: 1.1,
     sicrCureMonths: 3,
     initialAffordabilityLogSd: 0.45,

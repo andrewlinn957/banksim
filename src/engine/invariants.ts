@@ -8,7 +8,10 @@ export function checkInvariants(state: BankState): string[] {
     if (![i.balance, i.interestRate, i.lossAllowance ?? 0].every(Number.isFinite)) errors.push(`Non-finite balance, rate or allowance on ${i.productType}`);
     if ((i.lossAllowance ?? 0) < 0) errors.push(`Negative allowance on ${i.productType}`);
     if (state.loanCohorts?.[i.productType] || state.workoutPipelines?.[i.productType]) {
-      const gross = (state.loanCohorts?.[i.productType] ?? []).reduce((sum, c) => sum + c.outstandingPrincipal, 0) + (state.workoutPipelines?.[i.productType] ?? []).reduce((sum, b) => sum + b.defaultedPrincipal, 0);
+      const gross = (state.loanCohorts?.[i.productType] ?? []).reduce((sum, c) =>
+        sum + c.outstandingPrincipal + (c.modificationAdjustment ?? 0), 0) +
+        (state.workoutPipelines?.[i.productType] ?? []).reduce((sum, workout) =>
+          sum + workout.defaultedPrincipal + (workout.modificationAdjustment ?? 0), 0);
       if (!Number.isFinite(gross) || Math.abs(gross - (i.lossAllowance ?? 0) - i.balance) > 1) errors.push(`Loan principal and allowance mismatch on ${i.productType}`);
     }
   }

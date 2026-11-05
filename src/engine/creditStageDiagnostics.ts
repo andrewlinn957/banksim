@@ -1,4 +1,5 @@
 import type { BankState } from '../domain/bankState';
+import { cohortArrearsStage2Gross } from './delinquency';
 
 /** Gross funded exposures; PD averages cover performing cohorts only. */
 export const creditStageDiagnostics = (state: BankState) => {
@@ -6,8 +7,10 @@ export const creditStageDiagnostics = (state: BankState) => {
   let performingGross = 0, referencePdSum = 0, currentPdSum = 0, stage2CureProbationGross = 0;
   for (const cohorts of Object.values(state.loanCohorts)) {
     for (const c of cohorts ?? []) {
-      const gross = Math.max(0, c.outstandingPrincipal);
-      stageGross[c.stage] += gross;
+      const gross = Math.max(0, c.outstandingPrincipal + (c.modificationAdjustment ?? 0));
+      const late = c.stage === 'stage1' ? cohortArrearsStage2Gross(c) : 0;
+      stageGross[c.stage] += gross - late;
+      stageGross.stage2 += late;
       if (c.stage !== 'stage3') {
         performingGross += gross;
         referencePdSum += gross * (c.sicrReferenceAnnualPd ?? c.annualPd);
@@ -17,7 +20,8 @@ export const creditStageDiagnostics = (state: BankState) => {
     }
   }
   for (const buckets of Object.values(state.workoutPipelines ?? {})) {
-    for (const b of buckets ?? []) stageGross.stage3 += Math.max(0, b.defaultedPrincipal);
+    for (const b of buckets ?? []) stageGross.stage3 += Math.max(0,
+      b.defaultedPrincipal + (b.modificationAdjustment ?? 0));
   }
   return {
     stageGross,

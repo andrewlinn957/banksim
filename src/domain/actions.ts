@@ -66,6 +66,16 @@ export interface SetCapitalPolicyAction {
   at1CouponMode?: 'auto' | 'pay' | 'skip';
 }
 
+export interface ModifyLoanCohortAction {
+  type: 'modifyLoanCohort';
+  productType: LoanProductType;
+  cohortId: number;
+  newCouponAnnual: number;
+  newRemainingMonths: number;
+  /** Derecognition is a separate IFRS 9 assessment and must be explicitly ruled out. */
+  nonDerecognition: true;
+}
+
 export type PlayerAction =
   | { type: 'setRiskAppetite'; targets: import('./bankState').BehaviouralState['riskAppetite'] | null }
   | AdjustRateAction
@@ -76,4 +86,5 @@ export type PlayerAction =
   | SetMortgagePolicyAction
   | SetTermDepositPolicyAction
   | EnterHedgeAction
-  | SetCapitalPolicyAction;
+  | SetCapitalPolicyAction
+  | ModifyLoanCohortAction;

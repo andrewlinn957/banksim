@@ -38,6 +38,12 @@ export interface LoanCohort {
   daysPastDue?: number;
   /** Qualitative default / unlikeliness-to-pay signal. */
   unlikelyToPay?: boolean;
+  /** The initial effective-interest rate is retained for modification remeasurement. */
+  originalEffectiveInterestRate?: number;
+  /** Difference between principal outstanding and IFRS gross amortised cost. */
+  modificationAdjustment?: number;
+  /** Cohort-level overdue principal, split into monthly arrears bands; included in outstandingPrincipal. */
+  arrears?: { days1to30: number; days31to60: number; days61to89: number };
   effectiveAnnualPd?: number;
   effectiveLgd?: number;
   lgd: number;
@@ -61,6 +67,7 @@ export interface LoanWorkoutBucket {
   vintageBreakdown?: Array<{ originationStep: number | null; defaultedPrincipal: number }>;
   stageAtDefault: LoanStage;
   defaultedPrincipal: number;
+  modificationAdjustment?: number;
   expectedRecoveryRate: number;
   effectiveInterestRate?: number;
   monthsToResolution: number;
