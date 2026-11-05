@@ -1,4 +1,5 @@
 import { cohortEcl, workoutRecoveryEstimator, workoutPresentValue } from './impairment';
+import { pociBalances, stepPociAssets } from './poci';
 import { advanceCohortArrears, cohortArrearsGross, cohortArrearsStage2Gross, accrueOverdueInterest } from './delinquency';
 /**
  * Loan cohort "engine" logic.
@@ -250,7 +251,8 @@ export const syncLoanBalancesFromCohorts = (state: BankState): void => {
       sum + c.outstandingPrincipal + (c.modificationAdjustment ?? 0), 0) +
       (state.workoutPipelines?.[p] ?? []).reduce((sum, b) =>
         sum + b.defaultedPrincipal + (b.modificationAdjustment ?? 0), 0);
-    item.balance = Math.max(0, gross - (item.lossAllowance ?? 0));
+    const purchasedNet = pociBalances(state, p).net;
+    item.balance = Math.max(0, gross + purchasedNet - (item.lossAllowance ?? 0));
   });
 };
 
@@ -1244,6 +1246,14 @@ export const stepLoanCohorts = (args: {
     cleanCohorts(cohorts);
   });
 
+  const pociFlows = stepPociAssets(state, dtMonths);
+  loanInterestIncome += pociFlows.interest;
+  for (const [product, amounts] of Object.entries(pociFlows.byProduct)) {
+    const p = product as ProductType;
+    loanInterestIncomeByProduct[p] = (loanInterestIncomeByProduct[p] ?? 0) + amounts.interest;
+    // POCI receipts are cash collections, including both capital and coupon.
+    scheduledRepaymentsByProduct[p] = (scheduledRepaymentsByProduct[p] ?? 0) + amounts.cash;
+  }
   syncLoanBalancesFromCohorts(state);
   const selectionPressureIndex =
     renewedPrincipal > 0 ? selectionPressureNotional / renewedPrincipal : 0;

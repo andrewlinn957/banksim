@@ -76,6 +76,22 @@ export interface ModifyLoanCohortAction {
   nonDerecognition: true;
 }
 
+export interface PurchasePociLoanAction {
+  type: 'purchasePociLoan';
+  assetId: string;
+  productType: LoanProductType;
+  contractualFaceValue: number;
+  purchasePrice: number;
+  /** Initially expected collectible cash flows, from the next monthly close. */
+  expectedMonthlyCashFlows: number[];
+}
+
+export interface RevisePociLoanAction {
+  type: 'revisePociLoan';
+  assetId: string;
+  revisedMonthlyCashFlows: number[];
+}
+
 export type PlayerAction =
   | { type: 'setRiskAppetite'; targets: import('./bankState').BehaviouralState['riskAppetite'] | null }
   | AdjustRateAction
@@ -87,4 +103,6 @@ export type PlayerAction =
   | SetTermDepositPolicyAction
   | EnterHedgeAction
   | SetCapitalPolicyAction
-  | ModifyLoanCohortAction;
+  | ModifyLoanCohortAction
+  | PurchasePociLoanAction
+  | RevisePociLoanAction;

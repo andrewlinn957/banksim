@@ -4,6 +4,7 @@ import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState, Pi
 import { MarketState } from './market';
 import { CashFlowStatement } from './cashflow';
 import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
+import type { PociAsset } from './poci';
 import { ProductType } from './enums';
 import type { ThreeYearPlanState } from './threeYearPlan';
 import type { CapitalMarketsState } from './capitalMarkets';
@@ -154,6 +155,10 @@ export interface BankState {
   behaviour: BehaviouralState;
   loanCohorts: LoanCohortsMap;
   pendingLoanModificationGainLoss?: number;
+  /** POCI impairment gains/losses booked on changes to expected recoveries. */
+  pendingPociImpairmentGainLoss?: number;
+  /** Purchased/originated credit-impaired assets have individual cash-flow ledgers. */
+  pociAssets?: PociAsset[];
   loanPipelines: LoanPipelineMap;
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;

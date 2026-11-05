@@ -2,6 +2,7 @@ import { recogniseSecurityImpairment } from './securityImpairment';
 import { hedgeFairValue, syncHedgeBalances, revalueHedges } from './hedgeValuation';
 import { commitmentEcl } from './impairment';
 import { applyLoanModification } from './loanModification';
+import { purchasePociAsset, revisePociAsset } from './poci';
 /**
  * Core simulation step logic.
  *
@@ -35,6 +36,8 @@ import {
   EnterHedgeAction,
   SetCapitalPolicyAction,
   ModifyLoanCohortAction,
+  PurchasePociLoanAction,
+  RevisePociLoanAction,
 } from '../domain/actions';
 import {
   Shock,
@@ -173,6 +176,26 @@ const actionHandlers: ActionHandlerMap = {
   },
   setCapitalPolicy: (action: SetCapitalPolicyAction, ctx) => {
     applySetCapitalPolicy(ctx.state, action, ctx.events);
+  },
+  purchasePociLoan: (action: PurchasePociLoanAction, ctx) => {
+    try {
+      const asset = purchasePociAsset(ctx.state, action);
+      syncLoanBalancesFromCohorts(ctx.state);
+      ctx.events.push(createEvent('info',
+        `POCI purchase ${asset.assetId}: cost ${asset.purchasePrice.toFixed(2)}, credit-adjusted EIR ${(asset.creditAdjustedEir * 100).toFixed(2)}%`));
+    } catch (error) {
+      ctx.events.push(createEvent('warning', error instanceof Error ? error.message : 'POCI purchase rejected'));
+    }
+  },
+  revisePociLoan: (action: RevisePociLoanAction, ctx) => {
+    try {
+      const gain = revisePociAsset(ctx.state, action.assetId, action.revisedMonthlyCashFlows);
+      syncLoanBalancesFromCohorts(ctx.state);
+      ctx.events.push(createEvent('info',
+        `POCI lifetime ECL remeasurement ${action.assetId}: P&L ${gain.toFixed(2)}`));
+    } catch (error) {
+      ctx.events.push(createEvent('warning', error instanceof Error ? error.message : 'POCI forecast rejected'));
+    }
   },
   modifyLoanCohort: (action: ModifyLoanCohortAction, ctx) => {
     if (action.nonDerecognition !== true) {
@@ -2109,6 +2132,7 @@ export const closeCapital = (
   defaultedPrincipal: number,
   events: SimulationEvent[],
   loanModificationGainLoss = 0,
+  pociImpairmentGainLoss = 0,
 ): CapitalCloseResult => {
   const loanBookBalance = losses.loanItems.reduce((sum, item) => sum + item.balance, 0);
   const feeIncome = config.behaviour.loanFeeRateMonthly * dtMonths * loanBookBalance;
@@ -2145,7 +2169,7 @@ export const closeCapital = (
   const netInterestIncome = totalInterestIncome - accruals.interestExpense + hedgeCarry;
   const preTaxProfit =
     netInterestIncome + feeIncome + securitiesValuation.fvtplValuationImpact +
-    loanModificationGainLoss - losses.creditLosses - operatingExpenses;
+    loanModificationGainLoss + pociImpairmentGainLoss - losses.creditLosses - operatingExpenses;
   const tax = preTaxProfit > 0 ? preTaxProfit * config.global.taxRate : 0;
   const netIncome = preTaxProfit - tax;
   const totalComprehensiveIncome = netIncome + securitiesValuation.fvociOciMovement;
@@ -2159,6 +2183,7 @@ export const closeCapital = (
     hedgeCarry,
     feeIncome,
     loanModificationGainLoss,
+    pociImpairmentGainLoss,
     creditLosses: losses.creditLosses,
     provisionCharge: losses.provisionCharge,
     realizedLoanLosses: losses.realizedLoanLosses,
@@ -2754,8 +2779,10 @@ export const createSimulationEngine = (): SimulationEngine => {
       cohortStep.defaultedPrincipal,
       events,
       state.pendingLoanModificationGainLoss ?? 0,
+      state.pendingPociImpairmentGainLoss ?? 0,
     );
     state.pendingLoanModificationGainLoss = 0;
+    state.pendingPociImpairmentGainLoss = 0;
     capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;
 
     // Funding drawn or outstanding during this step remains on balance sheet for the month's

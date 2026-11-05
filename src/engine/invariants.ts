@@ -1,5 +1,6 @@
 import { BankState } from '../domain/bankState';
 import { BalanceSheetSide } from '../domain/enums';
+import { pociBalances } from './poci';
 
 export function checkInvariants(state: BankState): string[] {
   const errors: string[] = [];
@@ -12,7 +13,8 @@ export function checkInvariants(state: BankState): string[] {
         sum + c.outstandingPrincipal + (c.modificationAdjustment ?? 0), 0) +
         (state.workoutPipelines?.[i.productType] ?? []).reduce((sum, workout) =>
           sum + workout.defaultedPrincipal + (workout.modificationAdjustment ?? 0), 0);
-      if (!Number.isFinite(gross) || Math.abs(gross - (i.lossAllowance ?? 0) - i.balance) > 1) errors.push(`Loan principal and allowance mismatch on ${i.productType}`);
+      if (!Number.isFinite(gross) || Math.abs(gross + pociBalances(state, i.productType).net -
+        (i.lossAllowance ?? 0) - i.balance) > 1) errors.push(`Loan principal and allowance mismatch on ${i.productType}`);
     }
   }
   if (!Object.values(state.financial.capital).every(Number.isFinite)) errors.push('Non-finite capital');

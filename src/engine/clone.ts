@@ -180,6 +180,11 @@ export const cloneBankState = (state: BankState): BankState => ({
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),
   loanCohorts: cloneLoanCohorts(state.loanCohorts),
+  pociAssets: state.pociAssets?.map(asset => ({
+    ...asset,
+    originalExpectedCashFlows: [...asset.originalExpectedCashFlows],
+    currentExpectedCashFlows: [...asset.currentExpectedCashFlows],
+  })),
   loanPipelines: cloneLoanPipelines(state.loanPipelines),
   workoutPipelines: cloneWorkoutPipelines(state.workoutPipelines),
   fundingLadders: cloneFundingLadders(state.fundingLadders),
