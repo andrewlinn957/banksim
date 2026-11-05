@@ -110,6 +110,7 @@ const cloneLoanCohorts = (raw: LoanCohortsMap): LoanCohortsMap => {
     out[productType] = cohorts.map((c) => ({
       ...c,
       arrears: c.arrears ? { ...c.arrears } : undefined,
+      paymentHistory: c.paymentHistory?.map(record => ({ ...record })),
     }));
   });
   return out;

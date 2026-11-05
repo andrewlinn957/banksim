@@ -19,9 +19,26 @@ export type LoanSector =
 export type LegacyLoanGeography = 'south' | 'midlands' | 'north' | 'other';
 export type LoanGeography = UkItl1Region | LegacyLoanGeography;
 
+export interface BorrowerPaymentRecord {
+  step: number;
+  scheduledDue: number;
+  received: number;
+  overdueAtClose: number;
+  daysPastDueAtClose: number;
+  closingContractualPrincipal: number;
+}
+
 export interface LoanCohort {
   productType: ProductType;
   cohortId: number;
+  /** Explicitly serviced individual loan; aggregate portfolios omit this. */
+  borrowerId?: string;
+  /** Last 36 month-end due/paid entries for identified borrowers. */
+  paymentHistory?: BorrowerPaymentRecord[];
+  /** Gross scheduled payments unpaid at the prior close. */
+  overduePaymentAmount?: number;
+  /** Optional borrower instruction consumed in the next step. */
+  nextPaymentAmount?: number;
   /** Simulation step at origination; absent for the opening portfolio. */
   originationStep?: number;
   originalPrincipal: number;

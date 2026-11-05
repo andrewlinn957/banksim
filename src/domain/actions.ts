@@ -92,6 +92,23 @@ export interface RevisePociLoanAction {
   revisedMonthlyCashFlows: number[];
 }
 
+export interface OriginateBorrowerLoanAction {
+  type: 'originateBorrowerLoan';
+  borrowerId: string;
+  productType: LoanProductType;
+  principal: number;
+  annualInterestRate: number;
+  annualPd: number;
+  lgd: number;
+  termMonths: number;
+}
+export interface SetBorrowerPaymentAction {
+  type: 'setBorrowerPayment';
+  borrowerId: string;
+  /** Cash receipt in the coming simulation month, including arrears repayments. */
+  nextPaymentAmount: number;
+}
+
 export type PlayerAction =
   | { type: 'setRiskAppetite'; targets: import('./bankState').BehaviouralState['riskAppetite'] | null }
   | AdjustRateAction
@@ -105,4 +122,6 @@ export type PlayerAction =
   | SetCapitalPolicyAction
   | ModifyLoanCohortAction
   | PurchasePociLoanAction
-  | RevisePociLoanAction;
+  | RevisePociLoanAction
+  | OriginateBorrowerLoanAction
+  | SetBorrowerPaymentAction;

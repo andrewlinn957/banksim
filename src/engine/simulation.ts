@@ -3,6 +3,7 @@ import { hedgeFairValue, syncHedgeBalances, revalueHedges } from './hedgeValuati
 import { commitmentEcl } from './impairment';
 import { applyLoanModification } from './loanModification';
 import { purchasePociAsset, revisePociAsset } from './poci';
+import { createBorrowerLoan } from './borrowerServicing';
 /**
  * Core simulation step logic.
  *
@@ -38,6 +39,8 @@ import {
   ModifyLoanCohortAction,
   PurchasePociLoanAction,
   RevisePociLoanAction,
+  OriginateBorrowerLoanAction,
+  SetBorrowerPaymentAction,
 } from '../domain/actions';
 import {
   Shock,
@@ -176,6 +179,29 @@ const actionHandlers: ActionHandlerMap = {
   },
   setCapitalPolicy: (action: SetCapitalPolicyAction, ctx) => {
     applySetCapitalPolicy(ctx.state, action, ctx.events);
+  },
+  originateBorrowerLoan: (action: OriginateBorrowerLoanAction, ctx) => {
+    try {
+      if (!PRODUCTS[action.productType]?.behaviour?.isLoan) throw new Error('Unsupported loan product');
+      const cash = findItem(ctx.state.financial.balanceSheet, AssetProductType.CashReserves);
+      if (!cash || cash.balance < action.principal) throw new Error('Insufficient cash for borrower loan');
+      const borrower = createBorrowerLoan(ctx.state, action);
+      cash.balance -= action.principal;
+      syncLoanBalancesFromCohorts(ctx.state);
+      ctx.events.push(createEvent('info', `Individual borrower loan ${borrower.borrowerId} originated`));
+    } catch (error) {
+      ctx.events.push(createEvent('warning',
+        error instanceof Error ? error.message : 'Borrower origination rejected'));
+    }
+  },
+  setBorrowerPayment: (action: SetBorrowerPaymentAction, ctx) => {
+    const borrower = Object.values(ctx.state.loanCohorts).flat()
+      .find(cohort => cohort.borrowerId === action.borrowerId);
+    if (!borrower || !Number.isFinite(action.nextPaymentAmount) || action.nextPaymentAmount < 0) {
+      ctx.events.push(createEvent('warning', 'Unknown borrower or invalid payment amount'));
+      return;
+    }
+    borrower.nextPaymentAmount = action.nextPaymentAmount;
   },
   purchasePociLoan: (action: PurchasePociLoanAction, ctx) => {
     try {
