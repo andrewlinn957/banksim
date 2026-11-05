@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [fast, regression, calibration]
+        suite: [fast, regression]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,6 +26,25 @@ jobs:
       - run: npm run test:${{ matrix.suite }}
       - if: matrix.suite == 'fast'
         run: npm run typecheck && npm run build
+
+  calibration:
+    name: Calibration (${{ matrix.strategy }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        strategy: [unmanaged, balanced, growth, profit, fortress, capital-markets-reliant, levered-growth, adaptive]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run strategy calibration
+        env:
+          CALIBRATION_STRATEGY: ${{ matrix.strategy }}
+        run: npm run test:calibration
 
   browser:
     name: Browser viewport coverage
