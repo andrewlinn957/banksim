@@ -66,7 +66,7 @@ export const cohortEcl = (c: LoanCohort, config: SimulationConfig, market?: EclM
   const principal = Math.max(0, c.outstandingPrincipal);
   const term = Math.max(1, c.termMonths - c.ageMonths);
   const horizon = c.stage === 'stage1' ? Math.min(12, term) : term;
-  const r = Math.max(0, c.annualInterestRate) / 12;
+  const r = Math.max(0, c.originalEffectiveInterestRate ?? c.annualInterestRate) / 12;
   const lgd = clamp(c.effectiveLgd ?? c.lgd);
   if (c.stage === 'stage3') {
     const lag = Math.max(1, config.behaviour.creditRiskDynamics?.workoutPipeline?.baseResolutionLagMonths ?? 6);

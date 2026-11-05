@@ -1,4 +1,7 @@
 import type { LoanCohort } from '../domain/loanCohorts';
+import type { BankState } from '../domain/bankState';
+import type { LoanProductType } from '../products/capabilities';
+import { syncLoanBalancesFromCohorts } from './loanCohorts';
 
 const requireFinite = (n: number, name: string): void => {
   if (!Number.isFinite(n) || n < 0) throw new Error(name + ' must be a non-negative finite number');
@@ -89,4 +92,17 @@ export const cumulativePociEclChange = (
     change += (prior - current) / (1 + r) ** (i + 1);
   }
   return change;
+};
+
+/** Apply the non-derecognition modification to the active simulation loan ledger. */
+export const applyLoanModification = (
+  state: BankState, productType: LoanProductType, cohortId: number,
+  newAnnualCoupon: number, newRemainingMonths: number,
+): { modificationGainLoss: number; oldGross: number; modifiedGross: number } => {
+  const cohort = state.loanCohorts[productType]?.find(c => c.cohortId === cohortId);
+  if (!cohort) throw new Error('No loan cohort with this ID');
+  const result = remeasureModifiedCohort(cohort, newAnnualCoupon, newRemainingMonths);
+  state.pendingLoanModificationGainLoss = (state.pendingLoanModificationGainLoss ?? 0) + result.modificationGainLoss;
+  syncLoanBalancesFromCohorts(state);
+  return result;
 };

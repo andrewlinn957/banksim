@@ -20,7 +20,8 @@ export const creditStageDiagnostics = (state: BankState) => {
     }
   }
   for (const buckets of Object.values(state.workoutPipelines ?? {})) {
-    for (const b of buckets ?? []) stageGross.stage3 += Math.max(0, b.defaultedPrincipal);
+    for (const b of buckets ?? []) stageGross.stage3 += Math.max(0,
+      b.defaultedPrincipal + (b.modificationAdjustment ?? 0));
   }
   return {
     stageGross,
