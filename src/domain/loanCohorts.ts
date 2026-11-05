@@ -34,6 +34,10 @@ export interface LoanCohort {
   sicrReferenceAnnualPd?: number;
   /** Consecutive monthly closes meeting the Stage 2 cure criterion. */
   sicrCureMonths?: number;
+  /** Observable contractual arrears; 31+ days is a SICR backstop, 90+ is default. */
+  daysPastDue?: number;
+  /** Qualitative default / unlikeliness-to-pay signal. */
+  unlikelyToPay?: boolean;
   effectiveAnnualPd?: number;
   effectiveLgd?: number;
   lgd: number;
@@ -60,6 +64,11 @@ export interface LoanWorkoutBucket {
   expectedRecoveryRate: number;
   effectiveInterestRate?: number;
   monthsToResolution: number;
+  /** Write-offs can precede legal workout resolution. */
+  earlyWriteoffApplied?: boolean;
+  /** Recovery penalty already incorporated when the irrecoverable portion was written off. */
+  recoveryPenaltyAtWriteoff?: number;
+  noReasonableExpectationOfRecovery?: boolean;
   sector?: LoanSector;
   geography?: LoanGeography;
 }

@@ -26,9 +26,17 @@ describe('Loan accounting identities', () => {
   });
   it('uses stressed PD, weighted scenarios, remaining life and discounting', () => {
     const c = { ...initialState.loanCohorts[mortgage]![0], outstandingPrincipal: 100, termMonths: 12, ageMonths: 11, stage: 'stage1' as const, annualInterestRate: .12, annualPd: .12, effectiveAnnualPd: .24, effectiveLgd: .8 };
+    // Isolate a known three-point PD distribution to check the closed-form
+    // calculation, independently of the live economic-path configuration.
+    const fixedPdConfig = structuredClone(baseConfig);
+    fixedPdConfig.behaviour.ifrs9!.eclScenarios = [
+      { weight: .2, pdMultiplier: .75 },
+      { weight: .6, pdMultiplier: 1 },
+      { weight: .2, pdMultiplier: 1.5 },
+    ];
     const expected = 100 * .8 / 1.01 * (.2 * (1 - .82 ** (1 / 12)) + .6 * (1 - .76 ** (1 / 12)) + .2 * (1 - .64 ** (1 / 12)));
-    expect(cohortEcl(c, baseConfig)).toBeCloseTo(expected, 10);
-    expect(cohortEcl({ ...c, ageMonths: 0, termMonths: 60, stage: 'stage2' }, baseConfig)).toBeGreaterThan(cohortEcl({ ...c, ageMonths: 0, termMonths: 60 }, baseConfig));
+    expect(cohortEcl(c, fixedPdConfig)).toBeCloseTo(expected, 10);
+    expect(cohortEcl({ ...c, ageMonths: 0, termMonths: 60, stage: 'stage2' }, fixedPdConfig)).toBeGreaterThan(cohortEcl({ ...c, ageMonths: 0, termMonths: 60 }, fixedPdConfig));
   });
   it('settles an already allowed workout without a second loss and identifies net interest', () => {
     const config = structuredClone(baseConfig);

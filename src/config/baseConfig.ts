@@ -364,6 +364,7 @@ const behaviour: BehaviourParameters = {
       baseRecoveryRateFloor: 0.15,
       macroRecoveryPenaltySensitivity: 2.2,
       concentrationRecoveryPenaltySensitivity: 0.35,
+      earlyWriteoffRecoveryThreshold: 0.20,
     },
   },
   costModel: {
@@ -393,7 +394,13 @@ const behaviour: BehaviourParameters = {
     sicrCureMonths: 3,
     initialAffordabilityLogSd: 0.45,
     initialAffordabilitySeasoningMonths: 12,
-    eclScenarios: [{ weight: .2, pdMultiplier: .75 }, { weight: .6, pdMultiplier: 1 }, { weight: .2, pdMultiplier: 1.5 }],
+    // Forward economic paths around the market state; shocks develop and decay
+    // over time. Percentages are represented as decimal rates.
+    eclScenarios: [
+      { weight: .2, pdMultiplier: 1, gdpGrowthMoMShock: .0015, unemploymentRateShock: -.008, creditSpreadShock: -.004, lgdMultiplier: .93 },
+      { weight: .6, pdMultiplier: 1, gdpGrowthMoMShock: 0, unemploymentRateShock: 0, creditSpreadShock: 0, lgdMultiplier: 1 },
+      { weight: .2, pdMultiplier: 1, gdpGrowthMoMShock: -.003, unemploymentRateShock: .018, creditSpreadShock: .009, lgdMultiplier: 1.12 },
+    ],
   },
   liquidityDynamics: {
     recessionDepositOutflowMultiplier: 1.25,

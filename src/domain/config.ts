@@ -138,6 +138,8 @@ export interface WorkoutPipelineParameters {
   baseRecoveryRateFloor: number;
   macroRecoveryPenaltySensitivity: number;
   concentrationRecoveryPenaltySensitivity: number;
+  /** Early partial write-off only when recovery is no longer reasonably expected. */
+  earlyWriteoffRecoveryThreshold?: number;
 }
 
 export interface CreditRiskDynamicsParameters {
@@ -177,7 +179,15 @@ export interface Ifrs9Parameters {
   /** Seeded historical affordability dispersion, not a target Stage 2 share. */
   initialAffordabilityLogSd?: number;
   initialAffordabilitySeasoningMonths?: number;
-  eclScenarios?: Array<{ weight: number; pdMultiplier: number }>;
+  /** Scenario-specific economic forecast deviations (decimal rates, not percentages). */
+  eclScenarios?: Array<{
+    weight: number;
+    pdMultiplier: number;
+    gdpGrowthMoMShock?: number;
+    unemploymentRateShock?: number;
+    creditSpreadShock?: number;
+    lgdMultiplier?: number;
+  }>;
 }
 
 export interface LiquidityDynamicsParameters {

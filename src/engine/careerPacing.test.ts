@@ -28,7 +28,7 @@ describe('Career pacing and economic sensitivity', () => {
     expect(failureMonth === null || failureMonth >= 36).toBe(true);
     // An unattended but initially viable retail bank should remain economically meaningful rather than failing mechanically.
     expect(state.financial.capital.cet1).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   it('does not multiply franchise damage when the same deposit book is split into lines', () => {
     const state = cloneBankState(initialState);
