@@ -1,4 +1,5 @@
 import { cohortEcl, workoutRecoveryEstimator, workoutPresentValue } from './impairment';
+import { advanceCohortArrears, cohortArrearsGross, cohortArrearsStage2Gross, accrueOverdueInterest } from './delinquency';
 /**
  * Loan cohort "engine" logic.
  *
@@ -603,7 +604,8 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
   cohorts.forEach((cohort) => {
     const sector = cohort.sector ?? fallbackSectorForProduct(cohort.productType);
     const geography = cohort.geography ?? fallbackGeographyForCohort(cohort.cohortId);
-    const key = [cohort.productType, cohort.stage, cohort.termMonths, sector, geography].join('|');
+    const key = [cohort.productType, cohort.stage, cohort.termMonths, sector, geography,
+      cohort.arrears ? 'overdue' : 'current', cohort.daysPastDue ?? 0].join('|');
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, { ...cohort, sector, geography });
@@ -629,6 +631,13 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
       cohort.effectiveAnnualPd ?? cohort.annualPd
     );
     existing.effectiveLgd = weighted(existing.effectiveLgd ?? existing.lgd, cohort.effectiveLgd ?? cohort.lgd);
+    if (cohort.arrears) {
+      existing.arrears = {
+        days1to30: (existing.arrears?.days1to30 ?? 0) + cohort.arrears.days1to30,
+        days31to60: (existing.arrears?.days31to60 ?? 0) + cohort.arrears.days31to60,
+        days61to89: (existing.arrears?.days61to89 ?? 0) + cohort.arrears.days61to89,
+      };
+    }
   });
   return [...grouped.values()];
 };
@@ -963,18 +972,23 @@ export const stepLoanCohorts = (args: {
         validateCohort(cohort, maxTermMonths);
 
         const remainingMonths = cohort.termMonths - cohort.ageMonths;
-        const pmt = monthlyPayment(cohort.outstandingPrincipal, cohort.annualInterestRate, remainingMonths);
         const r = cohort.annualInterestRate / MONTHS_IN_YEAR;
-        const interest = cohort.outstandingPrincipal * r;
-        const isInArrears = (cohort.daysPastDue ?? 0) > 0;
-        const principal = isInArrears ? 0 :
-          Math.min(cohort.outstandingPrincipal, Math.max(0, pmt - interest));
-
+        const openingGross = cohort.outstandingPrincipal;
+        const manualArrears = (cohort.daysPastDue ?? 0) > 0;
+        const overdue = manualArrears ? openingGross : Math.min(openingGross, cohortArrearsGross(cohort));
+        const performing = Math.max(0, openingGross - overdue);
+        const pmt = monthlyPayment(performing, cohort.annualInterestRate, remainingMonths);
+        const interest = openingGross * r;
+        const interestCollected = performing * r;
+        const principal = Math.min(performing, Math.max(0, pmt - interestCollected));
         cohort.outstandingPrincipal -= principal;
-        // Non-payment accrues a receivable on the gross book; Stage 2 interest
-        // still uses gross carrying amount, while no cash receipt is invented.
-        if (isInArrears) cohort.outstandingPrincipal += interest;
-        else cash.balance += interest + principal;
+        if (manualArrears) {
+          cohort.outstandingPrincipal += interest;
+        } else {
+          // Unpaid interest remains in amortised cost and the overdue bands.
+          cohort.outstandingPrincipal += accrueOverdueInterest(cohort, r);
+          cash.balance += principal + interestCollected;
+        }
         loanInterestIncome += interest;
         loanInterestIncomeByProduct[productType] = (loanInterestIncomeByProduct[productType] ?? 0) + interest;
         scheduledRepaymentsByProduct[productType] = (scheduledRepaymentsByProduct[productType] ?? 0) + principal;
@@ -994,7 +1008,9 @@ export const stepLoanCohorts = (args: {
                 refinanceConfig.maxPrepayRateMonthly
               )
             : 0;
-        const prepaid = Math.min(cohort.outstandingPrincipal, cohort.outstandingPrincipal * prepayRate);
+        const eligibleToPrepay = Math.max(0, cohort.outstandingPrincipal -
+          ((cohort.daysPastDue ?? 0) > 0 ? cohort.outstandingPrincipal : cohortArrearsGross(cohort)));
+        const prepaid = Math.min(eligibleToPrepay, eligibleToPrepay * prepayRate);
         if (prepaid > 0) {
           cohort.outstandingPrincipal -= prepaid;
           cash.balance += prepaid;
@@ -1028,9 +1044,10 @@ export const stepLoanCohorts = (args: {
           cohort.outstandingPrincipal > 0;
         if (shouldRenew) {
           const renewalShare = clamp(adverseConfig.renewalShareMonthly, 0, 1);
+          const performingForRenewal = Math.max(0, cohort.outstandingPrincipal - cohortArrearsGross(cohort));
           const renewalPrincipal = Math.min(
-            cohort.outstandingPrincipal,
-            cohort.outstandingPrincipal * renewalShare
+            performingForRenewal,
+            performingForRenewal * renewalShare
           );
           if (renewalPrincipal > 0) {
             const renewalSelection = calculateAdverseSelectionMultiplier({
@@ -1115,10 +1132,14 @@ export const stepLoanCohorts = (args: {
         cohort.stage = updateCohortStage(cohort, config);
 
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
-        // Observed delinquency and qualitative unlikeliness-to-pay take precedence
-        // over the portfolio expected-default flow.
+        const arrearsFlow = advanceCohortArrears(cohort, annualPd, config);
+        const currentGross = Math.max(0, cohort.outstandingPrincipal - cohortArrearsGross(cohort) - arrearsFlow.arrearsDefault);
+        // Direct unlikeliness-to-pay defaults coexist with 90+ arrears defaults;
+        // neither flow can default the same principal twice.
+        const directDefault = Math.min(currentGross,
+          currentGross * pdMonth * arrearsFlow.directDefaultShare);
         const defaulted = cohort.stage === 'stage3' ? cohort.outstandingPrincipal :
-          Math.max(0, cohort.outstandingPrincipal * pdMonth);
+          Math.min(cohort.outstandingPrincipal, directDefault + arrearsFlow.arrearsDefault);
         if (defaulted > 0) {
           cohort.outstandingPrincipal -= defaulted;
           defaultedPrincipal += defaulted;
@@ -1473,7 +1494,21 @@ export const calculateProvisionTargetFromCohorts = (args: { state: BankState; co
   const out: ProvisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
   for (const [product, cohorts] of Object.entries(state.loanCohorts ?? {})) {
     if (args.productType && product !== args.productType) continue;
-    for (const cohort of cohorts ?? []) out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config, state.market);
+    for (const cohort of cohorts ?? []) {
+      const lateArrears = cohort.stage === 'stage1' ? cohortArrearsStage2Gross(cohort) : 0;
+      if (lateArrears > 0) {
+        const normal = Math.max(0, cohort.outstandingPrincipal - lateArrears);
+        if (normal > 0) out.stage1 += cohortEcl({ ...cohort, outstandingPrincipal: normal }, config, state.market);
+        // Delinquency backstop implies lifetime ECL, with a stronger PD on overdue balances.
+        out.stage2 += cohortEcl({
+          ...cohort, outstandingPrincipal: lateArrears, stage: 'stage2',
+          effectiveAnnualPd: Math.max(cohort.effectiveAnnualPd ?? cohort.annualPd,
+            2 * (cohort.sicrReferenceAnnualPd ?? cohort.annualPd)),
+        }, config, state.market);
+      } else {
+        out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config, state.market);
+      }
+    }
   }
   for (const [product, buckets] of Object.entries(state.workoutPipelines ?? {})) {
     if (args.productType && product !== args.productType) continue;

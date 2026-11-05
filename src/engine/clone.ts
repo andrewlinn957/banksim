@@ -107,7 +107,10 @@ const cloneLoanCohorts = (raw: LoanCohortsMap): LoanCohortsMap => {
   const out: Partial<Record<ProductType, LoanCohort[]>> = {};
   const entries = Object.entries(raw) as Array<[ProductType, LoanCohort[]]>;
   entries.forEach(([productType, cohorts]) => {
-    out[productType] = cohorts.map((c) => ({ ...c }));
+    out[productType] = cohorts.map((c) => ({
+      ...c,
+      arrears: c.arrears ? { ...c.arrears } : undefined,
+    }));
   });
   return out;
 };

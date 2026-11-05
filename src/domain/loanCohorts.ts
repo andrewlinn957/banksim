@@ -38,6 +38,8 @@ export interface LoanCohort {
   daysPastDue?: number;
   /** Qualitative default / unlikeliness-to-pay signal. */
   unlikelyToPay?: boolean;
+  /** Cohort-level overdue principal, split into monthly arrears bands; included in outstandingPrincipal. */
+  arrears?: { days1to30: number; days31to60: number; days61to89: number };
   effectiveAnnualPd?: number;
   effectiveLgd?: number;
   lgd: number;
