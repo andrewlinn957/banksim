@@ -28,7 +28,6 @@ test('export distinguishes earnings bases and reconciles opening capital and com
 
   await page.getByText('Settings', { exact: true }).click();
   await page.locator('.settings-menu label').filter({ hasText: /^Speed/ }).locator('select').selectOption('450');
-  await page.getByLabel('Pause when buffers need attention').uncheck();
   await page.getByText('Settings', { exact: true }).click();
   await page.getByLabel('Advance time').selectOption('month');
   for (let month = 0; month < 12; month += 1) {
