@@ -1,4 +1,6 @@
 import { cohortEcl, workoutRecoveryEstimator, workoutPresentValue } from './impairment';
+import { pociBalances, stepPociAssets } from './poci';
+import { serviceBorrowerLoan } from './borrowerServicing';
 import { advanceCohortArrears, cohortArrearsGross, cohortArrearsStage2Gross, accrueOverdueInterest } from './delinquency';
 /**
  * Loan cohort "engine" logic.
@@ -245,12 +247,14 @@ export const sumLoanOutstanding = (cohorts: readonly LoanCohort[] | undefined): 
 export const syncLoanBalancesFromCohorts = (state: BankState): void => {
   state.financial.balanceSheet.items.forEach(item => {
     const p = item.productType;
-    if (!isLoanProduct(p) || (!state.loanCohorts?.[p] && !state.workoutPipelines?.[p])) return;
+    if (!isLoanProduct(p) || (!state.loanCohorts?.[p] && !state.workoutPipelines?.[p] &&
+      !(state.pociAssets ?? []).some(asset => asset.productType === p))) return;
     const gross = (state.loanCohorts?.[p] ?? []).reduce((sum, c) =>
       sum + c.outstandingPrincipal + (c.modificationAdjustment ?? 0), 0) +
       (state.workoutPipelines?.[p] ?? []).reduce((sum, b) =>
         sum + b.defaultedPrincipal + (b.modificationAdjustment ?? 0), 0);
-    item.balance = Math.max(0, gross - (item.lossAllowance ?? 0));
+    const purchasedNet = pociBalances(state, p).net;
+    item.balance = Math.max(0, gross + purchasedNet - (item.lossAllowance ?? 0));
   });
 };
 
@@ -610,7 +614,8 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
     const geography = cohort.geography ?? fallbackGeographyForCohort(cohort.cohortId);
     const key = [cohort.productType, cohort.stage, cohort.termMonths, sector, geography,
       cohort.arrears ? 'overdue' : 'current', cohort.daysPastDue ?? 0,
-      cohort.originalEffectiveInterestRate ?? 'standard'].join('|');
+      cohort.originalEffectiveInterestRate ?? 'standard',
+      cohort.borrowerId ?? 'portfolio'].join('|');
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, { ...cohort, sector, geography });
@@ -951,7 +956,7 @@ export const stepLoanCohorts = (args: {
         if (cohort.outstandingPrincipal <= 0) return;
         // Assess observed arrears before booking this month's contractual interest.
         // An already credit-impaired cohort must use the workout net-interest basis.
-        if ((cohort.daysPastDue ?? 0) > 0) {
+        if (!cohort.borrowerId && (cohort.daysPastDue ?? 0) > 0) {
           const baselinePd = cohort.sicrReferenceAnnualPd ?? cohort.annualPd;
           const cured = (cohort.affordabilityIndex ?? 1) <= 1 &&
             (cohort.effectiveAnnualPd ?? cohort.annualPd) <= baselinePd * 1.1;
@@ -983,22 +988,31 @@ export const stepLoanCohorts = (args: {
         const remainingMonths = cohort.termMonths - cohort.ageMonths;
         const r = cohort.annualInterestRate / MONTHS_IN_YEAR;
         const openingGross = cohort.outstandingPrincipal;
-        const manualArrears = (cohort.daysPastDue ?? 0) > 0;
+        const manualArrears = !cohort.borrowerId && (cohort.daysPastDue ?? 0) > 0;
         const overdue = manualArrears ? openingGross : Math.min(openingGross, cohortArrearsGross(cohort));
         const performing = Math.max(0, openingGross - overdue);
-        const pmt = monthlyPayment(performing, cohort.annualInterestRate, remainingMonths);
+        const pmt = monthlyPayment(cohort.borrowerId ? openingGross : performing,
+          cohort.annualInterestRate, remainingMonths);
         const contractualInterest = openingGross * r;
-        const eir = (cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate) / MONTHS_IN_YEAR;
+        const eir = (cohort.postModificationEffectiveRate ??
+          cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate) / MONTHS_IN_YEAR;
         const interest = Math.max(0, openingGross + (cohort.modificationAdjustment ?? 0)) * eir;
         const interestCollected = performing * r;
-        const principal = Math.min(performing, Math.max(0, pmt - interestCollected));
-        cohort.outstandingPrincipal -= principal;
-        if (manualArrears) {
-          cohort.outstandingPrincipal += contractualInterest;
+        let principal = 0;
+        if (cohort.borrowerId) {
+          const borrowerPayment = serviceBorrowerLoan(state, cohort, state.time.step + 1,
+            pmt, contractualInterest, cohort.effectiveAnnualPd ?? cohort.annualPd);
+          principal = borrowerPayment.principalCollected;
+          cash.balance += borrowerPayment.paid;
         } else {
-          // Unpaid interest remains in amortised cost and the overdue bands.
-          cohort.outstandingPrincipal += accrueOverdueInterest(cohort, r);
-          cash.balance += principal + interestCollected;
+          principal = Math.min(performing, Math.max(0, pmt - interestCollected));
+          cohort.outstandingPrincipal -= principal;
+          if (manualArrears) {
+            cohort.outstandingPrincipal += contractualInterest;
+          } else {
+            cohort.outstandingPrincipal += accrueOverdueInterest(cohort, r);
+            cash.balance += principal + interestCollected;
+          }
         }
         if (cohort.modificationAdjustment !== undefined) {
           cohort.modificationAdjustment += interest - contractualInterest;
@@ -1013,7 +1027,7 @@ export const stepLoanCohorts = (args: {
         const relativeRisk = clamp((pdPivot - cohort.annualPd) / pdPivot, -1, 1.5);
         const selectiveFactor = Math.max(0.15, 1 + refinanceConfig.riskSelectivity * relativeRisk);
         const prepayRate =
-          cohort.ageMonths >= refinanceConfig.minSeasoningMonths
+          !cohort.borrowerId && cohort.ageMonths >= refinanceConfig.minSeasoningMonths
             ? clamp(
                 (refinanceConfig.basePrepayRateMonthly +
                   refinanceConfig.incentiveSensitivity * couponIncentive) *
@@ -1052,7 +1066,7 @@ export const stepLoanCohorts = (args: {
         cohort.affordabilityIndex = affordabilityIndex;
 
         const shouldRenew =
-          adverseConfig.renewalShareMonthly > 0 &&
+          !cohort.borrowerId && adverseConfig.renewalShareMonthly > 0 &&
           remainingMonths <= adverseConfig.renewalEligibilityMonths &&
           cohort.ageMonths > 0 &&
           cohort.outstandingPrincipal > 0;
@@ -1146,7 +1160,9 @@ export const stepLoanCohorts = (args: {
         cohort.stage = updateCohortStage(cohort, config);
 
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
-        const arrearsFlow = advanceCohortArrears(cohort, annualPd, config);
+        const arrearsFlow = cohort.borrowerId
+          ? { arrearsDefault: 0, directDefaultShare: 0, newArrears: 0 }
+          : advanceCohortArrears(cohort, annualPd, config);
         const currentGross = Math.max(0, cohort.outstandingPrincipal - cohortArrearsGross(cohort) - arrearsFlow.arrearsDefault);
         // Direct unlikeliness-to-pay defaults coexist with 90+ arrears defaults;
         // neither flow can default the same principal twice.
@@ -1244,6 +1260,14 @@ export const stepLoanCohorts = (args: {
     cleanCohorts(cohorts);
   });
 
+  const pociFlows = stepPociAssets(state, dtMonths);
+  loanInterestIncome += pociFlows.interest;
+  for (const [product, amounts] of Object.entries(pociFlows.byProduct)) {
+    const p = product as ProductType;
+    loanInterestIncomeByProduct[p] = (loanInterestIncomeByProduct[p] ?? 0) + amounts.interest;
+    // POCI receipts are cash collections, including both capital and coupon.
+    scheduledRepaymentsByProduct[p] = (scheduledRepaymentsByProduct[p] ?? 0) + amounts.cash;
+  }
   syncLoanBalancesFromCohorts(state);
   const selectionPressureIndex =
     renewedPrincipal > 0 ? selectionPressureNotional / renewedPrincipal : 0;

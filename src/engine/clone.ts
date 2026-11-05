@@ -110,6 +110,7 @@ const cloneLoanCohorts = (raw: LoanCohortsMap): LoanCohortsMap => {
     out[productType] = cohorts.map((c) => ({
       ...c,
       arrears: c.arrears ? { ...c.arrears } : undefined,
+      paymentHistory: c.paymentHistory?.map(record => ({ ...record })),
     }));
   });
   return out;
@@ -180,6 +181,15 @@ export const cloneBankState = (state: BankState): BankState => ({
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),
   loanCohorts: cloneLoanCohorts(state.loanCohorts),
+  borrowerPaymentHistory: state.borrowerPaymentHistory
+    ? Object.fromEntries(Object.entries(state.borrowerPaymentHistory)
+      .map(([id, history]) => [id, history.map(entry => ({ ...entry }))]))
+    : undefined,
+  pociAssets: state.pociAssets?.map(asset => ({
+    ...asset,
+    originalExpectedCashFlows: [...asset.originalExpectedCashFlows],
+    currentExpectedCashFlows: [...asset.currentExpectedCashFlows],
+  })),
   loanPipelines: cloneLoanPipelines(state.loanPipelines),
   workoutPipelines: cloneWorkoutPipelines(state.workoutPipelines),
   fundingLadders: cloneFundingLadders(state.fundingLadders),
