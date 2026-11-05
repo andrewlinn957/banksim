@@ -76,6 +76,28 @@ export interface ShareValuationDiagnostics {
   moveLimitFactor: number;
   sharePrice: number;
   quotedPe: number | null;
+  baseCostOfEquity: number;
+  creditSpreadPremium: number;
+  uncertaintyPremium: number;
+  capitalRiskPremium: number;
+  profitabilitySignal: number;
+  capitalSignal: number;
+  macroSignal: number;
+  franchiseSignal: number;
+  trailingEarningsMonths: number;
+  trailingNetIncome: number;
+  trailingCommonIncome: number;
+  trailingWeightedAverageShares: number;
+  earningsVolatility: number;
+  earningsDownsideSurprise: number;
+  earningsUncertainty: number;
+  earningsPersistence: number;
+  persistentEps: number;
+  discountRateFactor: number;
+  distributableCapitalProxy: number;
+  excessCapitalPerShare: number;
+  trailingEps: number | null;
+  quotedPeTtm: number | null;
 }
 
 /** Compact flow data retained with each closing state for run analysis. */

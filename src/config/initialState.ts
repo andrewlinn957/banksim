@@ -312,8 +312,6 @@ const equityMarket: EquityMarketState = {
   marketCap: 0.74e9,
   epsTtm: 0.085,
   peMultiple: 8.7,
-  bookValuePerShare: 0.825,
-  priceToBook: 0.897,
   fairValuePerShare: 0.74,
 };
 
@@ -423,6 +421,13 @@ seedState.financial.balanceSheet.items.forEach((item) => {
 });
 
 initializeOpeningSupervisoryAssessments(seedState, baseConfig);
+// Derive the opening book multiples after all opening accounting entries. The
+// share quote is an independent market input, not a target price/book ratio.
+const openingCommonEquity = seedState.financial.capital.cet1 + seedState.financial.capital.accumulatedOCI;
+seedState.equityMarket.bookValuePerShare = openingCommonEquity / seedState.equityMarket.sharesOutstanding;
+seedState.equityMarket.priceToBook = seedState.equityMarket.bookValuePerShare > 0
+  ? seedState.equityMarket.sharePrice / seedState.equityMarket.bookValuePerShare
+  : 0;
 const riskMetrics = calculateRiskMetrics({ state: seedState, config: baseConfig });
 const compliance = evaluateCompliance(riskMetrics, baseConfig.riskLimits);
 

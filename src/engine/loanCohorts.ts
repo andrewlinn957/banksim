@@ -404,6 +404,7 @@ export const upsertOriginationCohort = (args: {
     existing.outstandingPrincipal += fundedPrincipal;
     existing.originalPrincipal += fundedPrincipal;
     existing.annualInterestRate = w > 0 ? (existing.annualInterestRate * w0 + args.annualInterestRate * w1) / w : args.annualInterestRate;
+    existing.sicrReferenceAnnualPd = w > 0 ? ((existing.sicrReferenceAnnualPd ?? existing.annualPd) * w0 + args.annualPd * w1) / w : args.annualPd;
     existing.annualPd = w > 0 ? (existing.annualPd * w0 + args.annualPd * w1) / w : args.annualPd;
     existing.lgd = w > 0 ? (existing.lgd * w0 + args.lgd * w1) / w : args.lgd;
     existing.termMonths = Math.max(existing.termMonths, termMonths);
@@ -484,12 +485,23 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
   return (outstandingPrincipal * r) / denom;
 };
 
-const classifyStage = (args: { currentStage: LoanStage; stressedAnnualPd: number; baseAnnualPd: number; sicrThreshold: number }): LoanStage => {
-  // SICR is assessed relative to origination, including macro effects in stressed PD.
-  // A single negative GDP observation does not move every borrower into lifetime ECL.
-  if (args.currentStage === 'stage3') return 'stage3';
-  if (args.stressedAnnualPd >= Math.max(1e-6, args.baseAnnualPd) * args.sicrThreshold) return 'stage2';
-  if (args.currentStage === 'stage2' && args.stressedAnnualPd > Math.max(1e-6, args.baseAnnualPd) * 1.1) return 'stage2';
+/** Annual-PD ratio is a simplified SICR proxy; cure requires sustained improvement. */
+export const updateCohortStage = (cohort: LoanCohort, config: SimulationConfig): LoanStage => {
+  if (cohort.stage === 'stage3') return 'stage3';
+  const reference = Math.max(1e-6, cohort.sicrReferenceAnnualPd ?? cohort.annualPd);
+  const ratio = (cohort.effectiveAnnualPd ?? cohort.annualPd) / reference;
+  const threshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
+  const cureRatio = Math.min(threshold, config.behaviour.ifrs9?.sicrCurePdMultiplier ?? 1.1);
+  const cureMonths = Math.max(1, Math.round(config.behaviour.ifrs9?.sicrCureMonths ?? 3));
+  if (ratio >= threshold) {
+    cohort.sicrCureMonths = 0;
+    return 'stage2';
+  }
+  if (cohort.stage === 'stage2') {
+    cohort.sicrCureMonths = ratio <= cureRatio ? (cohort.sicrCureMonths ?? 0) + 1 : 0;
+    if (cohort.sicrCureMonths < cureMonths) return 'stage2';
+  }
+  cohort.sicrCureMonths = 0;
   return 'stage1';
 };
 
@@ -595,6 +607,8 @@ const compactRenewalAdds = (cohorts: LoanCohort[]): LoanCohort[] => {
     existing.outstandingPrincipal = combined;
     existing.originalPrincipal += Math.max(0, cohort.originalPrincipal);
     existing.annualInterestRate = weighted(existing.annualInterestRate, cohort.annualInterestRate);
+    existing.sicrReferenceAnnualPd = weighted(existing.sicrReferenceAnnualPd ?? existing.annualPd, cohort.sicrReferenceAnnualPd ?? cohort.annualPd);
+    existing.sicrCureMonths = Math.min(existing.sicrCureMonths ?? 0, cohort.sicrCureMonths ?? 0);
     existing.annualPd = weighted(existing.annualPd, cohort.annualPd);
     existing.lgd = weighted(existing.lgd, cohort.lgd);
     existing.affordabilityIndex = weighted(existing.affordabilityIndex ?? 1, cohort.affordabilityIndex ?? 1);
@@ -992,7 +1006,7 @@ export const stepLoanCohorts = (args: {
             renewedPrincipal += renewalPrincipal;
             renewalsByProduct[productType] = (renewalsByProduct[productType] ?? 0) + renewalPrincipal;
             selectionPressureNotional += renewalPrincipal * Math.max(0, renewalSelection.multiplier - 1);
-            renewalAdds.push({
+            const renewalCohort: LoanCohort = {
               productType,
               cohortId: nextRenewalCohortId++,
               originationStep: state.time.step + 1,
@@ -1002,13 +1016,19 @@ export const stepLoanCohorts = (args: {
               termMonths: getDefaultTermMonths(config, productType),
               ageMonths: 0,
               annualPd: renewalAnnualPd,
+              sicrReferenceAnnualPd: cohort.sicrReferenceAnnualPd ?? cohort.annualPd,
+              sicrCureMonths: 0,
+              effectiveAnnualPd: clamp(renewalAnnualPd * args.pdMultiplier * clamp(1 + (renewalAffordability - 1) * affordabilityConfig.pdStressSlope, 0.55, 4), 0, 0.999999),
+              effectiveLgd: clamp(cohort.lgd * args.lgdMultiplier, 0, 1),
               lgd: clamp(cohort.lgd, 0, 1),
               affordabilityIndex: renewalAffordability,
               renewalCount: (cohort.renewalCount ?? 0) + 1,
-              stage: 'stage1',
+              stage: cohort.stage,
               sector: cohort.sector,
               geography: cohort.geography,
-            });
+            };
+            renewalCohort.stage = updateCohortStage(renewalCohort, config);
+            renewalAdds.push(renewalCohort);
           }
         }
 
@@ -1038,15 +1058,9 @@ export const stepLoanCohorts = (args: {
           0,
           0.999999
         );
-        const sicrThreshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
         cohort.effectiveAnnualPd = annualPd;
         cohort.effectiveLgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
-        cohort.stage = classifyStage({
-          currentStage: cohort.stage,
-          stressedAnnualPd: annualPd,
-          baseAnnualPd: cohort.annualPd,
-          sicrThreshold,
-        });
+        cohort.stage = updateCohortStage(cohort, config);
 
         const pdMonth = 1 - Math.pow(1 - annualPd, 1 / MONTHS_IN_YEAR);
         const defaulted = Math.max(0, cohort.outstandingPrincipal * pdMonth);
@@ -1359,8 +1373,15 @@ export const generateSeasonedLoanCohorts = (args: {
     const lgd = clamp(args.baseLgd * lgdMult, 0, 1);
 
     const originalPrincipal = inferOriginalPrincipalFromOutstanding(outstanding, coupon, termMonths, ageMonths);
+    // A seasoned portfolio has experienced borrower-specific improvement and deterioration.
+    // Seed a reproducible risk distribution, then apply the same PD/SICR rule as at monthly close.
+    const affordabilityConfig = getAffordabilityConfig(args.config, args.productType);
+    const seasoning = Math.min(1, ageMonths / Math.max(1, args.config.behaviour.ifrs9?.initialAffordabilitySeasoningMonths ?? 12));
+    const logSd = Math.max(0, args.config.behaviour.ifrs9?.initialAffordabilityLogSd ?? 0.45) * Math.sqrt(seasoning);
+    const affordabilityIndex = clamp(Math.exp(rng.normal() * logSd - logSd * logSd / 2), affordabilityConfig.minIndex, affordabilityConfig.maxIndex);
+    const effectiveAnnualPd = clamp(annualPd * clamp(1 + (affordabilityIndex - 1) * affordabilityConfig.pdStressSlope, 0.55, 4), 0, 0.999999);
 
-    cohorts.push({
+    const cohort: LoanCohort = {
       productType: args.productType,
       cohortId: -ageMonths,
       originalPrincipal,
@@ -1369,13 +1390,17 @@ export const generateSeasonedLoanCohorts = (args: {
       termMonths,
       ageMonths,
       annualPd,
+      sicrReferenceAnnualPd: annualPd,
+      effectiveAnnualPd,
       lgd,
-      affordabilityIndex: clamp(1 + rng.normal() * 0.08, 0.75, 1.3),
+      affordabilityIndex,
       renewalCount: 0,
       stage: 'stage1',
       sector: pickWeighted(rng, defaultSectorMix(args.productType)),
       geography: pickWeighted(rng, defaultGeographyMix()),
-    });
+    };
+    cohort.stage = updateCohortStage(cohort, args.config);
+    cohorts.push(cohort);
   });
 
   cohorts.sort((a, b) => a.cohortId - b.cohortId);

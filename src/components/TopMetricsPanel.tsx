@@ -18,6 +18,8 @@ interface Props {
   sharePrice: number;
   marketCap: number;
   epsTtm: number;
+  trailingEps?: number | null;
+  trailingEarningsMonths?: number;
   peMultiple: number;
   roe: number;
   nim: number;
@@ -39,6 +41,8 @@ const TopMetricsPanel = ({
   sharePrice,
   marketCap,
   epsTtm,
+  trailingEps,
+  trailingEarningsMonths = 0,
   peMultiple,
   roe,
   nim,
@@ -206,15 +210,18 @@ const TopMetricsPanel = ({
           helper="Share price times shares."
         />
         <Metric
-          label="EPS (TTM proxy)"
+          label="Smoothed annualised EPS"
           value={`GBP ${epsTtm.toFixed(3)}`}
-          helper="Smoothed annualised EPS."
+          helper="Exponentially smoothed annual earnings rate."
         />
         <Metric
-          label="P/E"
+          label="Model P/E"
           value={`${peMultiple.toFixed(2)}x`}
-          helper="Implied valuation multiple."
+          helper="Earnings valuation input."
         />
+        <Metric label="TTM EPS" value={trailingEps == null ? 'N/A' : `GBP ${trailingEps.toFixed(4)}`} helper={trailingEps == null ? `${trailingEarningsMonths.toFixed(0)} of 12 months recorded` : undefined} />
+        <Metric label="Quoted P/E (smoothed)" value={epsTtm > 0 ? `${(sharePrice / epsTtm).toFixed(2)}x` : 'N/A'} />
+        <Metric label="Quoted P/E (TTM)" value={trailingEps != null && trailingEps > 0 ? `${(sharePrice / trailingEps).toFixed(2)}x` : 'N/A'} />
         <Metric label="Equity" value={`GBP ${(equity / 1e9).toFixed(1)}bn`} helper="CET1 + AT1 + OCI." />
         <Metric label="Total Assets" value={`GBP ${(assets / 1e9).toFixed(1)}bn`} helper="Balance sheet size." />
       </MetricGroup>

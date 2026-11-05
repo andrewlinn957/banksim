@@ -19,7 +19,7 @@ describe('Loan accounting identities', () => {
     expect(JSON.stringify(s.loanCohorts)).toBe(cohorts);
     expect(item(s).balance + item(s).lossAllowance!).toBeCloseTo(gross, 4);
     expect(recognize(s).provisionCharge).toBeCloseTo(0, 5);
-    Object.values(s.loanCohorts).flat().forEach(c => c.annualPd = 0);
+    Object.values(s.loanCohorts).flat().forEach(c => { c.annualPd = 0; c.effectiveAnnualPd = 0; });
     expect(recognize(s).provisionCharge).toBeLessThan(0);
     expect(item(s).balance).toBeCloseTo(gross, 4);
     expect(item(s, AssetProductType.CashReserves).balance).toBe(cash);
