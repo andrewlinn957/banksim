@@ -27,7 +27,7 @@ test('export distinguishes earnings bases and reconciles opening capital and com
   expect(opening.run.opening.share.price / capital.book.calculatedBvps).toBeCloseTo(capital.book.reportedPb, 3);
 
   await page.getByText('Settings', { exact: true }).click();
-  await page.getByLabel('Speed', { exact: true }).selectOption('450');
+  await page.locator('.settings-menu label').filter({ hasText: /^Speed/ }).locator('select').selectOption('450');
   await page.getByLabel('Pause when buffers need attention').uncheck();
   await page.getByText('Settings', { exact: true }).click();
   await page.getByLabel('Advance time').selectOption('month');
