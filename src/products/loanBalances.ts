@@ -28,7 +28,8 @@ export const loanCarryingAmounts = (state: BankState) => {
     // POCI's signed cumulative ECL changes are disclosed alongside funded ECL.
     const fundedAllowance = positions.reduce((sum, item) => sum + (item.lossAllowance ?? 0), 0) +
       poci.cumulativeEcl;
-    const hasLedger = state.loanCohorts?.[product] !== undefined || state.workoutPipelines?.[product] !== undefined;
+    const hasLedger = state.loanCohorts?.[product] !== undefined ||
+      state.workoutPipelines?.[product] !== undefined || (state.pociAssets ?? []).some(asset => asset.productType === product);
     const gross = hasLedger
       ? (state.loanCohorts?.[product] ?? []).reduce((sum, cohort) => sum + cohort.outstandingPrincipal + (cohort.modificationAdjustment ?? 0), 0) +
         (state.workoutPipelines?.[product] ?? []).reduce((sum, workout) => sum + workout.defaultedPrincipal + (workout.modificationAdjustment ?? 0), 0) +
