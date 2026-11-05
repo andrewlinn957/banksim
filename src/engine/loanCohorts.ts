@@ -247,7 +247,8 @@ export const sumLoanOutstanding = (cohorts: readonly LoanCohort[] | undefined): 
 export const syncLoanBalancesFromCohorts = (state: BankState): void => {
   state.financial.balanceSheet.items.forEach(item => {
     const p = item.productType;
-    if (!isLoanProduct(p) || (!state.loanCohorts?.[p] && !state.workoutPipelines?.[p])) return;
+    if (!isLoanProduct(p) || (!state.loanCohorts?.[p] && !state.workoutPipelines?.[p] &&
+      !(state.pociAssets ?? []).some(asset => asset.productType === p))) return;
     const gross = (state.loanCohorts?.[p] ?? []).reduce((sum, c) =>
       sum + c.outstandingPrincipal + (c.modificationAdjustment ?? 0), 0) +
       (state.workoutPipelines?.[p] ?? []).reduce((sum, b) =>
