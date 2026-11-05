@@ -32,6 +32,31 @@ const projectedRisk = (
   return { pdFactor: Math.exp(logPd), lgdFactor };
 };
 
+// Forecasts are shared by every cohort in a monthly close. Cache by the
+// scenario object, invalidating when market inputs or scenario parameters move.
+const macroPathCache = new WeakMap<object, { signature: string; path: Array<{ pdFactor: number; lgdFactor: number }> }>();
+const scenarioForecast = (
+  market: EclMarket | undefined,
+  scenario: { gdpGrowthMoMShock?: number; unemploymentRateShock?: number; creditSpreadShock?: number; lgdMultiplier?: number; pdMultiplier: number },
+  horizon: number,
+): Array<{ pdFactor: number; lgdFactor: number }> | null => {
+  if (!market) return null;
+  const signature = [
+    market.gdpGrowthMoM, market.unemploymentRate, market.creditSpread,
+    scenario.gdpGrowthMoMShock ?? 0, scenario.unemploymentRateShock ?? 0,
+    scenario.creditSpreadShock ?? 0,
+  ].join('/');
+  const existing = macroPathCache.get(scenario);
+  const path = existing?.signature === signature ? existing.path : [];
+  for (let month = path.length + 1; month <= horizon; month++) {
+    path.push(projectedRisk(market, scenario, month));
+  }
+  if (!existing || existing.signature !== signature || existing.path !== path) {
+    macroPathCache.set(scenario, { signature, path });
+  }
+  return path;
+};
+
 /**
  * Probability-weighted, discounted loss from 12-month defaults (Stage 1) or
  * lifetime defaults (Stage 2). The model assumes a flat annual hazard within
@@ -49,12 +74,14 @@ export const cohortEcl = (c: LoanCohort, config: SimulationConfig, market?: EclM
   }
   const payment = r > 0 ? principal * r / (1 - (1 + r) ** -term) : principal / term;
   const configured = config.behaviour.ifrs9?.eclScenarios;
-  const scenarios = configured?.some(s => s.weight > 0) ? configured : [{ weight: 1, pdMultiplier: 1 }];
+  const scenarios = configured?.some(s => s.weight > 0) ? configured :
+    [{ weight: 1, pdMultiplier: 1, lgdMultiplier: 1 }];
   const totalWeight = scenarios.reduce((sum, s) => sum + Math.max(0, s.weight), 0);
   return scenarios.reduce((sum, scenario) => {
+    const path = scenarioForecast(market, scenario, horizon);
     let exposure = principal, survival = 1, loss = 0;
     for (let month = 1; month <= horizon; month++) {
-      const forecast = projectedRisk(market, scenario, month);
+      const forecast = path?.[month - 1] ?? { pdFactor: 1, lgdFactor: 1 };
       const annualPd = clamp((c.effectiveAnnualPd ?? c.annualPd) * scenario.pdMultiplier * forecast.pdFactor, 0, .999999);
       const pd = 1 - (1 - annualPd) ** (1 / 12);
       const scenarioLgd = clamp(lgd * (scenario.lgdMultiplier ?? 1) * forecast.lgdFactor);
