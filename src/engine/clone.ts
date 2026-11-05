@@ -28,7 +28,10 @@ const cloneBalanceSheet = (bs: BalanceSheet): BalanceSheet => ({
 
 const cloneIncomeStatement = (p: IncomeStatement): IncomeStatement => ({ ...p });
 const cloneCashFlowStatement = (c: CashFlowStatement): CashFlowStatement => ({ ...c });
-const cloneRiskMetrics = (r: RiskMetrics): RiskMetrics => ({ ...r });
+const cloneRiskMetrics = (r: RiskMetrics): RiskMetrics => ({
+  ...r,
+  capitalReconciliation: r.capitalReconciliation ? { ...r.capitalReconciliation } : undefined,
+});
 const cloneCompliance = (c: ComplianceStatus): ComplianceStatus => ({ ...c });
 const clonePillar2A = (p: Pillar2AAssessmentState | undefined): Pillar2AAssessmentState | undefined =>
   p ? {
@@ -82,7 +85,10 @@ const cloneThreeYearPlan = (plan: ThreeYearPlanState | undefined): ThreeYearPlan
   reviewHistory: plan.reviewHistory?.map(clonePlanReview),
 }) : undefined;
 
-const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({ ...m });
+const cloneEquityMarket = (m: EquityMarketState): EquityMarketState => ({
+  ...m,
+  earningsHistory: m.earningsHistory?.map(observation => ({ ...observation })),
+});
 
 const cloneMarket = (m: MarketState): MarketState => ({
   ...m,

@@ -30,6 +30,10 @@ export interface LoanCohort {
   termMonths: number;
   ageMonths: number;
   annualPd: number;
+  /** Origination PD retained through a continuing borrower relationship/renewal. */
+  sicrReferenceAnnualPd?: number;
+  /** Consecutive monthly closes meeting the Stage 2 cure criterion. */
+  sicrCureMonths?: number;
   effectiveAnnualPd?: number;
   effectiveLgd?: number;
   lgd: number;

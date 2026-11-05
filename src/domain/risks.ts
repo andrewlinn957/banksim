@@ -7,6 +7,29 @@ export interface CapitalState {
   accumulatedOCI: number;
 }
 
+/** Numerator and denominator captured at the same regulatory close as the ratios. */
+export interface CapitalReconciliation {
+  coreCet1: number;
+  accumulatedOCI: number;
+  ociInclusionRate: number;
+  includedOCI: number;
+  excludedOCI: number;
+  regulatoryDeductions: number;
+  otherAdjustments: number;
+  regulatoryCet1: number;
+  at1: number;
+  eligibleTier2: number;
+  tier1: number;
+  totalCapital: number;
+  creditRwa: number;
+  commitmentRwa: number;
+  operationalRiskRwa: number;
+  counterpartyRiskRwa: number;
+  otherRwa: number;
+  rwa: number;
+  leverageExposure: number;
+}
+
 export interface Pillar2AComponentAmounts {
   creditRisk: number;
   singleNameConcentration: number;
@@ -92,6 +115,7 @@ export interface LeverageFrameworkAssessmentState {
 }
 
 export interface RiskMetrics {
+  capitalReconciliation?: CapitalReconciliation;
   internalLeverageTargetRatio?: number;
   internalLcrTargetRatio?: number;
   internalNsfrTargetRatio?: number;

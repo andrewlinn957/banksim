@@ -171,6 +171,12 @@ export interface FundingLadderParameters {
 
 export interface Ifrs9Parameters {
   sicrPdMultiplierThreshold: number;
+  /** Model cure policy: consecutive months below the lower PD ratio. */
+  sicrCurePdMultiplier?: number;
+  sicrCureMonths?: number;
+  /** Seeded historical affordability dispersion, not a target Stage 2 share. */
+  initialAffordabilityLogSd?: number;
+  initialAffordabilitySeasoningMonths?: number;
   eclScenarios?: Array<{ weight: number; pdMultiplier: number }>;
 }
 
@@ -241,6 +247,12 @@ export interface SharePriceModelParameters {
   epsFloor: number;
   priceFloor: number;
   costOfEquity: number;
+  costOfEquityMin?: number;
+  costOfEquityMax?: number;
+  creditSpreadEquityBeta?: number;
+  earningsUncertaintyPremium?: number;
+  capitalShortfallPremium?: number;
+  abnormalEarningsPersistenceSensitivity?: number;
   profitabilityWeight: number;
   capitalWeight: number;
   macroWeight: number;

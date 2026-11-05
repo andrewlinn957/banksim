@@ -390,6 +390,7 @@ const ensureEquityMarketState = (state: BankState, config: SimulationConfig): vo
   const priceToBook = bookValuePerShare > 0 ? sharePrice / bookValuePerShare : 0;
 
   state.equityMarket = {
+    ...state.equityMarket,
     sharesOutstanding,
     sharePrice,
     marketCap,
@@ -2327,39 +2328,62 @@ export const updateSharePrice = (
   const shares = Math.max(1, state.equityMarket.sharesOutstanding);
   const commonEquity = getCommonEquity(state);
   const bvps = commonEquity / shares;
-  const annualisedEps = (state.financial.incomeStatement.netIncome * MONTHS_IN_YEAR) / shares;
-  const epsTtmOpening = state.equityMarket.epsTtm;
+  // Capital issues execute before period accrual, so the closing share count applies
+  // throughout this simulated period. Unknown pre-save history is never backfilled.
+  const commonIncome = state.financial.incomeStatement.netIncome - (state.financial.incomeStatement.at1CouponExpense ?? 0);
+  const annualisedEps = (commonIncome * MONTHS_IN_YEAR) / (shares * months);
+  const epsTtmOpening = state.equityMarket.smoothedAnnualisedEps ?? state.equityMarket.epsTtm;
   const epsTtm = epsTtmOpening * (1 - epsAlpha) + annualisedEps * epsAlpha;
-
-  const roeProxy = bvps > 0 ? epsTtm / bvps : -1;
-  const profitabilityScore = clamp((roeProxy - model.costOfEquity) / Math.max(1e-6, model.roeScale), -1, 1);
+  const earningsHistory = (state.equityMarket.earningsHistory ?? []).map(observation => ({ ...observation }));
+  earningsHistory.push({ months, netIncome: state.financial.incomeStatement.netIncome, commonIncome, shares });
+  let excessMonths = earningsHistory.reduce((sum, observation) => sum + observation.months, 0) - MONTHS_IN_YEAR;
+  while (excessMonths > 0 && earningsHistory.length) {
+    const oldest = earningsHistory[0];
+    if (oldest.months <= excessMonths) {
+      excessMonths -= oldest.months;
+      earningsHistory.shift();
+    } else {
+      // Multi-month steps have no intra-period earnings path: allocate their total pro rata.
+      const retainedFraction = (oldest.months - excessMonths) / oldest.months;
+      oldest.netIncome *= retainedFraction;
+      oldest.commonIncome *= retainedFraction;
+      oldest.months -= excessMonths;
+      excessMonths = 0;
+    }
+  }
+  const trailingEarningsMonths = earningsHistory.reduce((sum, observation) => sum + observation.months, 0);
+  const trailingNetIncome = earningsHistory.reduce((sum, observation) => sum + observation.netIncome, 0);
+  const trailingCommonIncome = earningsHistory.reduce((sum, observation) => sum + observation.commonIncome, 0);
+  const trailingWeightedAverageShares = earningsHistory.reduce((sum, observation) => sum + observation.shares * observation.months, 0) / trailingEarningsMonths;
+  const trailingEps = trailingEarningsMonths >= MONTHS_IN_YEAR ? trailingCommonIncome / trailingWeightedAverageShares : null;
+  const meanAnnualisedEps = earningsHistory.reduce((sum, observation) => sum + observation.commonIncome * MONTHS_IN_YEAR / observation.shares, 0) / trailingEarningsMonths;
+  const variance = earningsHistory.reduce((sum, observation) => sum + observation.months * Math.pow(observation.commonIncome * MONTHS_IN_YEAR / (observation.shares * observation.months) - meanAnnualisedEps, 2), 0) / trailingEarningsMonths;
+  const earningsVolatility = Math.sqrt(variance) / Math.max(model.epsFloor, Math.abs(meanAnnualisedEps));
+  const earningsDownsideSurprise = Math.max(0, epsTtmOpening - annualisedEps) / Math.max(model.epsFloor, Math.abs(epsTtmOpening));
+  const earningsUncertainty = earningsVolatility + earningsDownsideSurprise;
+  const earningsPersistence = 1 / (1 + (model.abnormalEarningsPersistenceSensitivity ?? 1) * earningsUncertainty);
 
   const cet1Headroom = state.risk.riskMetrics.cet1Ratio - state.risk.riskMetrics.cet1Requirement;
   const leverageHeadroom = state.risk.riskMetrics.leverageRatio - config.riskLimits.minLeverageRatio;
-  const capitalScore = clamp(
-    0.7 * (cet1Headroom / Math.max(1e-6, model.capitalCet1Scale)) +
-      0.3 * (leverageHeadroom / Math.max(1e-6, model.capitalLeverageScale)),
-    -1,
-    1
-  );
-
-  const macroScore = clamp(
-    0.5 * (state.market.gdpGrowthMoM / Math.max(1e-6, model.macroGdpScale)) -
-      0.3 *
-        ((state.market.unemploymentRate - model.macroUnemploymentNeutral) /
-          Math.max(1e-6, model.macroUnemploymentScale)) -
-      0.2 *
-        ((state.market.creditSpread - model.macroCreditSpreadNeutral) /
-          Math.max(1e-6, model.macroCreditSpreadScale)),
-    -1,
-    1
-  );
-
-  const franchiseScore = clamp(
-    (state.behaviour.depositFranchiseStrength - model.franchiseNeutral) / Math.max(1e-6, model.franchiseScale),
-    -1,
-    1
-  );
+  // Softsign preserves marginal differentiation beyond the old +/-1 cut-offs.
+  const smoothScore = (signal: number): number => signal / (1 + Math.abs(signal));
+  const capitalSignal = 0.7 * (cet1Headroom / Math.max(1e-6, model.capitalCet1Scale)) +
+    0.3 * (leverageHeadroom / Math.max(1e-6, model.capitalLeverageScale));
+  const capitalScore = smoothScore(capitalSignal);
+  const creditSpreadPremium = (model.creditSpreadEquityBeta ?? 1.5) * (state.market.creditSpread - model.macroCreditSpreadNeutral);
+  const uncertaintyPremium = (model.earningsUncertaintyPremium ?? 0.03) * earningsUncertainty / (1 + earningsUncertainty);
+  const capitalRiskPremium = (model.capitalShortfallPremium ?? 0.04) * Math.max(0, -capitalScore);
+  const costOfEquity = clamp(model.costOfEquity + creditSpreadPremium + uncertaintyPremium + capitalRiskPremium,
+    model.costOfEquityMin ?? 0.06, model.costOfEquityMax ?? 0.25);
+  const roeProxy = bvps > 0 ? epsTtm / bvps : -1;
+  const profitabilitySignal = (roeProxy - costOfEquity) / Math.max(1e-6, model.roeScale);
+  const profitabilityScore = smoothScore(profitabilitySignal);
+  const macroSignal = 0.5 * (state.market.gdpGrowthMoM / Math.max(1e-6, model.macroGdpScale)) -
+    0.3 * ((state.market.unemploymentRate - model.macroUnemploymentNeutral) / Math.max(1e-6, model.macroUnemploymentScale)) -
+    0.2 * ((state.market.creditSpread - model.macroCreditSpreadNeutral) / Math.max(1e-6, model.macroCreditSpreadScale));
+  const macroScore = smoothScore(macroSignal);
+  const franchiseSignal = (state.behaviour.depositFranchiseStrength - model.franchiseNeutral) / Math.max(1e-6, model.franchiseScale);
+  const franchiseScore = smoothScore(franchiseSignal);
 
   const weightedProfitability = model.profitabilityWeight * profitabilityScore;
   const weightedCapital = model.capitalWeight * capitalScore;
@@ -2385,15 +2409,29 @@ export const updateSharePrice = (
     model.pbMin ?? 0.2,
     model.pbMax ?? 1.8
   );
+  const normalEarnings = Math.max(0, bvps * costOfEquity);
+  const persistentEps = epsTtm - (1 - earningsPersistence) * Math.max(0, epsTtm - normalEarnings);
   const stressedEarningsBase =
-    epsTtm >= model.epsFloor
-      ? epsTtm
-      : model.epsFloor * clamp(0.4 + epsTtm / Math.max(1e-6, model.epsFloor), 0.05, 0.4);
-  const earningsValue = peMultiple * stressedEarningsBase;
-  const bookValue = bvps > 0 ? pbMultiple * bvps : model.priceFloor;
+    persistentEps >= model.epsFloor
+      ? persistentEps
+      : model.epsFloor * clamp(0.4 + persistentEps / Math.max(1e-6, model.epsFloor), 0.05, 0.4);
+  // A higher required return reduces the earnings component directly as well as the ROE score.
+  const discountRateFactor = model.costOfEquity / costOfEquity;
+  const earningsValue = peMultiple * stressedEarningsBase * discountRateFactor;
+  const metrics = state.risk.riskMetrics;
+  const cet1Target = Math.max(metrics.cet1Requirement, metrics.internalCet1TargetRatio ?? metrics.cet1Requirement);
+  const leverageTarget = Math.max(config.riskLimits.minLeverageRatio, metrics.internalLeverageTargetRatio ?? 0,
+    metrics.leverageApplicableThresholdRate ?? 0);
+  // Regulatory capital headroom is a valuation proxy, not legally distributable reserves.
+  const distributableCapitalProxy = Math.max(0, Math.min(commonEquity,
+    (metrics.cet1Ratio - cet1Target) * metrics.rwa,
+    (metrics.leverageRatio - leverageTarget) * metrics.leverageExposure));
+  const excessCapitalPerShare = distributableCapitalProxy / shares;
+  const bookValue = bvps > 0 ? excessCapitalPerShare + pbMultiple * (bvps - excessCapitalPerShare) : model.priceFloor;
   const earningsWeightBase = Math.max(0, model.earningsValuationWeight ?? 0.45);
   const bookWeightBase = Math.max(0, model.bookValuationWeight ?? 0.55);
-  const earningsReliability = clamp((epsTtm + model.epsFloor) / Math.max(1e-6, model.epsFloor * 2), 0.2, 1);
+  const earningsReliability = clamp((epsTtm + model.epsFloor) / Math.max(1e-6, model.epsFloor * 2), 0.2, 1) /
+    (1 + earningsUncertainty);
   const earningsWeight = earningsWeightBase * earningsReliability;
   const bookWeight = bookWeightBase + earningsWeightBase * (1 - earningsReliability);
   const fairValueBeforeStress =
@@ -2419,6 +2457,13 @@ export const updateSharePrice = (
   state.equityMarket = {
     ...state.equityMarket,
     epsTtm,
+    smoothedAnnualisedEps: epsTtm,
+    trailingEps,
+    trailingEarningsMonths,
+    trailingNetIncome,
+    trailingCommonIncome,
+    trailingWeightedAverageShares,
+    earningsHistory,
     peMultiple,
     bookValuePerShare: bvps,
     priceToBook: bvps > 0 ? sharePrice / bvps : 0,
@@ -2437,7 +2482,29 @@ export const updateSharePrice = (
     epsTtm,
     bvps,
     roeProxy,
-    costOfEquity: model.costOfEquity,
+    costOfEquity,
+    baseCostOfEquity: model.costOfEquity,
+    creditSpreadPremium,
+    uncertaintyPremium,
+    capitalRiskPremium,
+    profitabilitySignal,
+    capitalSignal,
+    macroSignal,
+    franchiseSignal,
+    trailingEps,
+    trailingEarningsMonths,
+    trailingNetIncome,
+    trailingCommonIncome,
+    trailingWeightedAverageShares,
+    earningsVolatility,
+    earningsDownsideSurprise,
+    earningsUncertainty,
+    earningsPersistence,
+    persistentEps,
+    discountRateFactor,
+    distributableCapitalProxy,
+    excessCapitalPerShare,
+    quotedPeTtm: trailingEps !== null && trailingEps > 0 ? sharePrice / trailingEps : null,
     profitabilityScore,
     cet1Headroom,
     leverageHeadroom,

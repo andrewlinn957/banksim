@@ -389,6 +389,10 @@ const behaviour: BehaviourParameters = {
   },
   ifrs9: {
     sicrPdMultiplierThreshold: 1.75,
+    sicrCurePdMultiplier: 1.1,
+    sicrCureMonths: 3,
+    initialAffordabilityLogSd: 0.45,
+    initialAffordabilitySeasoningMonths: 12,
     eclScenarios: [{ weight: .2, pdMultiplier: .75 }, { weight: .6, pdMultiplier: 1 }, { weight: .2, pdMultiplier: 1.5 }],
   },
   liquidityDynamics: {
@@ -496,6 +500,12 @@ const behaviour: BehaviourParameters = {
     epsFloor: 0.02,
     priceFloor: 0.05,
     costOfEquity: 0.12,
+    costOfEquityMin: 0.06,
+    costOfEquityMax: 0.25,
+    creditSpreadEquityBeta: 1.5,
+    earningsUncertaintyPremium: 0.03,
+    capitalShortfallPremium: 0.04,
+    abnormalEarningsPersistenceSensitivity: 1,
     profitabilityWeight: 0.45,
     capitalWeight: 0.25,
     macroWeight: 0.2,

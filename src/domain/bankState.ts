@@ -65,11 +65,27 @@ export interface TreasuryPolicyState {
   giltDurationYears: number;
 }
 
+export interface EarningsObservation {
+  months: number;
+  netIncome: number;
+  commonIncome: number;
+  shares: number;
+}
+
 export interface EquityMarketState {
   sharesOutstanding: number;
   sharePrice: number;
   marketCap: number;
+  /** Legacy save field: exponentially smoothed annualised EPS, never a rolling TTM. */
   epsTtm: number;
+  smoothedAnnualisedEps?: number;
+  /** Actual trailing common earnings / time-weighted shares; null until 12 months are observed. */
+  trailingEps?: number | null;
+  trailingEarningsMonths?: number;
+  trailingNetIncome?: number;
+  trailingCommonIncome?: number;
+  trailingWeightedAverageShares?: number;
+  earningsHistory?: EarningsObservation[];
   peMultiple: number;
   bookValuePerShare?: number;
   priceToBook?: number;

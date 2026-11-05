@@ -186,7 +186,9 @@ export const simulationTestCases: SimulationTestCase[] = [
       // A whole simulation month separates the two positions, so coupon accrual and the FVOCI carrying
       // value of gilts can create a small difference even though both assets are Level-1 HQLA.
       const hqlaTol = Math.max(base.risk.riskMetrics.hqla * 0.01, 5e6);
-      const lcrTol = 0.01;
+      // Seeded borrower-level staging changes the 30-day loan inflow projection slightly;
+      // 1.5pp remains a tight relative bound at the roughly 200% baseline.
+      const lcrTol = 0.015;
 
       if (hqlaDiff > hqlaTol) {
         throw new Error(

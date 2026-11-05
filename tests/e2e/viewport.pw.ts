@@ -51,28 +51,31 @@ for (const profile of profiles) {
     test('bank overview shows all operating areas without clipping', async ({ page }) => {
       await page.goto('/');
       await expect(page.getByRole('heading', { name: 'Bank overview' })).toBeVisible();
-      await expect(page.getByRole('navigation', { name: 'Bank functional areas' }).locator('.department-building')).toHaveCount(5);
-      await expect.poll(() => page.locator('.department-art img').evaluateAll(
+      await expect(page.getByRole('navigation', { name: 'Bank functional areas' }).locator('.home-department')).toHaveCount(4);
+      await expect.poll(() => page.locator('.home-department img').evaluateAll(
         (images) => images.filter((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0).length
-      )).toBe(5);
+      )).toBe(4);
       await expectNoDocumentOverflow(page, 'Bank overview');
     });
 
-    test('finance report shortcuts sit directly below the time controls', async ({ page }) => {
+    test('finance report shortcuts sit between time controls and management workspace', async ({ page }) => {
       await page.goto('/');
       await page
         .getByRole('navigation', { name: 'Bank areas' })
         .getByRole('button', { name: 'Finance & Capital', exact: true })
         .click();
 
-      const reports = page.getByRole('navigation', { name: 'Finance & Capital reports' });
+      const reports = page.getByRole('navigation', { name: 'Finance and capital screens' });
       await expect(reports).toBeVisible();
-      await expect(reports).toContainText('Open the detailed view when you need it.');
       await expect(reports.getByRole('button', { name: 'Performance', exact: false })).toBeVisible();
       await expect(reports.getByRole('button', { name: 'Accounts', exact: false })).toBeVisible();
       await expect(reports.getByRole('button', { name: 'Share price', exact: false })).toBeVisible();
       await expect(reports.getByRole('button', { name: 'Costs', exact: false })).toBeVisible();
-      await expect(reports.evaluate((element) => element.previousElementSibling?.matches('.time-console'))).resolves.toBe(true);
+      await expect(reports.evaluate((element) => {
+        const clock = document.querySelector('.time-console');
+        const workspace = document.querySelector('.department-workspace');
+        return Boolean(clock && workspace && (clock.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) && (element.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING));
+      })).resolves.toBe(true);
       await expect(page.locator('.department-workspace')).not.toContainText('Open the detailed view when you need it.');
       await expectNoDocumentOverflow(page, 'Finance report shortcuts');
     });
@@ -87,7 +90,7 @@ for (const profile of profiles) {
           .getByRole('button', { name: 'Finance & Capital', exact: true })
           .click();
         await page
-          .getByRole('navigation', { name: 'Finance & Capital reports' })
+          .getByRole('navigation', { name: 'Finance and capital screens' })
           .getByRole('button', { name: report, exact: false })
           .click();
 
@@ -109,7 +112,7 @@ for (const profile of profiles) {
     test('event log and reconciliations stay behind the Settings menu', async ({ page }) => {
       await page.goto('/');
       await page.getByLabel('Advance time').selectOption('month');
-      await page.getByRole('button', { name: 'Run', exact: false }).click();
+      await page.getByRole('button', { name: '▶ Run', exact: true }).click();
       await expect(page.locator('.post-close-links')).toHaveCount(1);
       await expect(page.locator('.post-close-links')).toBeHidden();
 
@@ -147,10 +150,10 @@ for (const profile of profiles) {
 test.describe('intermediate viewport', () => {
   test.use({ viewport: { width: 900, height: 960 } });
 
-  test('bank overview adapts its illustration cards without horizontal overflow', async ({ page }) => {
+  test('bank overview adapts its department cards without horizontal overflow', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Bank overview' })).toBeVisible();
-    await expect(page.locator('.department-art img')).toHaveCount(5);
+    await expect(page.locator('.home-department img')).toHaveCount(4);
     await expectNoDocumentOverflow(page, '900px bank overview');
   });
 });

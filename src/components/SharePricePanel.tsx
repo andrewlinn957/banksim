@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { BankState } from '../domain/bankState';
+import { BalanceSheetSide } from '../domain/enums';
 import { SimulationConfig } from '../domain/config';
 import TimeSeriesChart from './TimeSeriesChart';
 import { SeriesPoint } from '../types/statements';
 import { formatCurrency, formatMultiple, formatPct, formatSignedPct } from '../utils/formatters';
 
-type SeriesKey = 'sharePrice' | 'marketCap' | 'epsTtm' | 'peMultiple' | 'priceToBook';
+type SeriesKey = 'sharePrice' | 'marketCap' | 'epsTtm' | 'trailingEps' | 'peMultiple' | 'quotedPeSmoothed' | 'quotedPeTtm' | 'priceToBook';
 
 interface Props {
   state: BankState;
@@ -22,8 +23,11 @@ interface SeriesOption {
 const SERIES_OPTIONS: SeriesOption[] = [
   { key: 'sharePrice', label: 'Share Price', yLabel: 'Share price (GBP)' },
   { key: 'marketCap', label: 'Market Cap', yLabel: 'Market cap' },
-  { key: 'epsTtm', label: 'EPS (TTM)', yLabel: 'EPS (GBP)' },
-  { key: 'peMultiple', label: 'P/E', yLabel: 'P/E multiple' },
+  { key: 'epsTtm', label: 'Smoothed annualised EPS', yLabel: 'Smoothed annualised EPS (GBP)' },
+  { key: 'trailingEps', label: 'TTM EPS', yLabel: 'TTM EPS (GBP)' },
+  { key: 'peMultiple', label: 'Model P/E', yLabel: 'Model P/E multiple' },
+  { key: 'quotedPeSmoothed', label: 'Quoted P/E (smoothed)', yLabel: 'Quoted P/E (smoothed EPS)' },
+  { key: 'quotedPeTtm', label: 'Quoted P/E (TTM)', yLabel: 'Quoted P/E (TTM EPS)' },
   { key: 'priceToBook', label: 'P/B', yLabel: 'Price / book' },
 ];
 
@@ -58,7 +62,10 @@ const SharePricePanel = ({ state, history, config }: Props) => {
     () => ({
       sharePrice: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.sharePrice),
       marketCap: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.marketCap),
-      epsTtm: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.epsTtm),
+      epsTtm: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.smoothedAnnualisedEps ?? snapshot.equityMarket.epsTtm),
+      trailingEps: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.trailingEps ?? Number.NaN),
+      quotedPeSmoothed: seriesFromHistory(history, (snapshot) => quotedPe(snapshot.equityMarket.sharePrice, snapshot.equityMarket.smoothedAnnualisedEps ?? snapshot.equityMarket.epsTtm)),
+      quotedPeTtm: seriesFromHistory(history, (snapshot) => quotedPe(snapshot.equityMarket.sharePrice, snapshot.equityMarket.trailingEps)),
       peMultiple: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.peMultiple),
       priceToBook: seriesFromHistory(history, (snapshot) => snapshot.equityMarket.priceToBook ?? 0),
     }),
@@ -77,10 +84,13 @@ const SharePricePanel = ({ state, history, config }: Props) => {
           ? 'numeric negative'
           : 'muted';
 
-  const commonEquity = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI;
+  const commonEquity = state.financial.balanceSheet.items.reduce((sum, item) => sum + (item.side === BalanceSheetSide.Asset ? item.balance : -item.balance), 0) - state.financial.capital.at1;
+  const smoothedEps = state.equityMarket.smoothedAnnualisedEps ?? state.equityMarket.epsTtm;
+  const trailingEps = state.equityMarket.trailingEps;
+  const valuation = state.periodFlows?.shareValuation;
   const sharesOutstanding = Math.max(1, state.equityMarket.sharesOutstanding);
   const bvps = state.equityMarket.bookValuePerShare ?? commonEquity / sharesOutstanding;
-  const roeProxy = bvps > 0 ? state.equityMarket.epsTtm / bvps : Number.NaN;
+  const roeProxy = bvps > 0 ? smoothedEps / bvps : Number.NaN;
   const cet1Headroom = state.risk.riskMetrics.cet1Ratio - state.risk.riskMetrics.cet1Requirement;
   const leverageHeadroom = state.risk.riskMetrics.leverageRatio - config.riskLimits.minLeverageRatio;
   const priceToBook = state.equityMarket.priceToBook ?? (bvps > 0 ? state.equityMarket.sharePrice / bvps : Number.NaN);
@@ -91,8 +101,11 @@ const SharePricePanel = ({ state, history, config }: Props) => {
       <div className="grid-metrics">
         <MetricCard label="Share Price" value={formatGbp(state.equityMarket.sharePrice)} />
         <MetricCard label="Market Cap" value={formatCurrency(state.equityMarket.marketCap)} />
-        <MetricCard label="EPS (TTM proxy)" value={formatGbp(state.equityMarket.epsTtm, 3)} />
-        <MetricCard label="P/E" value={formatMultiple(state.equityMarket.peMultiple)} />
+        <MetricCard label="Smoothed annualised EPS" value={formatGbp(smoothedEps, 4)} />
+        <MetricCard label="TTM EPS" value={formatGbp(trailingEps ?? Number.NaN, 4)} helper={trailingEps == null ? `${(state.equityMarket.trailingEarningsMonths ?? 0).toFixed(0)} of 12 months recorded` : undefined} />
+        <MetricCard label="Model P/E" value={formatMultiple(state.equityMarket.peMultiple)} />
+        <MetricCard label="Quoted P/E (smoothed)" value={formatMultiple(quotedPe(state.equityMarket.sharePrice, smoothedEps))} />
+        <MetricCard label="Quoted P/E (TTM)" value={formatMultiple(quotedPe(state.equityMarket.sharePrice, trailingEps))} />
         <MetricCard label="Fair Value / Share" value={formatGbp(state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice)} />
         <MetricCard label="Shares Outstanding" value={formatSharesOutstanding(state.equityMarket.sharesOutstanding)} />
         <MetricCard label="Price / Book" value={formatMultiple(priceToBook)} />
@@ -143,7 +156,7 @@ const SharePricePanel = ({ state, history, config }: Props) => {
             <tr>
               <td>Profitability (ROE proxy)</td>
               <td className="numeric">{formatPct(roeProxy)}</td>
-              <td className="numeric">EPS / common BVPS</td>
+              <td className="numeric">Smoothed annualised EPS / common BVPS</td>
             </tr>
             <tr>
               <td>Capital strength: CET1 headroom</td>
@@ -159,19 +172,23 @@ const SharePricePanel = ({ state, history, config }: Props) => {
             </tr>
             <tr>
               <td>Macro: GDP growth (monthly)</td>
-              <td className="numeric">{formatPct(state.market.gdpGrowthMoM)}</td>
+              <td className="numeric">{formatPct(valuation?.gdpGrowthMoM ?? state.market.gdpGrowthMoM)}</td>
               <td className="numeric">Higher tends to support valuation</td>
             </tr>
             <tr>
               <td>Macro: unemployment rate</td>
-              <td className="numeric">{formatPct(state.market.unemploymentRate)}</td>
+              <td className="numeric">{formatPct(valuation?.unemploymentRate ?? state.market.unemploymentRate)}</td>
               <td className="numeric">Lower tends to support valuation</td>
             </tr>
             <tr>
               <td>Macro: credit spread</td>
-              <td className="numeric">{formatPct(state.market.creditSpread)}</td>
+              <td className="numeric">{formatPct(valuation?.creditSpread ?? state.market.creditSpread)}</td>
               <td className="numeric">Lower tends to support valuation</td>
             </tr>
+            {valuation && <>
+              <tr><td>Cost of equity</td><td className="numeric">{formatPct(valuation.costOfEquity)}</td><td className="numeric">At latest valuation</td></tr>
+              <tr><td>Earnings reliability</td><td className="numeric">{formatPct(valuation.earningsReliability)}</td><td className="numeric">Earnings / book blend</td></tr>
+            </>}
             <tr>
               <td>Franchise strength</td>
               <td className="numeric">{formatPct(state.behaviour.depositFranchiseStrength)}</td>
@@ -184,10 +201,14 @@ const SharePricePanel = ({ state, history, config }: Props) => {
   );
 };
 
-const MetricCard = ({ label, value }: { label: string; value: string }) => (
+const quotedPe = (price: number, eps: number | null | undefined): number =>
+  eps != null && eps > 0 ? price / eps : Number.NaN;
+
+const MetricCard = ({ label, value, helper }: { label: string; value: string; helper?: string }) => (
   <div className="metric-card">
     <div className="metric-label">{label}</div>
     <div className="metric-value">{value}</div>
+    {helper && <div className="metric-helper">{helper}</div>}
   </div>
 );
 
