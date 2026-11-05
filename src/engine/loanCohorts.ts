@@ -931,6 +931,17 @@ export const stepLoanCohorts = (args: {
 
       cohorts.forEach((cohort) => {
         if (cohort.outstandingPrincipal <= 0) return;
+        // Assess observed arrears before booking this month's contractual interest.
+        // An already credit-impaired cohort must use the workout net-interest basis.
+        if ((cohort.daysPastDue ?? 0) > 0) {
+          const baselinePd = cohort.sicrReferenceAnnualPd ?? cohort.annualPd;
+          const cured = (cohort.affordabilityIndex ?? 1) <= 1 &&
+            (cohort.effectiveAnnualPd ?? cohort.annualPd) <= baselinePd * 1.1;
+          cohort.daysPastDue = cured ? 0 : Math.min(120, (cohort.daysPastDue ?? 0) + 30);
+          cohort.stage = updateCohortStage(cohort, config);
+        } else if (cohort.unlikelyToPay) {
+          cohort.stage = 'stage3';
+        }
         if (cohort.stage === 'stage3') {
           addWorkoutBucket(state, productType, { productType, sourceCohortId: cohort.cohortId, originationStep: cohort.originationStep, stageAtDefault: 'stage3', defaultedPrincipal: cohort.outstandingPrincipal, expectedRecoveryRate: 1 - (cohort.effectiveLgd ?? cohort.lgd), effectiveInterestRate: cohort.annualInterestRate, monthsToResolution: Math.max(1, Math.round(workoutConfig.baseResolutionLagMonths)), sector: cohort.sector, geography: cohort.geography });
           defaultedPrincipal += cohort.outstandingPrincipal;
@@ -941,14 +952,6 @@ export const stepLoanCohorts = (args: {
         }
         if (cohort.ageMonths >= cohort.termMonths) return;
         cohort.stage = normaliseStage(cohort.stage);
-        // Explicit arrears roll forward while repayment difficulty persists.
-        // Cohorts supplied with arrears can cure before the 90-day default backstop.
-        if ((cohort.daysPastDue ?? 0) > 0) {
-          const baselinePd = cohort.sicrReferenceAnnualPd ?? cohort.annualPd;
-          const cured = (cohort.affordabilityIndex ?? 1) <= 1 &&
-            (cohort.effectiveAnnualPd ?? cohort.annualPd) <= baselinePd * 1.1;
-          cohort.daysPastDue = cured ? 0 : Math.min(120, (cohort.daysPastDue ?? 0) + 30);
-        }
         cohort.sector = normaliseSector(productType, cohort.cohortId, cohort.sector);
         cohort.geography = normaliseGeography(cohort.cohortId, cohort.geography);
         cohort.affordabilityIndex = clamp(
