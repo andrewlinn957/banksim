@@ -45,6 +45,7 @@ import {
 } from '../domain/shocks';
 import { Currency, MaturityBucket } from '../domain/enums';
 import { PRODUCTS } from '../products/catalogue';
+import { loanCarryingAmounts } from '../products/loanBalances';
 import { createPosition } from '../products/factory';
 import { findProductPosition } from '../products/selectors';
 import { hasCapability, productTypesWithCapability } from '../products/capabilities';
@@ -2528,16 +2529,9 @@ export const createSimulationEngine = (): SimulationEngine => {
     state.time.stepLengthMonths = dtMonths;
     const dtYears = dtMonths / MONTHS_IN_YEAR;
     const cashStart = findItem(inputState.financial.balanceSheet, AssetProductType.CashReserves)?.balance ?? 0;
-    const openingLoanExposureByProduct: ProductFlowMap = {};
-    Object.entries(inputState.loanCohorts ?? {}).forEach(([product, cohorts]) => {
-      const productType = product as ProductType;
-      const performing = (cohorts ?? []).reduce((sum, cohort) => sum + Math.max(0, cohort.outstandingPrincipal), 0);
-      const workouts = (inputState.workoutPipelines?.[productType] ?? []).reduce(
-        (sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal),
-        0
-      );
-      openingLoanExposureByProduct[productType] = performing + workouts;
-    });
+    const openingLoanExposureByProduct: ProductFlowMap = Object.fromEntries(
+      Object.entries(loanCarryingAmounts(inputState).byProduct).map(([product, amounts]) => [product, amounts.gross])
+    );
 
     // Floating treasury assets reprice at the start of the accrual period.
     syncFloatingTreasuryAssetRates(state);
