@@ -1174,6 +1174,23 @@ export const stepLoanCohorts = (args: {
         }
 
         cohort.ageMonths += 1;
+        // An overdue balance does not disappear when its contractual term
+        // expires. Move the unpaid residual into a credit-impaired workout.
+        if (cohort.ageMonths >= cohort.termMonths && cohort.outstandingPrincipal > 1e-2) {
+          const unpaid = cohort.outstandingPrincipal;
+          const recoveryRate = clamp(1 - (cohort.effectiveLgd ?? cohort.lgd), workoutConfig.baseRecoveryRateFloor, 1);
+          addWorkoutBucket(state, productType, {
+            productType, sourceCohortId: cohort.cohortId, originationStep: cohort.originationStep,
+            stageAtDefault: 'stage2', defaultedPrincipal: unpaid, expectedRecoveryRate: recoveryRate,
+            effectiveInterestRate: cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate,
+            monthsToResolution: Math.max(1, Math.round(workoutConfig.baseResolutionLagMonths)),
+            sector: cohort.sector, geography: cohort.geography,
+          });
+          defaultedPrincipal += unpaid;
+          defaultsByProduct[productType] = (defaultsByProduct[productType] ?? 0) + unpaid;
+          addVintageFlow(defaultsByVintage, productType, cohort.originationStep ?? null, unpaid, 'stage2');
+          cohort.outstandingPrincipal = 0;
+        }
       });
 
       if (renewalAdds.length > 0) {
