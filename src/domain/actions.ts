@@ -74,6 +74,9 @@ export interface ModifyLoanCohortAction {
   newRemainingMonths: number;
   /** Derecognition is a separate IFRS 9 assessment and must be explicitly ruled out. */
   nonDerecognition: true;
+  /** Fees received and qualifying incremental modification costs (capitalised). */
+  feeReceived?: number;
+  modificationCostPaid?: number;
 }
 
 export interface PurchasePociLoanAction {
@@ -109,6 +112,19 @@ export interface SetBorrowerPaymentAction {
   nextPaymentAmount: number;
 }
 
+export interface DerecognizeLoanCohortAction {
+  type: 'derecognizeLoanCohort';
+  productType: LoanProductType;
+  cohortId: number;
+  /** Explicit legal determination under IFRS 9 3.2.3. */
+  qualifyingEvent: 'rightsExpired' | 'qualifyingTransfer';
+  /** Cash consideration received in exchange for removing the old asset. */
+  cashConsideration: number;
+  /** Transaction fees and costs included in disposal proceeds, not modification EIR. */
+  feeReceived?: number;
+  transactionCostPaid?: number;
+}
+
 export type PlayerAction =
   | { type: 'setRiskAppetite'; targets: import('./bankState').BehaviouralState['riskAppetite'] | null }
   | AdjustRateAction
@@ -124,4 +140,5 @@ export type PlayerAction =
   | PurchasePociLoanAction
   | RevisePociLoanAction
   | OriginateBorrowerLoanAction
-  | SetBorrowerPaymentAction;
+  | SetBorrowerPaymentAction
+  | DerecognizeLoanCohortAction;

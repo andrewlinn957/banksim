@@ -57,6 +57,8 @@ export interface LoanCohort {
   unlikelyToPay?: boolean;
   /** The initial effective-interest rate is retained for modification remeasurement. */
   originalEffectiveInterestRate?: number;
+  /** Prospective yield including capitalised modification fees and costs. */
+  postModificationEffectiveRate?: number;
   /** Difference between principal outstanding and IFRS gross amortised cost. */
   modificationAdjustment?: number;
   /** Cohort-level overdue principal, split into monthly arrears bands; included in outstandingPrincipal. */

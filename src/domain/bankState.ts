@@ -155,6 +155,7 @@ export interface BankState {
   behaviour: BehaviouralState;
   loanCohorts: LoanCohortsMap;
   pendingLoanModificationGainLoss?: number;
+  pendingLoanDerecognitionGainLoss?: number;
   /** POCI impairment gains/losses booked on changes to expected recoveries. */
   pendingPociImpairmentGainLoss?: number;
   /** Purchased/originated credit-impaired assets have individual cash-flow ledgers. */

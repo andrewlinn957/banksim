@@ -1,7 +1,7 @@
 import { recogniseSecurityImpairment } from './securityImpairment';
 import { hedgeFairValue, syncHedgeBalances, revalueHedges } from './hedgeValuation';
 import { commitmentEcl } from './impairment';
-import { applyLoanModification } from './loanModification';
+import { applyLoanModification, derecognizeLoanCohort } from './loanModification';
 import { purchasePociAsset, revisePociAsset } from './poci';
 import { createBorrowerLoan } from './borrowerServicing';
 /**
@@ -41,6 +41,7 @@ import {
   RevisePociLoanAction,
   OriginateBorrowerLoanAction,
   SetBorrowerPaymentAction,
+  DerecognizeLoanCohortAction,
 } from '../domain/actions';
 import {
   Shock,
@@ -223,6 +224,18 @@ const actionHandlers: ActionHandlerMap = {
       ctx.events.push(createEvent('warning', error instanceof Error ? error.message : 'POCI forecast rejected'));
     }
   },
+  derecognizeLoanCohort: (action: DerecognizeLoanCohortAction, ctx) => {
+    try {
+      const result = derecognizeLoanCohort(ctx.state, action.productType, action.cohortId,
+        action.qualifyingEvent, action.cashConsideration, action.feeReceived,
+        action.transactionCostPaid);
+      ctx.events.push(createEvent('info', `Derecognised loan ${action.cohortId}:
+        gain/loss before allowance release ${result.gainLossBeforeAllowanceRelease.toFixed(2)}`));
+    } catch (error) {
+      ctx.events.push(createEvent('warning',
+        error instanceof Error ? error.message : 'Loan derecognition rejected'));
+    }
+  },
   modifyLoanCohort: (action: ModifyLoanCohortAction, ctx) => {
     if (action.nonDerecognition !== true) {
       ctx.events.push(createEvent('warning', 'Derecognition assessment must precede loan modification.'));
@@ -230,7 +243,8 @@ const actionHandlers: ActionHandlerMap = {
     }
     try {
       const result = applyLoanModification(ctx.state, action.productType, action.cohortId,
-        action.newCouponAnnual, action.newRemainingMonths);
+        action.newCouponAnnual, action.newRemainingMonths,
+        action.feeReceived ?? 0, action.modificationCostPaid ?? 0);
       ctx.events.push(createEvent('info',
         `IFRS 9 modified cohort ${action.cohortId}: gain/loss ${result.modificationGainLoss.toFixed(2)}`));
     } catch (error) {
@@ -2159,6 +2173,7 @@ export const closeCapital = (
   events: SimulationEvent[],
   loanModificationGainLoss = 0,
   pociImpairmentGainLoss = 0,
+  loanDerecognitionGainLoss = 0,
 ): CapitalCloseResult => {
   const loanBookBalance = losses.loanItems.reduce((sum, item) => sum + item.balance, 0);
   const feeIncome = config.behaviour.loanFeeRateMonthly * dtMonths * loanBookBalance;
@@ -2195,7 +2210,7 @@ export const closeCapital = (
   const netInterestIncome = totalInterestIncome - accruals.interestExpense + hedgeCarry;
   const preTaxProfit =
     netInterestIncome + feeIncome + securitiesValuation.fvtplValuationImpact +
-    loanModificationGainLoss + pociImpairmentGainLoss - losses.creditLosses - operatingExpenses;
+    loanModificationGainLoss + pociImpairmentGainLoss + loanDerecognitionGainLoss - losses.creditLosses - operatingExpenses;
   const tax = preTaxProfit > 0 ? preTaxProfit * config.global.taxRate : 0;
   const netIncome = preTaxProfit - tax;
   const totalComprehensiveIncome = netIncome + securitiesValuation.fvociOciMovement;
@@ -2210,6 +2225,7 @@ export const closeCapital = (
     feeIncome,
     loanModificationGainLoss,
     pociImpairmentGainLoss,
+    loanDerecognitionGainLoss,
     creditLosses: losses.creditLosses,
     provisionCharge: losses.provisionCharge,
     realizedLoanLosses: losses.realizedLoanLosses,
@@ -2806,9 +2822,11 @@ export const createSimulationEngine = (): SimulationEngine => {
       events,
       state.pendingLoanModificationGainLoss ?? 0,
       state.pendingPociImpairmentGainLoss ?? 0,
+      state.pendingLoanDerecognitionGainLoss ?? 0,
     );
     state.pendingLoanModificationGainLoss = 0;
     state.pendingPociImpairmentGainLoss = 0;
+    state.pendingLoanDerecognitionGainLoss = 0;
     capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;
 
     // Funding drawn or outstanding during this step remains on balance sheet for the month's

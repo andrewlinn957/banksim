@@ -98,11 +98,70 @@ export const cumulativePociEclChange = (
 export const applyLoanModification = (
   state: BankState, productType: LoanProductType, cohortId: number,
   newAnnualCoupon: number, newRemainingMonths: number,
+  feeReceived = 0, modificationCostPaid = 0,
 ): { modificationGainLoss: number; oldGross: number; modifiedGross: number } => {
   const cohort = state.loanCohorts[productType]?.find(c => c.cohortId === cohortId);
   if (!cohort) throw new Error('No loan cohort with this ID');
+  if (![feeReceived, modificationCostPaid].every(Number.isFinite) ||
+    feeReceived < 0 || modificationCostPaid < 0) throw new Error('Invalid modification fees');
   const result = remeasureModifiedCohort(cohort, newAnnualCoupon, newRemainingMonths);
+  // Capitalise integral costs and origination/modification fees over the new term.
+  // The separate modification gain/loss remains discounted at original EIR.
+  if (feeReceived > 0 || modificationCostPaid > 0) {
+    const cash = state.financial.balanceSheet.items
+      .find(item => item.productType === 'CashReserves');
+    if (!cash || cash.balance + feeReceived < modificationCostPaid)
+      throw new Error('Insufficient cash for modification costs');
+    const amount = modificationCostPaid - feeReceived;
+    cash.balance -= amount;
+    cohort.modificationAdjustment = (cohort.modificationAdjustment ?? 0) + amount;
+    const contractualMonthlyPayment = newAnnualCoupon === 0
+      ? cohort.outstandingPrincipal / newRemainingMonths :
+        cohort.outstandingPrincipal * (newAnnualCoupon / 12) /
+        (1 - (1 + newAnnualCoupon / 12) ** -newRemainingMonths);
+    cohort.postModificationEffectiveRate = creditAdjustedEffectiveRate(
+      cohort.outstandingPrincipal + (cohort.modificationAdjustment ?? 0),
+      Array.from({ length: newRemainingMonths }, () => contractualMonthlyPayment),
+    );
+  } else {
+    cohort.postModificationEffectiveRate = result.originalEir;
+  }
   state.pendingLoanModificationGainLoss = (state.pendingLoanModificationGainLoss ?? 0) + result.modificationGainLoss;
   syncLoanBalancesFromCohorts(state);
   return result;
+};
+
+/**
+ * Derecognition requires a separate legal assessment of expiry or qualifying
+ * transfer of contractual cash-flow rights. IFRS 9 has no automatic asset 10%
+ * quantitative test. The provision close releases existing funded ECL; this
+ * action recognises proceeds minus GROSS amortised cost, avoiding double count.
+ */
+export const derecognizeLoanCohort = (
+  state: BankState, productType: LoanProductType, cohortId: number,
+  event: 'rightsExpired' | 'qualifyingTransfer', cashConsideration: number,
+  feeReceived = 0, transactionCostPaid = 0,
+): { gainLossBeforeAllowanceRelease: number; oldGross: number; netCash: number } => {
+  if (!['rightsExpired', 'qualifyingTransfer'].includes(event))
+    throw new Error('A legally assessed derecognition event is required');
+  for (const [name, amount] of Object.entries({ cashConsideration, feeReceived, transactionCostPaid })) {
+    if (!Number.isFinite(amount) || amount < 0) throw new Error('Invalid '+name);
+  }
+  const cohorts = state.loanCohorts[productType];
+  const index = cohorts?.findIndex(cohort => cohort.cohortId === cohortId) ?? -1;
+  if (index < 0 || !cohorts) throw new Error('No contract for derecognition');
+  const cohort = cohorts[index];
+  if (cohort.borrowerId && (cohort.daysPastDue ?? 0) >= 90)
+    throw new Error('Defaulted borrower loans require workout resolution');
+  const cash = state.financial.balanceSheet.items.find(item => item.productType === 'CashReserves');
+  const netCash = cashConsideration + feeReceived - transactionCostPaid;
+  if (!cash || cash.balance + netCash < 0) throw new Error('Insufficient cash for transfer costs');
+  const oldGross = cohort.outstandingPrincipal + (cohort.modificationAdjustment ?? 0);
+  cash.balance += netCash;
+  cohorts.splice(index, 1);
+  const gainLossBeforeAllowanceRelease = netCash - oldGross;
+  state.pendingLoanDerecognitionGainLoss =
+    (state.pendingLoanDerecognitionGainLoss ?? 0) + gainLossBeforeAllowanceRelease;
+  syncLoanBalancesFromCohorts(state);
+  return { gainLossBeforeAllowanceRelease, oldGross, netCash };
 };
