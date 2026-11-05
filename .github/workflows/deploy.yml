@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -27,7 +27,9 @@ jobs:
       - run: npm ci
       - name: Audit high and critical dependency vulnerabilities
         run: npm audit --audit-level=high
-      - run: npm run test
+      # Full multi-strategy calibration runs in CI as eight parallel shards.
+      # Keep deployment focused on fast accounting and model regressions.
+      - run: npm run test:fast && npm run test:regression
       - run: npm run typecheck
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
