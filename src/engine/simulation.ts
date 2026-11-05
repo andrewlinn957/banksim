@@ -1,6 +1,7 @@
 import { recogniseSecurityImpairment } from './securityImpairment';
 import { hedgeFairValue, syncHedgeBalances, revalueHedges } from './hedgeValuation';
 import { commitmentEcl } from './impairment';
+import { applyLoanModification } from './loanModification';
 /**
  * Core simulation step logic.
  *
@@ -33,6 +34,7 @@ import {
   SetUnderwritingAction,
   EnterHedgeAction,
   SetCapitalPolicyAction,
+  ModifyLoanCohortAction,
 } from '../domain/actions';
 import {
   Shock,
@@ -171,6 +173,21 @@ const actionHandlers: ActionHandlerMap = {
   },
   setCapitalPolicy: (action: SetCapitalPolicyAction, ctx) => {
     applySetCapitalPolicy(ctx.state, action, ctx.events);
+  },
+  modifyLoanCohort: (action: ModifyLoanCohortAction, ctx) => {
+    if (action.nonDerecognition !== true) {
+      ctx.events.push(createEvent('warning', 'Derecognition assessment must precede loan modification.'));
+      return;
+    }
+    try {
+      const result = applyLoanModification(ctx.state, action.productType, action.cohortId,
+        action.newCouponAnnual, action.newRemainingMonths);
+      ctx.events.push(createEvent('info',
+        `IFRS 9 modified cohort ${action.cohortId}: gain/loss ${result.modificationGainLoss.toFixed(2)}`));
+    } catch (error) {
+      ctx.events.push(createEvent('warning',
+        error instanceof Error ? error.message : 'Invalid loan modification'));
+    }
   },
 };
 
@@ -2090,7 +2107,8 @@ export const closeCapital = (
   securitiesValuation: SecuritiesValuationResult,
   loanOriginations: number,
   defaultedPrincipal: number,
-  events: SimulationEvent[]
+  events: SimulationEvent[],
+  loanModificationGainLoss = 0,
 ): CapitalCloseResult => {
   const loanBookBalance = losses.loanItems.reduce((sum, item) => sum + item.balance, 0);
   const feeIncome = config.behaviour.loanFeeRateMonthly * dtMonths * loanBookBalance;
@@ -2126,7 +2144,8 @@ export const closeCapital = (
   const totalInterestIncome = accruals.interestIncome + loanInterestIncome;
   const netInterestIncome = totalInterestIncome - accruals.interestExpense + hedgeCarry;
   const preTaxProfit =
-    netInterestIncome + feeIncome + securitiesValuation.fvtplValuationImpact - losses.creditLosses - operatingExpenses;
+    netInterestIncome + feeIncome + securitiesValuation.fvtplValuationImpact +
+    loanModificationGainLoss - losses.creditLosses - operatingExpenses;
   const tax = preTaxProfit > 0 ? preTaxProfit * config.global.taxRate : 0;
   const netIncome = preTaxProfit - tax;
   const totalComprehensiveIncome = netIncome + securitiesValuation.fvociOciMovement;
@@ -2139,6 +2158,7 @@ export const closeCapital = (
     fvociOciMovement: securitiesValuation.fvociOciMovement,
     hedgeCarry,
     feeIncome,
+    loanModificationGainLoss,
     creditLosses: losses.creditLosses,
     provisionCharge: losses.provisionCharge,
     realizedLoanLosses: losses.realizedLoanLosses,
@@ -2732,8 +2752,10 @@ export const createSimulationEngine = (): SimulationEngine => {
       securitiesValuation,
       loanBehaviour.originatedNotional,
       cohortStep.defaultedPrincipal,
-      events
+      events,
+      state.pendingLoanModificationGainLoss ?? 0,
     );
+    state.pendingLoanModificationGainLoss = 0;
     capitalClose.operatingCashDelta -= cohortStep.nonCashInterest;
 
     // Funding drawn or outstanding during this step remains on balance sheet for the month's

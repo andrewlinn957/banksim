@@ -67,6 +67,7 @@ export interface LoanWorkoutBucket {
   vintageBreakdown?: Array<{ originationStep: number | null; defaultedPrincipal: number }>;
   stageAtDefault: LoanStage;
   defaultedPrincipal: number;
+  modificationAdjustment?: number;
   expectedRecoveryRate: number;
   effectiveInterestRate?: number;
   monthsToResolution: number;

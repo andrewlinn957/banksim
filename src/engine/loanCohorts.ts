@@ -1550,7 +1550,9 @@ export const calculateProvisionTargetFromCohorts = (args: { state: BankState; co
   for (const [product, buckets] of Object.entries(state.workoutPipelines ?? {})) {
     if (args.productType && product !== args.productType) continue;
     const recoveryRateFor = workoutRecoveryEstimator(state, config, product as ProductType);
-    for (const bucket of buckets ?? []) out.stage3 += Math.max(0, bucket.defaultedPrincipal - workoutPresentValue(state, config, product as ProductType, bucket, recoveryRateFor(bucket)));
+    for (const bucket of buckets ?? []) out.stage3 += Math.max(0,
+      bucket.defaultedPrincipal + (bucket.modificationAdjustment ?? 0) -
+      workoutPresentValue(state, config, product as ProductType, bucket, recoveryRateFor(bucket)));
   }
   out.total = out.stage1 + out.stage2 + out.stage3;
   return out;
