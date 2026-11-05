@@ -1529,6 +1529,13 @@ export const generateSeasonedLoanCohorts = (args: {
 export const calculateProvisionTargetFromCohorts = (args: { state: BankState; config: SimulationConfig; productType?: ProductType }): ProvisionTarget => {
   const { state, config } = args;
   const out: ProvisionTarget = { stage1: 0, stage2: 0, stage3: 0, total: 0 };
+  // IFRS 9 permits collective impairment assessment for shared risk
+  // characteristics. Pool the small overdue fractions by product to avoid
+  // repeating full lifetime scenario paths for hundreds of seeded cohorts.
+  const overduePools = new Map<ProductType, {
+    exemplar: LoanCohort; amount: number; rate: number; eir: number;
+    pd: number; lgd: number; months: number;
+  }>();
   for (const [product, cohorts] of Object.entries(state.loanCohorts ?? {})) {
     if (args.productType && product !== args.productType) continue;
     for (const cohort of cohorts ?? []) {
@@ -1536,16 +1543,38 @@ export const calculateProvisionTargetFromCohorts = (args: { state: BankState; co
       if (lateArrears > 0) {
         const normal = Math.max(0, cohort.outstandingPrincipal - lateArrears);
         if (normal > 0) out.stage1 += cohortEcl({ ...cohort, outstandingPrincipal: normal }, config, state.market);
-        // Delinquency backstop implies lifetime ECL, with a stronger PD on overdue balances.
-        out.stage2 += cohortEcl({
-          ...cohort, outstandingPrincipal: lateArrears, stage: 'stage2',
-          effectiveAnnualPd: Math.max(cohort.effectiveAnnualPd ?? cohort.annualPd,
-            2 * (cohort.sicrReferenceAnnualPd ?? cohort.annualPd)),
-        }, config, state.market);
+        // Overdue principal receives lifetime ECL, collectively estimated
+        // using exposure-weighted PD, LGD, remaining term and original EIR.
+        const key = product as ProductType;
+        const pool = overduePools.get(key) ?? {
+          exemplar: cohort, amount: 0, rate: 0, eir: 0, pd: 0, lgd: 0, months: 0,
+        };
+        pool.amount += lateArrears;
+        pool.rate += lateArrears * cohort.annualInterestRate;
+        pool.eir += lateArrears * (cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate);
+        pool.pd += lateArrears * Math.max(cohort.effectiveAnnualPd ?? cohort.annualPd,
+          2 * (cohort.sicrReferenceAnnualPd ?? cohort.annualPd));
+        pool.lgd += lateArrears * (cohort.effectiveLgd ?? cohort.lgd);
+        pool.months += lateArrears * Math.max(1, cohort.termMonths - cohort.ageMonths);
+        overduePools.set(key, pool);
       } else {
         out[normaliseStage(cohort.stage)] += cohortEcl(cohort, config, state.market);
       }
     }
+  }
+  for (const pool of overduePools.values()) {
+    if (pool.amount <= 0) continue;
+    out.stage2 += cohortEcl({
+      ...pool.exemplar,
+      outstandingPrincipal: pool.amount,
+      originalEffectiveInterestRate: pool.eir / pool.amount,
+      annualInterestRate: pool.rate / pool.amount,
+      effectiveAnnualPd: pool.pd / pool.amount,
+      effectiveLgd: pool.lgd / pool.amount,
+      ageMonths: 0,
+      termMonths: Math.max(1, Math.round(pool.months / pool.amount)),
+      stage: 'stage2',
+    }, config, state.market);
   }
   for (const [product, buckets] of Object.entries(state.workoutPipelines ?? {})) {
     if (args.productType && product !== args.productType) continue;
