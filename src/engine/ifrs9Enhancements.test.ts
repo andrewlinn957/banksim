@@ -44,6 +44,19 @@ describe('IFRS 9 lifecycle improvements', () => {
     expect(updateCohortStage(c, baseConfig)).toBe('stage3');
   });
 
+  it('moves a 90-day overdue cohort to workout before gross interest is collected', () => {
+    const state = cloneBankState(initialState);
+    state.loanCohorts = { [product]: [{ ...cohort(), daysPastDue: 60, affordabilityIndex: 1.5 }] };
+    state.workoutPipelines = {};
+    const cash = state.financial.balanceSheet.items.find(item => item.productType === AssetProductType.CashReserves)!;
+    const openingCash = cash.balance;
+    const flow = stepLoanCohorts({ state, config: baseConfig, dtMonths: 1, pdMultiplier: 1, lgdMultiplier: 1 });
+    expect(flow.defaultedPrincipal).toBeGreaterThan(900_000);
+    expect(flow.loanInterestIncome).toBe(0);
+    expect(cash.balance).toBe(openingCash);
+    expect(state.workoutPipelines[product]![0].defaultedPrincipal).toBeGreaterThan(900_000);
+  });
+
   it('economic downside produces higher scenario ECL than upside at a common reporting date', () => {
     const market = cloneBankState(initialState).market;
     const upside = structuredClone(baseConfig), downside = structuredClone(baseConfig);
