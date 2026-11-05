@@ -993,7 +993,8 @@ export const stepLoanCohorts = (args: {
         const pmt = monthlyPayment(cohort.borrowerId ? openingGross : performing,
           cohort.annualInterestRate, remainingMonths);
         const contractualInterest = openingGross * r;
-        const eir = (cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate) / MONTHS_IN_YEAR;
+        const eir = (cohort.postModificationEffectiveRate ??
+          cohort.originalEffectiveInterestRate ?? cohort.annualInterestRate) / MONTHS_IN_YEAR;
         const interest = Math.max(0, openingGross + (cohort.modificationAdjustment ?? 0)) * eir;
         const interestCollected = performing * r;
         let principal = 0;
