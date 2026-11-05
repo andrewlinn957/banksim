@@ -181,6 +181,10 @@ export const cloneBankState = (state: BankState): BankState => ({
   market: cloneMarket(state.market),
   behaviour: cloneBehaviour(state.behaviour),
   loanCohorts: cloneLoanCohorts(state.loanCohorts),
+  borrowerPaymentHistory: state.borrowerPaymentHistory
+    ? Object.fromEntries(Object.entries(state.borrowerPaymentHistory)
+      .map(([id, history]) => [id, history.map(entry => ({ ...entry }))]))
+    : undefined,
   pociAssets: state.pociAssets?.map(asset => ({
     ...asset,
     originalExpectedCashFlows: [...asset.originalExpectedCashFlows],

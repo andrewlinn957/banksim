@@ -998,7 +998,7 @@ export const stepLoanCohorts = (args: {
         const interestCollected = performing * r;
         let principal = 0;
         if (cohort.borrowerId) {
-          const borrowerPayment = serviceBorrowerLoan(cohort, state.time.step + 1,
+          const borrowerPayment = serviceBorrowerLoan(state, cohort, state.time.step + 1,
             pmt, contractualInterest, cohort.effectiveAnnualPd ?? cohort.annualPd);
           principal = borrowerPayment.principalCollected;
           cash.balance += borrowerPayment.paid;

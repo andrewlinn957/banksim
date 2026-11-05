@@ -3,7 +3,7 @@ import { IncomeStatement } from './pnl';
 import { ComplianceStatus, RiskMetrics, CapitalState, FundingConfidenceState, Pillar2AAssessmentState, OsiiAssessmentState, LeverageFrameworkAssessmentState } from './risks';
 import { MarketState } from './market';
 import { CashFlowStatement } from './cashflow';
-import { LoanCohort, LoanWorkoutBucket } from './loanCohorts';
+import { LoanCohort, LoanWorkoutBucket, type BorrowerPaymentRecord } from './loanCohorts';
 import type { PociAsset } from './poci';
 import { ProductType } from './enums';
 import type { ThreeYearPlanState } from './threeYearPlan';
@@ -159,6 +159,8 @@ export interface BankState {
   pendingPociImpairmentGainLoss?: number;
   /** Purchased/originated credit-impaired assets have individual cash-flow ledgers. */
   pociAssets?: PociAsset[];
+  /** Payment history survives transfer into workout and final resolution. */
+  borrowerPaymentHistory?: Record<string, BorrowerPaymentRecord[]>;
   loanPipelines: LoanPipelineMap;
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;

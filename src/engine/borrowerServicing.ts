@@ -13,7 +13,7 @@ const uniform = (id: string, step: number) => {
 
 /** Borrower-level payments are cash movements, with complete per-month receipts. */
 export const serviceBorrowerLoan = (
-  cohort: LoanCohort, step: number, scheduledDue: number,
+  state: BankState, cohort: LoanCohort, step: number, scheduledDue: number,
   contractualInterest: number, effectiveAnnualPd: number,
 ): { paid: number; principalCollected: number; defaultAtClose: boolean } => {
   if (!cohort.borrowerId) throw new Error('Identified borrower required');
@@ -40,6 +40,8 @@ export const serviceBorrowerLoan = (
     closingContractualPrincipal: cohort.outstandingPrincipal,
   });
   if (cohort.paymentHistory.length > 36) cohort.paymentHistory.splice(0, cohort.paymentHistory.length - 36);
+  (state.borrowerPaymentHistory ??= {})[cohort.borrowerId] =
+    cohort.paymentHistory.map(record => ({ ...record }));
   return { paid, principalCollected: Math.max(0, paid - contractualInterest),
     defaultAtClose: cohort.daysPastDue >= 90 };
 };
