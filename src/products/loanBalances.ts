@@ -25,7 +25,7 @@ export const loanCarryingAmounts = (state: BankState) => {
     const fundedAllowance = positions.reduce((sum, item) => sum + (item.lossAllowance ?? 0), 0);
     const hasLedger = state.loanCohorts?.[product] !== undefined || state.workoutPipelines?.[product] !== undefined;
     const gross = hasLedger
-      ? (state.loanCohorts?.[product] ?? []).reduce((sum, cohort) => sum + cohort.outstandingPrincipal, 0) +
+      ? (state.loanCohorts?.[product] ?? []).reduce((sum, cohort) => sum + cohort.outstandingPrincipal + (cohort.modificationAdjustment ?? 0), 0) +
         (state.workoutPipelines?.[product] ?? []).reduce((sum, workout) => sum + workout.defaultedPrincipal, 0)
       : net + fundedAllowance;
     byProduct[product] = { gross, fundedAllowance, net, reconciliationDifference: gross - fundedAllowance - net };

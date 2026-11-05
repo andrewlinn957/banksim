@@ -7,7 +7,7 @@ export const creditStageDiagnostics = (state: BankState) => {
   let performingGross = 0, referencePdSum = 0, currentPdSum = 0, stage2CureProbationGross = 0;
   for (const cohorts of Object.values(state.loanCohorts)) {
     for (const c of cohorts ?? []) {
-      const gross = Math.max(0, c.outstandingPrincipal);
+      const gross = Math.max(0, c.outstandingPrincipal + (c.modificationAdjustment ?? 0));
       const late = c.stage === 'stage1' ? cohortArrearsStage2Gross(c) : 0;
       stageGross[c.stage] += gross - late;
       stageGross.stage2 += late;

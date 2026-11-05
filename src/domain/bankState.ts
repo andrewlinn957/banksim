@@ -153,6 +153,7 @@ export interface BankState {
   market: MarketState;
   behaviour: BehaviouralState;
   loanCohorts: LoanCohortsMap;
+  pendingLoanModificationGainLoss?: number;
   loanPipelines: LoanPipelineMap;
   workoutPipelines: LoanWorkoutPipelineMap;
   fundingLadders: FundingLadderMap;

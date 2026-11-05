@@ -6,6 +6,7 @@ export interface IncomeStatement {
   fvociOciMovement: number;
   hedgeCarry: number;
   feeIncome: number;
+  loanModificationGainLoss?: number;
   creditLosses: number;
   provisionCharge: number;
   realizedLoanLosses: number;
