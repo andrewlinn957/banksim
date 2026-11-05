@@ -66,6 +66,8 @@ export interface LoanWorkoutBucket {
   monthsToResolution: number;
   /** Write-offs can precede legal workout resolution. */
   earlyWriteoffApplied?: boolean;
+  /** Recovery penalty already incorporated when the irrecoverable portion was written off. */
+  recoveryPenaltyAtWriteoff?: number;
   noReasonableExpectationOfRecovery?: boolean;
   sector?: LoanSector;
   geography?: LoanGeography;

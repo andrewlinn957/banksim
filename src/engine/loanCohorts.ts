@@ -734,6 +734,7 @@ const stepWorkoutPipelines = (args: {
         const before = Math.max(0, bucket.defaultedPrincipal);
         const writtenOff = before * (1 - expectedRecovery);
         if (writtenOff > 0) {
+          bucket.recoveryPenaltyAtWriteoff = recoveryRateFor.penaltyFor(bucket);
           bucket.defaultedPrincipal = before - writtenOff;
           // The remaining contractual balance represents recoverable principal.
           // Further deterioration can still produce losses on final resolution.

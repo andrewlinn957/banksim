@@ -103,10 +103,18 @@ export const workoutRecoveryEstimator = (state: BankState, config: SimulationCon
   }
   const p = config.behaviour.creditRiskDynamics?.workoutPipeline;
   const macroPenalty = (p?.macroRecoveryPenaltySensitivity ?? 0) * (Math.max(0, state.market.unemploymentRate - 0.05) + Math.max(0, -state.market.gdpGrowthMoM) * 12);
-  return (b: LoanWorkoutBucket) => {
+  const penaltyFor = (b: LoanWorkoutBucket): number => {
     const share = total > 0 ? Math.max(sectors.get(b.sector ?? 'other') ?? 0, geographies.get(b.geography ?? 'other') ?? 0) / total : 0;
-    return clamp(b.expectedRecoveryRate - macroPenalty - (p?.concentrationRecoveryPenaltySensitivity ?? 0) * share, Math.min(b.expectedRecoveryRate, p?.baseRecoveryRateFloor ?? 0));
+    return macroPenalty + (p?.concentrationRecoveryPenaltySensitivity ?? 0) * share;
   };
+  const estimate = (b: LoanWorkoutBucket): number => {
+    const penalty = penaltyFor(b);
+    // The original macro penalty was already included in the write-off estimate.
+    // Only subsequent changes in that penalty may remeasure remaining recoveries.
+    const change = b.earlyWriteoffApplied ? penalty - (b.recoveryPenaltyAtWriteoff ?? penalty) : penalty;
+    return clamp(b.expectedRecoveryRate - change, Math.min(b.expectedRecoveryRate, p?.baseRecoveryRateFloor ?? 0));
+  };
+  return Object.assign(estimate, { penaltyFor });
 };
 export const workoutPresentValue = (state: BankState, config: SimulationConfig, product: ProductType, bucket: LoanWorkoutBucket, recoveryRate?: number): number =>
   Math.max(0, bucket.defaultedPrincipal) * (recoveryRate ?? workoutRecoveryEstimator(state, config, product)(bucket)) /

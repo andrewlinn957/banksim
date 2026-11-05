@@ -4,7 +4,7 @@ import { initialState } from '../config/initialState';
 import { AssetProductType } from '../domain/enums';
 import type { LoanCohort } from '../domain/loanCohorts';
 import { cloneBankState } from './clone';
-import { cohortEcl } from './impairment';
+import { cohortEcl, workoutPresentValue } from './impairment';
 import {
   remainingLifetimeDefaultRisk, stepLoanCohorts, updateCohortStage,
 } from './loanCohorts';
@@ -78,8 +78,11 @@ describe('IFRS 9 lifecycle improvements', () => {
         monthsToResolution: 6,
       }],
     };
+    const openingPV = workoutPresentValue(state, baseConfig, product, state.workoutPipelines[product]![0]);
     const flow = stepLoanCohorts({ state, config: baseConfig, dtMonths: 1, pdMultiplier: 1, lgdMultiplier: 1 });
     const remaining = state.workoutPipelines[product]!;
+    const closingPV = workoutPresentValue(state, baseConfig, product, remaining[0]);
+    expect(closingPV).toBeCloseTo(openingPV * (1 + .06 / 12), 5);
     expect(flow.recoveryCash).toBe(0);
     expect(flow.recognizedLoanLosses[product]).toBeGreaterThan(0);
     expect(remaining).toHaveLength(1);
