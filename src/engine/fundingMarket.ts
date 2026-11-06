@@ -69,6 +69,7 @@ export const FUNDING_MARKET_CALIBRATION = {
     assetQuality: 120,
     earnings: 70,
     recentIssuance: 180,
+    couponReliability: 125,
   },
   capacityPenalty: {
     market: 0.45,
@@ -77,6 +78,7 @@ export const FUNDING_MARKET_CALIBRATION = {
     fundingStructure: 0.35,
     assetQuality: 0.50,
     earnings: 0.25,
+    couponReliability: 0.60,
   },
   minimumCapacityFactor: 0.05,
   minimumViableIssueAmount: 50e6,
@@ -105,6 +107,7 @@ const maximumAvailableTenor = (
     Math.max(0, model.referenceAmount) *
     Math.max(0, model.instrument.baseCapacityMultiple) *
     baseCapacityMultiplier;
+  const remainingIssuerCapacity = Math.max(0, model.remainingIssuerCapacity ?? Infinity);
   const minimumViable = Math.min(
     FUNDING_MARKET_CALIBRATION.minimumViableIssueAmount,
     Math.max(5e6, Math.max(0, model.referenceAmount) * Math.max(0, model.instrument.baseCapacityMultiple) * 0.15)
@@ -113,10 +116,10 @@ const maximumAvailableTenor = (
   const sorted = [...permitted].sort((a, b) => a - b);
   let maxAvailable: number | undefined;
   sorted.forEach((tenor) => {
-    const capacity =
+    const capacity = Math.min(remainingIssuerCapacity,
       baseCapacity *
       tenorCapacityMultiplier(model, tenor, baseCapacityMultiplier) *
-      Math.max(1, model.instrument.hardCapacityMultiple);
+      Math.max(1, model.instrument.hardCapacityMultiple));
     if (capacity >= minimumViable) maxAvailable = tenor;
   });
   return maxAvailable;
@@ -221,6 +224,15 @@ export const calculateFundingMarket = (model: FundingMarketModel): FundingMarket
     1 / (1 + recentIssuanceSeverity * 1.75 * sensitivity),
     { recentIssuanceRatio: recentIssuanceSeverity }
   );
+  const couponSkipMonths = Math.max(0, model.couponSkipMonths ?? 0);
+  const couponReliabilitySeverity = clamp(couponSkipMonths / 12, 0, 1.5);
+  const couponReliabilityEffect = effect(
+    'couponReliability',
+    couponReliabilitySeverity,
+    couponReliabilitySeverity * c.spreadPenaltyBps.couponReliability * sensitivity,
+    1 - couponReliabilitySeverity * c.capacityPenalty.couponReliability,
+    { consecutiveSkippedCouponMonths: couponSkipMonths }
+  );
   const instrumentEffect = effect(
     'instrument',
     0,
@@ -240,6 +252,7 @@ export const calculateFundingMarket = (model: FundingMarketModel): FundingMarket
     assetQualityEffect,
     earningsEffect,
     recentIssuanceEffect,
+    couponReliabilityEffect,
     instrumentEffect,
   ];
   const baseCapacityMultiplier = clamp(
@@ -269,10 +282,11 @@ export const calculateFundingMarket = (model: FundingMarketModel): FundingMarket
     1
   );
   const fairSpreadBps = drivers.reduce((sum, driver) => sum + driver.spreadBps, 0);
+  const remainingIssuerCapacity = Math.max(0, model.remainingIssuerCapacity ?? Infinity);
   const capacityAtFairSpread = tenorAvailable
-    ? Math.max(0, model.referenceAmount) * Math.max(0, model.instrument.baseCapacityMultiple) * capacityMultiplier
+    ? Math.min(remainingIssuerCapacity, Math.max(0, model.referenceAmount) * Math.max(0, model.instrument.baseCapacityMultiple) * capacityMultiplier)
     : 0;
-  const hardCapacity = capacityAtFairSpread * Math.max(1, model.instrument.hardCapacityMultiple);
+  const hardCapacity = Math.min(remainingIssuerCapacity, capacityAtFairSpread * Math.max(1, model.instrument.hardCapacityMultiple));
   const slope = Math.max(1, model.instrument.demandSlopeBps);
 
   const demandAtPrice = !tenorAvailable

@@ -8,6 +8,7 @@ export type FundingMarketDriverKey =
   | 'assetQuality'
   | 'earnings'
   | 'recentIssuance'
+  | 'couponReliability'
   | 'instrument'
   | 'tenor';
 
@@ -48,6 +49,10 @@ export interface FundingMarketInstrumentTerms {
 export interface FundingMarketModel {
   referenceAmount: number;
   targetAmount: number;
+  /** Remaining issuer-level funding capacity after existing balances and leverage headroom. */
+  remainingIssuerCapacity?: number;
+  /** Consecutive months of skipped or only partly paid AT1 coupons. */
+  couponSkipMonths?: number;
   maxSpreadBps?: number;
   requestedTenorMonths?: number;
   recentIssuanceRatio: number;

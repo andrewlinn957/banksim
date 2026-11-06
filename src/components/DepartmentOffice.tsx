@@ -10,6 +10,7 @@ import { formatPct } from '../utils/formatters';
 import { parseMoneyInput } from '../utils/parsers';
 import { nelsonSiegelYield } from '../engine/ukMarketModel';
 import type { RegulatoryMetric } from './RegMetricsPanel';
+import { debtFundingHeadroom } from '../engine/fundingHeadroom';
 
 interface Props {
  department:Department; state:BankState; history:BankState[]; form:ActionFormState;
@@ -38,7 +39,7 @@ export default function DepartmentOffice({department,state,history,form,errors,h
  const queuedGiltSale=form.giltTradeDirection==='sell'?Math.max(0,parseMoneyInput(form.giltTradeAmount).value??0):0;
  const giltsAfterQueuedSale=Math.max(0,unencumberedGilts-Math.min(unencumberedGilts,queuedGiltSale));
  const boeHaircut=Math.min(.25,Math.max(baseConfig.behaviour.boeFunding?.levelAHaircut??.03,state.market.giltRepoHaircut));
- const maxBoeFunding=giltsAfterQueuedSale*(1-boeHaircut);
+ const maxBoeFunding=Math.min(giltsAfterQueuedSale*(1-boeHaircut),debtFundingHeadroom(state,baseConfig));
  const estimateCompliance=estimate?.risk.compliance;
  const projectedBreach=Boolean(estimate&&(estimate.status.hasFailed||estimateCompliance?.cet1Breached||estimateCompliance?.ownFundsBreached||estimateCompliance?.leverageBreached||estimateCompliance?.lcrBreached||estimateCompliance?.nsfrBreached));
  const loans=(s:BankState)=>Object.values(s.loanCohorts??{}).flat().reduce((sum,c)=>sum+c.outstandingPrincipal,0)+Object.values(s.workoutPipelines??{}).flat().reduce((sum,w)=>sum+w.defaultedPrincipal,0);

@@ -1,7 +1,8 @@
 import type { BankState } from '../domain/bankState';
 import type { SimulationConfig } from '../domain/config';
 import type { CapitalMarketsBookbuildResult, CapitalMarketsOrder } from '../domain/capitalMarkets';
-import { AssetProductType, BalanceSheetSide } from '../domain/enums';
+import { AssetProductType, BalanceSheetSide, LiabilityProductType } from '../domain/enums';
+import { hasCapability, productsWithCapability } from '../products/capabilities';
 import {
   getCapitalMarketsInstrument,
   type CapitalMarketsInstrumentDefinition,
@@ -10,12 +11,20 @@ import {
 import { nelsonSiegelYield } from './ukMarketModel';
 import { calculateFundingMarket } from './fundingMarket';
 import { buildFundingMarketFundamentals } from './fundingMarketAdapter';
+import { debtFundingHeadroom } from './fundingHeadroom';
 
 const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 const safeRatio = (num: number, den: number): number => den > 1e-9 ? num / den : 0;
 
 const totalAssets = (state: BankState): number => state.financial.balanceSheet.items
   .filter(item => item.side === BalanceSheetSide.Asset)
+  .reduce((sum, item) => sum + Math.max(0, item.balance), 0);
+
+const coreFunding = (state: BankState): number => state.financial.balanceSheet.items
+  .filter(item => item.side === BalanceSheetSide.Liability
+    && item.productType !== LiabilityProductType.BankOfEnglandFunding
+    && !hasCapability(item.productType, 'wholesaleFunding')
+    && !hasCapability(item.productType, 'capitalMarketsFunding'))
   .reduce((sum, item) => sum + Math.max(0, item.balance), 0);
 
 const ownFunds = (state: BankState): number =>
@@ -27,8 +36,27 @@ const referenceSize = (state: BankState, reference: CapitalMarketsReferenceSize)
   if (reference === 'cet1OrMarketCap') {
     return Math.max(1, state.financial.capital.cet1, state.equityMarket.marketCap * 0.6);
   }
+  if (reference === 'cet1Capital') return Math.max(1, state.financial.capital.cet1);
+  if (reference === 'tier1Capital') return Math.max(1, state.financial.capital.cet1 + state.financial.capital.at1);
+  if (reference === 'coreFunding') return Math.max(1, coreFunding(state));
   if (reference === 'ownFunds') return Math.max(1, ownFunds(state));
   return Math.max(1, totalAssets(state));
+};
+
+const outstandingInstrumentBalance = (
+  state: BankState,
+  instrument: CapitalMarketsOrder['instrument'],
+  definition: CapitalMarketsInstrumentDefinition,
+): number => {
+  if (instrument === 'at1') return Math.max(0, state.financial.capital.at1);
+  if (instrument === 'tier2') return Math.max(0, state.financial.capital.tier2 ?? 0);
+  if (definition.settlement.kind !== 'fundingProduct') return 0;
+  const matchingProductTypes = new Set<string>(productsWithCapability('capitalMarketsFunding')
+    .filter(product => product.capabilities.capitalMarketsFunding.instrument === instrument)
+    .map(product => String(product.productType)));
+  return state.financial.balanceSheet.items
+    .filter(item => item.side === BalanceSheetSide.Liability && matchingProductTypes.has(String(item.productType)))
+    .reduce((sum, item) => sum + Math.max(0, item.balance), 0);
 };
 
 const originalEquityMarketCap = (state: BankState): number => {
@@ -158,6 +186,17 @@ export const buildCapitalMarketsBook = (
   let equityExpectedReturn: number | undefined;
   let equityCostOfEquity: number | undefined;
   let equityReturnDemandFactor: number | undefined;
+  const outstandingRoom = definition.maxOutstandingMultiple === undefined
+    ? Infinity
+    : Math.max(
+      0,
+      Math.max(0, state.financial.capital.cet1) * definition.maxOutstandingMultiple
+        - outstandingInstrumentBalance(state, order.instrument, definition),
+    );
+  const debtHeadroom = order.instrument === 'tier2' || order.instrument === 'senior'
+    ? debtFundingHeadroom(state, config)
+    : Infinity;
+  const remainingIssuerCapacity = Math.min(outstandingRoom, debtHeadroom);
 
   if (definition.pricingKind === 'discount') {
     const fairValue = Math.max(1e-6, state.equityMarket.fairValuePerShare ?? state.equityMarket.sharePrice);
@@ -212,6 +251,10 @@ export const buildCapitalMarketsBook = (
       maxSpreadBps: order.maxSpreadBps,
       requestedTenorMonths: tenorMonths,
       recentIssuanceRatio: recentRatio,
+      remainingIssuerCapacity,
+      couponSkipMonths: order.instrument === 'at1'
+        ? state.capitalMarkets?.at1CouponSkipStreakMonths ?? 0
+        : 0,
       fundamentals: buildFundingMarketFundamentals(state, config),
       instrument: {
         basePremiumBps: definition.basePremiumBps ?? 0,

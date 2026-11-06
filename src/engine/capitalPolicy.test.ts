@@ -52,5 +52,7 @@ describe('Capital policy and buffer stack', () => {
     expect(payResult.financial.incomeStatement.at1CouponExpense).toBeGreaterThan(0);
     expect(skipResult.financial.incomeStatement.at1CouponExpense).toBe(0);
     expect(payResult.financial.capital.cet1).toBeLessThan(skipResult.financial.capital.cet1);
+    expect(payResult.capitalMarkets?.at1CouponSkipStreakMonths).toBe(0);
+    expect(skipResult.capitalMarkets?.at1CouponSkipStreakMonths).toBeGreaterThan(0);
   });
 });

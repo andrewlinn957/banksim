@@ -4,6 +4,7 @@ import { initialState } from '../config/initialState';
 import { AssetProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { buildCapitalMarketsBook } from './capitalMarkets';
+import { debtFundingHeadroom } from './fundingHeadroom';
 
 describe('capital-markets bookbuild', () => {
   it('prices equity more aggressively as transaction size grows and can partially fill a large deal', () => {
@@ -101,6 +102,50 @@ describe('capital-markets bookbuild', () => {
     expect(bad.clearingSpreadBps).toBeGreaterThan(good.clearingSpreadBps ?? 0);
     expect(bad.demandAmount).toBeLessThan(good.demandAmount);
     expect(bad.fundingMarketAssessment?.drivers.some(driver => driver.key === 'capital' && driver.spreadBps > 0)).toBe(true);
+  });
+
+  it('limits the AT1 stack to half of CET1 even when coupon payment is skipped', () => {
+    const state = cloneBankState(initialState);
+    state.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'skip' };
+    state.financial.capital.at1 = state.financial.capital.cet1 * 0.5;
+
+    const book = buildCapitalMarketsBook(state, baseConfig, {
+      instrument: 'at1', targetAmount: 1e9, maxSpreadBps: 10_000,
+    });
+
+    expect(book.executedAmount).toBe(0);
+    expect(book.demandAmount).toBe(0);
+    expect(book.status).toBe('failed-demand');
+  });
+
+  it('prices future AT1 issuance more tightly after a run of skipped coupons', () => {
+    const paying = cloneBankState(initialState);
+    const skipping = cloneBankState(initialState);
+    paying.financial.capital.at1 = 100e6;
+    skipping.financial.capital.at1 = 100e6;
+    skipping.capitalMarkets = { transactions: [], at1CouponSkipStreakMonths: 12 };
+    const order = { instrument: 'at1' as const, targetAmount: 200e6, maxSpreadBps: 10_000 };
+
+    const paidBook = buildCapitalMarketsBook(paying, baseConfig, order);
+    const skippedBook = buildCapitalMarketsBook(skipping, baseConfig, order);
+
+    expect(skippedBook.clearingSpreadBps).toBeGreaterThan(paidBook.clearingSpreadBps ?? 0);
+    expect(skippedBook.demandAmount).toBeLessThan(paidBook.demandAmount);
+    expect(skippedBook.fundingMarketAssessment?.drivers.some(driver => driver.key === 'couponReliability')).toBe(true);
+  });
+
+  it('caps Tier 2 and senior debt orders by gross leverage headroom', () => {
+    const state = cloneBankState(initialState);
+    const headroom = debtFundingHeadroom(state, baseConfig);
+    expect(headroom).toBeGreaterThan(0);
+
+    for (const instrument of ['tier2', 'senior'] as const) {
+      const book = buildCapitalMarketsBook(state, baseConfig, {
+        instrument, targetAmount: 1e12, maxSpreadBps: 10_000, tenorMonths: 60,
+      });
+      expect(book.demandAmount).toBeLessThanOrEqual(headroom + 1e-6);
+      expect(book.fundingMarketAssessment?.hardCapacity).toBeLessThanOrEqual(headroom + 1e-6);
+    }
   });
 
   it('does not use the legacy Funding Confidence state to price debt or determine capacity', () => {

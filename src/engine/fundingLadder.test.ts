@@ -4,6 +4,7 @@ import { initialState } from '../config/initialState';
 import { LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { createSimulationEngine } from './simulation';
+import { debtFundingHeadroom } from './fundingHeadroom';
 
 const lineBalance = (state: typeof initialState, productType: LiabilityProductType): number =>
   state.financial.balanceSheet.items.find((item) => item.productType === productType)?.balance ?? 0;
@@ -210,6 +211,35 @@ describe('Funding maturity ordering', () => {
     expect(gilts?.encumbrance?.encumberedAmount ?? 0).toBeCloseTo(0, 2);
     expect(result.events.some((event) => event.message.includes('STR drawing'))).toBe(true);
     expect(result.events.some((event) => event.message.includes('Bank of England secured funding matured'))).toBe(true);
+  });
+
+  it('clips a collateralised BoE draw to internal gross leverage headroom', () => {
+    const engine = createSimulationEngine();
+    const state = cloneBankState(initialState);
+    state.behaviour.riskAppetite = {
+      cet1: 0.1,
+      leverage: 0.075,
+      lcr: 1.1,
+      nsfr: 1.05,
+    };
+    const openingBoeFunding = lineBalance(state, LiabilityProductType.BankOfEnglandFunding);
+    const gilts = state.financial.balanceSheet.items.find(item => item.productType === 'Gilts');
+    const availableCollateral = Math.max(0, (gilts?.balance ?? 0) - (gilts?.encumbrance?.encumberedAmount ?? 0))
+      * (1 - Math.max(baseConfig.behaviour.boeFunding?.levelAHaircut ?? 0.03, state.market.giltRepoHaircut));
+    expect(debtFundingHeadroom(state, baseConfig)).toBeLessThan(availableCollateral);
+
+    const result = engine.step({
+      state,
+      config: baseConfig,
+      actions: [{ type: 'drawBoeFunding', facility: 'ILTR', amount: 1e12 }],
+      shocks: [],
+    });
+
+    const executedDraw = lineBalance(result.nextState, LiabilityProductType.BankOfEnglandFunding) - openingBoeFunding;
+    expect(executedDraw).toBeGreaterThan(0);
+    expect(executedDraw).toBeLessThan(availableCollateral);
+    expect(executedDraw).toBeLessThan(1e12);
+    expect(result.events.some(event => event.message.includes('clipped') && event.message.includes('leverage headroom'))).toBe(true);
   });
 
   it('accrues the final coupon on wholesale funding before month-end rollover', () => {

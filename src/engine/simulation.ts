@@ -82,6 +82,7 @@ import { advanceContractualAssetLifecycle, syncFloatingTreasuryAssetRates } from
 import { reviewThreeYearPlan } from './threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
+import { debtFundingHeadroom } from './fundingHeadroom';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { buildStatements, type BuildStatementsResult } from './simulationStatements';
 import { createSimulationEvent as createEvent, type EventSeverity, type SimulationEvent } from './simulationEvents';
@@ -789,13 +790,67 @@ const settleCapitalMarketsBookbuild = (
 };
 
 const applyBoeFunding = (state: BankState, config: SimulationConfig, facility: 'STR'|'ILTR', amount: number, events: SimulationEvent[]): void => {
-  const requested=Math.max(0,amount); if(!requested)return; const cash=findItem(state.financial.balanceSheet,AssetProductType.CashReserves); const gilts=findItem(state.financial.balanceSheet,AssetProductType.Gilts); if(!cash||!gilts)return;
-  const p=config.behaviour.boeFunding; const haircut=clamp(Math.max(p?.levelAHaircut??.03,state.market.giltRepoHaircut),0,.25); const available=Math.max(0,gilts.balance-(gilts.encumbrance?.encumberedAmount??0)); const executable=Math.min(requested,available*(1-haircut));
-  if(executable<=0){events.push(createEvent('warning','Bank of England drawing rejected: no unencumbered eligible gilt collateral.'));return;}
-  const tenor=facility==='STR'?(p?.strTenorMonths??1):(p?.iltrTenorMonths??6); const spread=(facility==='STR'?(p?.strSpreadBps??0):(p?.iltrSpreadBps??3))/10000; const rate=Math.max(0,state.market.baseRate+spread);
-  const line=ensureLineItem(state,BalanceSheetSide.Liability,LiabilityProductType.BankOfEnglandFunding,'Bank of England Secured Funding',rate,config); genericFundingBuckets(state,LiabilityProductType.BankOfEnglandFunding).push({tenorMonths:tenor,monthsToMaturity:tenor,notional:executable,rate}); line.balance+=executable; line.interestRate=blendRate(Math.max(0,line.balance-executable),line.interestRate,executable,rate); cash.balance+=executable;
-  gilts.encumbrance??={encumberedAmount:0}; gilts.encumbrance.encumberedAmount=Math.min(gilts.balance,(gilts.encumbrance.encumberedAmount??0)+executable/(1-haircut)); gilts.encumbrance.remainingMonths=Math.max(gilts.encumbrance.remainingMonths??0,tenor);
-  events.push(createEvent('info',`${facility} drawing ${executable.toFixed(2)} at ${(rate*100).toFixed(2)}%, secured on gilts`,['funding','liquidity']));
+  const requested = Math.max(0, amount);
+  if (!requested) return;
+  const cash = findItem(state.financial.balanceSheet, AssetProductType.CashReserves);
+  const gilts = findItem(state.financial.balanceSheet, AssetProductType.Gilts);
+  if (!cash || !gilts) return;
+
+  const policy = config.behaviour.boeFunding;
+  const haircut = clamp(Math.max(policy?.levelAHaircut ?? 0.03, state.market.giltRepoHaircut), 0, 0.25);
+  const unencumbered = Math.max(0, gilts.balance - (gilts.encumbrance?.encumberedAmount ?? 0));
+  const collateralCapacity = unencumbered * (1 - haircut);
+  const leverageCapacity = debtFundingHeadroom(state, config);
+  const executable = Math.min(requested, collateralCapacity, leverageCapacity);
+
+  if (executable <= 0) {
+    const reason = collateralCapacity <= 0
+      ? 'Bank of England drawing rejected: no unencumbered eligible gilt collateral.'
+      : 'Bank of England drawing rejected: internal leverage headroom is exhausted.';
+    events.push(createEvent('warning', reason));
+    return;
+  }
+  if (executable + 1e-6 < requested) {
+    const limit = collateralCapacity <= leverageCapacity ? 'eligible gilt collateral' : 'internal leverage headroom';
+    events.push(createEvent(
+      'warning',
+      `${facility} drawing clipped from ${(requested / 1e6).toFixed(0)}m to ${(executable / 1e6).toFixed(0)}m by ${limit}.`,
+      ['funding', 'capital'],
+    ));
+  }
+
+  const tenor = facility === 'STR' ? (policy?.strTenorMonths ?? 1) : (policy?.iltrTenorMonths ?? 6);
+  const spread = (facility === 'STR' ? (policy?.strSpreadBps ?? 0) : (policy?.iltrSpreadBps ?? 3)) / 10000;
+  const rate = Math.max(0, state.market.baseRate + spread);
+  const line = ensureLineItem(
+    state,
+    BalanceSheetSide.Liability,
+    LiabilityProductType.BankOfEnglandFunding,
+    'Bank of England Secured Funding',
+    rate,
+    config,
+  );
+  genericFundingBuckets(state, LiabilityProductType.BankOfEnglandFunding).push({
+    tenorMonths: tenor,
+    monthsToMaturity: tenor,
+    notional: executable,
+    rate,
+  });
+  line.balance += executable;
+  line.interestRate = blendRate(Math.max(0, line.balance - executable), line.interestRate, executable, rate);
+  cash.balance += executable;
+
+  gilts.encumbrance ??= { encumberedAmount: 0 };
+  gilts.encumbrance.encumberedAmount = Math.min(
+    gilts.balance,
+    (gilts.encumbrance.encumberedAmount ?? 0) + executable / (1 - haircut),
+  );
+  gilts.encumbrance.remainingMonths = Math.max(gilts.encumbrance.remainingMonths ?? 0, tenor);
+  events.push(createEvent(
+    'info',
+    `${facility} drawing ${executable.toFixed(2)} at ${(rate * 100).toFixed(2)}%, secured on gilts`,
+    ['funding', 'liquidity'],
+  ));
 };
 
 const stepContractualRetailFunding = (state: BankState, config: SimulationConfig, dtMonths: number, events: SimulationEvent[]): void => {
@@ -2340,6 +2395,16 @@ export const applyCapitalPolicyDistributions = (
   const at1CouponsPaid = payAt1
     ? Math.min(at1CouponDue, Math.max(0, availableCash - dividendsPaid), distributableCapital)
     : 0;
+
+  if (at1CouponDue > 0) {
+    state.capitalMarkets ??= { transactions: [] };
+    const couponPaidInFull = at1CouponsPaid + 1e-6 >= at1CouponDue;
+    state.capitalMarkets.at1CouponSkipStreakMonths = couponPaidInFull
+      ? 0
+      : Math.max(0, state.capitalMarkets.at1CouponSkipStreakMonths ?? 0) + Math.max(1, Math.round(dtYears * 12));
+  } else if (state.capitalMarkets) {
+    state.capitalMarkets.at1CouponSkipStreakMonths = 0;
+  }
 
   const totalDistribution = dividendsPaid + at1CouponsPaid;
   if (totalDistribution > 0) {

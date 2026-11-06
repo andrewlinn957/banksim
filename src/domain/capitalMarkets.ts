@@ -56,4 +56,6 @@ export interface CapitalMarketsState {
   transactions: CapitalMarketsTransactionRecord[];
   /** Weighted coupon on outstanding AT1 issued through the market engine. */
   at1CouponRateAnnual?: number;
+  /** Consecutive months in which an outstanding AT1 coupon was skipped or underpaid. */
+  at1CouponSkipStreakMonths?: number;
 }

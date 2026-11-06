@@ -6,7 +6,7 @@ import {
   type CapitalMarketsFundingProductType,
 } from '../products/capabilities';
 
-export type CapitalMarketsReferenceSize = 'marketCap' | 'originalEquityMarketCap' | 'cet1OrMarketCap' | 'ownFunds' | 'totalAssets';
+export type CapitalMarketsReferenceSize = 'marketCap' | 'originalEquityMarketCap' | 'cet1OrMarketCap' | 'cet1Capital' | 'tier1Capital' | 'coreFunding' | 'ownFunds' | 'totalAssets';
 export type CapitalMarketsBenchmark = 'riskFreeLong' | 'giltCurve';
 
 export type CapitalMarketsSettlement =
@@ -42,6 +42,8 @@ export interface CapitalMarketsInstrumentDefinition {
   equityReturnDemandFloor?: number;
   /** Maximum added discount when the return on the proposed issue is below the cost of equity. */
   equityReturnMaxDiscount?: number;
+  /** Investor appetite limit for perpetual AT1 as a share of common equity. */
+  maxOutstandingMultiple?: number;
   baseFeeRate: number;
   fundingMarket?: FundingMarketInstrumentCalibration;
 }
@@ -64,10 +66,11 @@ const AT1_DEFINITION: CapitalMarketsInstrumentDefinition = {
   label: 'AT1',
   pricingKind: 'spread',
   settlement: { kind: 'at1' },
-  referenceSize: 'cet1OrMarketCap',
+  referenceSize: 'cet1Capital',
   benchmark: 'riskFreeLong',
   spreadSensitivity: 1.45,
   baseCapacityMultiple: 0.22,
+  maxOutstandingMultiple: 0.5,
   basePremiumBps: 350,
   baseFeeRate: 0,
   fundingMarket: {
@@ -88,7 +91,7 @@ interface FundingMarketCalibration {
 
 const FUNDING_MARKET_CALIBRATION: Record<CapitalMarketsFundingInstrument, FundingMarketCalibration> = {
   tier2: {
-    referenceSize: 'ownFunds',
+    referenceSize: 'tier1Capital',
     baseCapacityMultiple: 0.35,
     basePremiumBps: 175,
     spreadSensitivity: 1.2,
@@ -100,7 +103,7 @@ const FUNDING_MARKET_CALIBRATION: Record<CapitalMarketsFundingInstrument, Fundin
     },
   },
   senior: {
-    referenceSize: 'totalAssets',
+    referenceSize: 'coreFunding',
     baseCapacityMultiple: 0.08,
     basePremiumBps: 0,
     spreadSensitivity: 1,
