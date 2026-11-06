@@ -35,6 +35,7 @@ import { SimulationEvent } from './engine/simulation';
 import { ComplianceStatus, RiskMetrics } from './domain/risks';
 import RegMetricsPanel, { type RegulatoryMetric } from './components/RegMetricsPanel';
 import LoansPanel from './components/LoansPanel';
+import CreditLossesPanel from './components/CreditLossesPanel';
 import CostsPanel from './components/CostsPanel';
 import ReconciliationPanel from './components/ReconciliationPanel';
 import { SimulationConfig } from './domain/config';
@@ -96,7 +97,7 @@ const App = () => {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
   const [runPeriod, setRunPeriod] = useState('quarter');
-  const navigationDepartment: Department | null = activeTab==='Boardroom' ? (isActionsOpen ? activeDepartment : null) : activeTab==='Loans' ? 'Lending' : ['Performance','Accounts','Share Price','Costs'].includes(activeTab) ? 'Capital' : activeTab==='Regulatory' ? reportOriginDepartment : null;
+  const navigationDepartment: Department | null = activeTab==='Boardroom' ? (isActionsOpen ? activeDepartment : null) : ['Loans','Credit Losses'].includes(activeTab) ? 'Lending' : ['Performance','Accounts','Share Price','Costs'].includes(activeTab) ? 'Capital' : activeTab==='Regulatory' ? reportOriginDepartment : null;
   const pendingActions = [
     actionForm.capitalMarketsInstrument!=='none' ? `${getCapitalMarketsInstrument(actionForm.capitalMarketsInstrument).label}: ${actionForm.capitalMarketsTargetAmount || 'amount required'}` : null,
     actionForm.giltTradeDirection!=='none' ? `${actionForm.giltTradeDirection==='buy'?'Buy':'Sell'} gilts: ${actionForm.giltTradeAmount || 'amount required'}` : null,
@@ -951,6 +952,8 @@ const App = () => {
           />
         </section>
       )}
+
+      {activeTab === 'Credit Losses' && <CreditLossesPanel history={stateHistory} />}
 
       {activeTab === 'Costs' && (
         <section className="stack">
