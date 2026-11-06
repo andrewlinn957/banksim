@@ -1,4 +1,4 @@
-import { ActionFormState } from '../components/ActionsPanel';
+import type { ActionFormState, TransactionKind } from '../components/ActionsPanel';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
@@ -52,6 +52,31 @@ export const createActionFormState = (state: BankState, config: SimulationConfig
   hedgeFixedRate: '',
   hedgeMaturityMonths: '24',
 });
+
+export const clearTransactionDraft = (state: ActionFormState, kind: TransactionKind): ActionFormState => {
+  switch (kind) {
+    case 'capitalMarkets':
+      return {
+        ...state,
+        capitalMarketsInstrument: 'none',
+        capitalMarketsTargetAmount: '',
+        capitalMarketsMaxDiscount: '15%',
+        capitalMarketsMaxSpreadBps: '1000',
+        capitalMarketsTenorMonths: '60',
+      };
+    case 'giltTrade':
+      return { ...state, giltTradeDirection: 'none', giltTradeAmount: '' };
+    case 'boeFunding':
+      return { ...state, boeFacility: 'none', boeFundingAmount: '' };
+    case 'hedge':
+      return {
+        ...state,
+        hedgeDirection: 'none',
+        hedgeNotional: '',
+        hedgeFixedRate: '',
+      };
+  }
+};
 
 export const clearOneOffTransactions = (state: ActionFormState): ActionFormState => ({
   ...state,
