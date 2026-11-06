@@ -133,13 +133,14 @@ for (const profile of profiles) {
 
       const dashboards = [
         { label: 'Capital', selector: '.capital-dashboard' },
-        { label: 'Liquidity coverage', selector: '.lcr-dashboard' },
-        { label: 'Stable funding', selector: '.nsfr-dashboard' },
+        { label: 'LCR', selector: '.lcr-dashboard' },
+        { label: 'NSFR', selector: '.nsfr-dashboard' },
         { label: 'Leverage', selector: '.leverage-dashboard' },
       ] as const;
 
+      const regulatoryScreens = page.getByRole('navigation', { name: 'Risk and regulatory screens' });
       for (const dashboard of dashboards) {
-        await page.locator('.metric-switch').getByRole('button', { name: dashboard.label, exact: true }).click();
+        await regulatoryScreens.getByRole('button', { name: dashboard.label, exact: true }).click();
         await expect(page.locator(dashboard.selector)).toBeVisible();
         await expectNoDocumentOverflow(page, dashboard.label);
       }
