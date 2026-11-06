@@ -182,7 +182,13 @@ const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,a
       <dl className="deal-details">
         {isDiscountPriced?<><div><dt>Clearing discount</dt><dd>{formatPct(quote.clearingDiscount??0)}</dd></div><div><dt>Expected issue price</dt><dd>£{(quote.issuePrice??0).toFixed(3)}</dd></div>{bankState&&<div><dt>Ownership dilution</dt><dd>{formatPct(dilution)}</dd></div>}</>:<><div><dt>Clearing spread</dt><dd>{(quote.clearingSpreadBps??0).toFixed(0)}bp</dd></div>{allInYield!==undefined&&<><div><dt>Expected all-in yield</dt><dd>{formatPct(allInYield)}</dd></div><div><dt>Annual coupon cost</dt><dd>{moneyMillions(quote.executedAmount*allInYield)}</dd></div></>}</>}
         <div><dt>Fees</dt><dd>{moneyMillions(quote.fees)}</dd></div>
+        {quote.equityPostIssueRoe!==undefined&&<div><dt>Post-raise ROE proxy</dt><dd>{formatPct(quote.equityPostIssueRoe)}</dd></div>}
+        {quote.equityPostIssueDps!==undefined&&<div><dt>Expected dividend/share</dt><dd>{(quote.equityPostIssueDps*100).toFixed(2)}p</dd></div>}
+        {quote.equityExpectedReturn!==undefined&&<div><dt>Expected total return proxy</dt><dd>{formatPct(quote.equityExpectedReturn)}</dd></div>}
+        {quote.equityCostOfEquity!==undefined&&<div><dt>Cost of equity</dt><dd>{formatPct(quote.equityCostOfEquity)}</dd></div>}
+        {quote.equityReturnDemandFactor!==undefined&&<div><dt>Investor demand factor</dt><dd>{Math.round(quote.equityReturnDemandFactor*100)}%</dd></div>}
       </dl>
+      {quote.equityPostIssueRoe!==undefined&&<small>ROE estimate assumes proceeds earn the cash reserve rate.</small>}
       {quote.recentIssuanceRatio>0&&<small>Recent issuance reduces capacity and worsens terms.</small>}
     </div>}
     {latestTransaction&&<details className="transaction-receipt"><summary>Last execution · {getCapitalMarketsInstrument(latestTransaction.instrument).label} · {latestTransaction.status==='filled'?'Executed':latestTransaction.status==='partial'?'Partially filled':'Failed'}</summary><dl className="deal-details"><div><dt>Date</dt><dd>{latestTransaction.date}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(latestTransaction.executedAmount)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(latestTransaction.netProceeds)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(latestTransaction.fees)}</dd></div></dl></details>}

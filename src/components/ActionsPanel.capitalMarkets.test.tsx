@@ -25,6 +25,18 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).toContain('issue price');
   });
 
+  it('shows the return estimate that drives CET1 investor demand', () => {
+    const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
+    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.5});
+    const markup=renderToStaticMarkup(<ActionsPanel department="Capital" bankState={initialState} state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
+    expect(markup).toContain('Post-raise ROE proxy');
+    expect(markup).toContain('Expected dividend/share');
+    expect(markup).toContain('Expected total return proxy');
+    expect(markup).toContain('Cost of equity');
+    expect(markup).toContain('Investor demand factor');
+    expect(markup).toContain('ROE estimate assumes proceeds earn the cash reserve rate.');
+  });
+
   it('shows spread and tenor controls for a Tier 2 book on the Capital desk', () => {
     const state=form({capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});

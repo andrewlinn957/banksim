@@ -29,6 +29,16 @@ export interface CapitalMarketsBookbuildResult {
   fees: number;
   netProceeds: number;
   recentIssuanceRatio: number;
+  /** Estimated post-issue ROE at the requested size, assuming proceeds earn the current reserve rate. */
+  equityPostIssueRoe?: number;
+  /** Estimated annual dividend per share at the requested size and permitted payout ratio. */
+  equityPostIssueDps?: number;
+  /** Estimated total-return proxy: dividend yield plus retained-earnings growth. */
+  equityExpectedReturn?: number;
+  /** Cost-of-equity hurdle used to assess investor returns. */
+  equityCostOfEquity?: number;
+  /** Share of base investor capacity supported by the projected investor return. */
+  equityReturnDemandFactor?: number;
   /**
    * Backend-only diagnostic output from the fundamentals-driven funding-market engine.
    * No current UI consumes this object; it is retained so future UX can choose how much

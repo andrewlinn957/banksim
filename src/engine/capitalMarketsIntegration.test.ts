@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
+import { buildCapitalMarketsBook } from './capitalMarkets';
 import { cloneBankState } from './clone';
 import { applyCapitalPolicyDistributions, createSimulationEngine } from './simulation';
 
@@ -25,6 +26,25 @@ describe('capital-markets settlement integration', () => {
     expect(result.nextState.financial.capital.cet1).toBeGreaterThan(baseline.financial.capital.cet1);
     expect(balance(result.nextState, AssetProductType.CashReserves)).toBeGreaterThan(balance(baseline, AssetProductType.CashReserves));
     expect(result.nextState.capitalMarkets?.transactions.at(-1)?.instrument).toBe('cet1');
+  });
+
+  it('keeps demand positive after a real raise and applies the return and repeat-issue terms', () => {
+    const engine = createSimulationEngine();
+    const order = { instrument: 'cet1' as const, targetAmount: 1e9, maxDiscount: 0.5 };
+    const openingQuote = buildCapitalMarketsBook(initialState, baseConfig, order);
+    const first = engine.step({
+      state: cloneBankState(initialState), config: baseConfig,
+      actions: [{ type: 'launchCapitalMarketsTransaction', ...order }], shocks: [],
+    });
+    const afterIssue = first.nextState;
+    const repeatQuote = buildCapitalMarketsBook(afterIssue, baseConfig, order);
+
+    expect(first.executions.capitalMarkets[0].executedAmount).toBeGreaterThan(0);
+    expect(repeatQuote.equityPostIssueRoe).toBeDefined();
+    expect(repeatQuote.equityReturnDemandFactor).toBeGreaterThan(0);
+    expect(repeatQuote.demandAmount).toBeGreaterThan(0);
+    expect(repeatQuote.demandAmount).toBeLessThan(openingQuote.demandAmount);
+    expect(repeatQuote.recentIssuanceRatio).toBeGreaterThan(openingQuote.recentIssuanceRatio);
   });
 
   it('does not settle a book when management refuses the clearing discount', () => {

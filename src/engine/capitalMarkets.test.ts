@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
+import { AssetProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 
@@ -20,6 +21,57 @@ describe('capital-markets bookbuild', () => {
     const quote = buildCapitalMarketsBook(state, baseConfig, { instrument: 'cet1', targetAmount: 250e6, maxDiscount: 0.01 });
     expect(quote.status).toBe('failed-price');
     expect(quote.executedAmount).toBe(0);
+  });
+
+  it('ties CET1 demand and pricing to post-issue ROE relative to the cost of equity', () => {
+    const profitable = cloneBankState(initialState);
+    profitable.equityMarket.smoothedAnnualisedEps = 0.15;
+    profitable.risk.riskMetrics.internalCet1Headroom = 0.2;
+    const weakReturns = cloneBankState(initialState);
+    weakReturns.equityMarket.smoothedAnnualisedEps = 0.01;
+    weakReturns.risk.riskMetrics.internalCet1Headroom = 0.5;
+
+    const attractiveBook = buildCapitalMarketsBook(profitable, baseConfig, { instrument: 'cet1', targetAmount: 100e6, maxDiscount: 0.5 });
+    const weakBook = buildCapitalMarketsBook(weakReturns, baseConfig, { instrument: 'cet1', targetAmount: 100e6, maxDiscount: 0.5 });
+
+    expect(attractiveBook.equityPostIssueRoe).toBeGreaterThan(attractiveBook.equityCostOfEquity ?? 1);
+    expect(attractiveBook.equityReturnDemandFactor).toBe(1);
+    expect(weakBook.equityPostIssueRoe).toBeLessThan(weakBook.equityCostOfEquity ?? 0);
+    expect(weakBook.equityReturnDemandFactor).toBeGreaterThan(0);
+    expect(weakBook.demandAmount).toBeGreaterThan(0);
+    expect(weakBook.demandAmount).toBeLessThan(attractiveBook.demandAmount);
+    expect(weakBook.clearingDiscount).toBeGreaterThan(attractiveBook.clearingDiscount ?? 0);
+  });
+
+  it('does not let issued shares inflate future CET1 market capacity after the repeat window', () => {
+    const state = cloneBankState(initialState);
+    const priorIssue = buildCapitalMarketsBook(state, baseConfig, { instrument: 'cet1', targetAmount: 740e6, maxDiscount: 0.5 });
+    state.equityMarket.sharesOutstanding = 2e9;
+    state.equityMarket.marketCap = 1.48e9;
+    const priorNetProceeds = 732.6e6;
+    state.financial.capital.cet1 += priorNetProceeds;
+    const reserveRate = state.financial.balanceSheet.items.find(item => item.productType === AssetProductType.CashReserves)?.interestRate ?? 0;
+    const existingAnnualEarnings = initialState.equityMarket.epsTtm * initialState.equityMarket.sharesOutstanding;
+    const incrementalCashEarnings = priorNetProceeds * reserveRate * (1 - baseConfig.global.taxRate);
+    state.equityMarket.smoothedAnnualisedEps = (existingAnnualEarnings + incrementalCashEarnings) / state.equityMarket.sharesOutstanding;
+    state.time.step = 12;
+    state.capitalMarkets = {
+      transactions: [{
+        ...priorIssue,
+        executedAmount: 740e6,
+        grossProceeds: 740e6,
+        netProceeds: priorNetProceeds,
+        issuePrice: 0.74,
+        step: 0,
+        date: initialState.time.date.toISOString(),
+      }],
+    };
+
+    const beforeIssue = buildCapitalMarketsBook(initialState, baseConfig, { instrument: 'cet1', targetAmount: 100e6, maxDiscount: 0.5 });
+    const afterIssue = buildCapitalMarketsBook(state, baseConfig, { instrument: 'cet1', targetAmount: 100e6, maxDiscount: 0.5 });
+
+    expect(state.equityMarket.marketCap).toBeGreaterThan(initialState.equityMarket.marketCap);
+    expect(afterIssue.demandAmount).toBeLessThan(beforeIssue.demandAmount);
   });
 
   it('makes repeated issuance more expensive and reduces market capacity', () => {

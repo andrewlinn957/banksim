@@ -6,7 +6,7 @@ import {
   type CapitalMarketsFundingProductType,
 } from '../products/capabilities';
 
-export type CapitalMarketsReferenceSize = 'marketCap' | 'cet1OrMarketCap' | 'ownFunds' | 'totalAssets';
+export type CapitalMarketsReferenceSize = 'marketCap' | 'originalEquityMarketCap' | 'cet1OrMarketCap' | 'ownFunds' | 'totalAssets';
 export type CapitalMarketsBenchmark = 'riskFreeLong' | 'giltCurve';
 
 export type CapitalMarketsSettlement =
@@ -38,6 +38,10 @@ export interface CapitalMarketsInstrumentDefinition {
   baseCapacityMultiple: number;
   basePremiumBps?: number;
   baseDiscount?: number;
+  /** Floor for equity demand when post-issue return falls below the cost of equity. */
+  equityReturnDemandFloor?: number;
+  /** Maximum added discount when the return on the proposed issue is below the cost of equity. */
+  equityReturnMaxDiscount?: number;
   baseFeeRate: number;
   fundingMarket?: FundingMarketInstrumentCalibration;
 }
@@ -47,9 +51,11 @@ const CET1_DEFINITION: CapitalMarketsInstrumentDefinition = {
   label: 'CET1 equity',
   pricingKind: 'discount',
   settlement: { kind: 'cet1' },
-  referenceSize: 'marketCap',
+  referenceSize: 'originalEquityMarketCap',
   baseCapacityMultiple: 0.35,
   baseDiscount: 0.03,
+  equityReturnDemandFloor: 0.2,
+  equityReturnMaxDiscount: 0.15,
   baseFeeRate: 0.01,
 };
 
