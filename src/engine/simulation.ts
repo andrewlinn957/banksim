@@ -83,7 +83,7 @@ import { reviewThreeYearPlan } from './threeYearPlan';
 import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import { debtFundingHeadroom } from './fundingHeadroom';
-import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
+import { AT1_COUPON_ISSUANCE_REENTRY_MONTHS, type CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { buildStatements, type BuildStatementsResult } from './simulationStatements';
 import { createSimulationEvent as createEvent, type EventSeverity, type SimulationEvent } from './simulationEvents';
 import { getConfidenceStateImpact } from './fundingConfidence';
@@ -122,6 +122,7 @@ interface ActionContext {
   config: SimulationConfig;
   events: SimulationEvent[];
   executions: StepExecutionResult;
+  at1CouponModeForPeriod: 'auto' | 'pay' | 'skip';
 }
 
 export type ActionHandler<T extends PlayerAction = PlayerAction> = Handler<T, ActionContext>;
@@ -156,7 +157,7 @@ const actionHandlers: ActionHandlerMap = {
       maxDiscount: action.maxDiscount,
       maxSpreadBps: action.maxSpreadBps,
       tenorMonths: action.tenorMonths,
-    });
+    }, { at1CouponMode: ctx.at1CouponModeForPeriod });
     settleCapitalMarketsBookbuild(ctx.state, ctx.config, book, ctx.events);
     ctx.executions.capitalMarkets.push({ kind: 'capitalMarkets', ...book });
   },
@@ -734,9 +735,9 @@ const settleCapitalMarketsBookbuild = (
   const definition = getCapitalMarketsInstrument(book.instrument);
   const instrumentLabel = definition.label;
   if (book.executedAmount <= 0) {
-    const reason = book.status === 'failed-price'
+    const reason = book.marketAccessBlockReason ?? (book.status === 'failed-price'
       ? 'management price limit was inside the clearing level'
-      : 'insufficient market demand';
+      : 'insufficient market demand');
     events.push(createEvent(
       'warning',
       `${instrumentLabel} bookbuild failed: ${reason}; demand ${(book.demandAmount / 1e6).toFixed(0)}m for target ${(book.targetAmount / 1e6).toFixed(0)}m`,
@@ -1273,7 +1274,13 @@ export const applyActions = (
 ): StepExecutionResult => {
   ensureFundingLadders(state, config);
   const executions = createEmptyStepExecutionResult();
-  const actionContext: ActionContext = { state, config, events, executions };
+  const at1CouponModeForPeriod = actions.reduce<'auto' | 'pay' | 'skip'>(
+    (mode, action) => action.type === 'setCapitalPolicy' && action.at1CouponMode !== undefined
+      ? action.at1CouponMode
+      : mode,
+    state.behaviour.capitalPolicy?.at1CouponMode ?? 'auto',
+  );
+  const actionContext: ActionContext = { state, config, events, executions, at1CouponModeForPeriod };
   actions.forEach(action => {
     if (Object.values(action).some(v => typeof v === 'number' && !Number.isFinite(v)) || ('amount' in action && action.amount < 0) || ('notional' in action && action.notional < 0)) {
       events.push(createEvent('warning', 'Invalid transaction amount or rate. Action rejected.'));
@@ -2399,11 +2406,23 @@ export const applyCapitalPolicyDistributions = (
   if (at1CouponDue > 0) {
     state.capitalMarkets ??= { transactions: [] };
     const couponPaidInFull = at1CouponsPaid + 1e-6 >= at1CouponDue;
+    const elapsedCouponMonths = Math.max(1, Math.round(dtYears * 12));
+    const priorSkipMonths = Math.max(0, state.capitalMarkets.at1CouponSkipStreakMonths ?? 0);
+    const priorLockoutMonths = Math.max(
+      state.capitalMarkets.at1CouponIssuanceLockoutMonthsRemaining ?? 0,
+      priorSkipMonths > 0 ? AT1_COUPON_ISSUANCE_REENTRY_MONTHS : 0,
+    );
     state.capitalMarkets.at1CouponSkipStreakMonths = couponPaidInFull
       ? 0
-      : Math.max(0, state.capitalMarkets.at1CouponSkipStreakMonths ?? 0) + Math.max(1, Math.round(dtYears * 12));
+      : priorSkipMonths + elapsedCouponMonths;
+    state.capitalMarkets.at1CouponIssuanceLockoutMonthsRemaining = couponPaidInFull
+      ? Math.max(0, priorLockoutMonths - elapsedCouponMonths)
+      : AT1_COUPON_ISSUANCE_REENTRY_MONTHS;
   } else if (state.capitalMarkets) {
     state.capitalMarkets.at1CouponSkipStreakMonths = 0;
+    if (state.financial.capital.at1 <= 1e-6) {
+      state.capitalMarkets.at1CouponIssuanceLockoutMonthsRemaining = 0;
+    }
   }
 
   const totalDistribution = dividendsPaid + at1CouponsPaid;
