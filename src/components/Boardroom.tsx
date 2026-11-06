@@ -23,6 +23,7 @@ interface Props {
  onClose: () => void;
  children?: ReactNode;
  pendingActions?: string[];
+ draftTransactions?: string[];
  attribution?: StepAttribution | null;
 }
 
@@ -33,7 +34,7 @@ const areas: Array<{department:Department;label:string;artwork:string}> = [
  {department:'Capital',label:'Finance & Capital',artwork:capitalArt},
 ];
 
-export default function Boardroom({state,history,department,hasErrors,onDepartment,onRisk,onClose,children,pendingActions=[],attribution=null}:Props) {
+export default function Boardroom({state,history,department,hasErrors,onDepartment,onRisk,onClose,children,pendingActions=[],draftTransactions=[],attribution=null}:Props) {
  const recordedHistory=history.length?history:[state];
  const quarter=periodHistory(recordedHistory,3).at(-1);
  const previous=recordedHistory.filter(s=>s.time.step<state.time.step).at(-1);
@@ -99,7 +100,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    </div>
    <div className="home-detail-grid">
     <section className="home-close" aria-label="Latest monthly result"><h2>Latest monthly close</h2>{hasClosed?<><p className="home-helper">{new Date(state.time.date).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} · realised results</p><dl className="home-result-grid"><div><dt>Net interest income</dt><dd>{moneyMillions(pnl.netInterestIncome)}</dd></div><div><dt>Operating expenses</dt><dd>{moneyMillions(pnl.operatingExpenses)}</dd></div><div><dt>Provision charge</dt><dd>{moneyMillions(pnl.provisionCharge)}</dd></div><div><dt>Net profit</dt><dd>{moneyMillions(pnl.netIncome)}</dd></div></dl>{attribution&&<div className="home-drivers"><strong>What moved the bank</strong>{(['nim','cet1Ratio','lcr','nsfr'] as const).map(key=>{const metric=attribution.metrics[key];const driver=metric.lines.slice().sort((a,b)=>Math.abs(b.effect)-Math.abs(a.effect))[0];return driver?<div key={key}><span>{metric.label}</span><b>{driver.label}</b><small>{driver.effect>=0?'+':''}{(driver.effect*100).toFixed(2)} pp</small></div>:null;})}</div>}<button className="button ghost" onClick={()=>onDepartment('Capital')}>Review performance & accounts →</button></>:<p className="home-helper">No monthly results yet.</p>}</section>
-    <section className="home-transactions" aria-label="Transactions"><h2>Transactions</h2><h3>Next monthly close</h3>{pendingActions.length?<ul>{pendingActions.map((action,i)=><li key={i}>{action}</li>)}</ul>:<p className="home-helper">No transactions queued.</p>}{lastTransaction&&<><h3>Latest capital-market result</h3><p><strong>{({cet1:'CET1 equity',at1:'AT1',tier2:'Tier 2',senior:'Senior debt'} as const)[lastTransaction.instrument]}</strong> · {lastTransaction.status.replaceAll('-',' ')} · {new Date(lastTransaction.date).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</p><dl className="home-result-grid"><div><dt>Requested</dt><dd>{moneyMillions(lastTransaction.targetAmount)}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(lastTransaction.executedAmount)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(lastTransaction.fees)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(lastTransaction.netProceeds)}</dd></div></dl></>}</section>
+    <section className="home-transactions" aria-label="Transactions"><h2>Transactions</h2><h3>Next monthly close</h3>{pendingActions.length?<ul>{pendingActions.map((action,i)=><li key={i}>{action}</li>)}</ul>:<p className="home-helper">No transactions queued.</p>}{draftTransactions.length>0&&<div className="alert warning" role="status"><strong>Drafts are not queued</strong><ul>{draftTransactions.map((draft,i)=><li key={i}>{draft}</li>)}</ul><p>They will not run at the next close and will clear when you advance.</p></div>}{lastTransaction&&<><h3>Latest capital-market result</h3><p><strong>{({cet1:'CET1 equity',at1:'AT1',tier2:'Tier 2',senior:'Senior debt'} as const)[lastTransaction.instrument]}</strong> · {lastTransaction.status.replaceAll('-',' ')} · {new Date(lastTransaction.date).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</p><dl className="home-result-grid"><div><dt>Requested</dt><dd>{moneyMillions(lastTransaction.targetAmount)}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(lastTransaction.executedAmount)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(lastTransaction.fees)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(lastTransaction.netProceeds)}</dd></div></dl></>}</section>
    </div>
   </section>}
 
