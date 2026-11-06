@@ -104,10 +104,27 @@ describe('capital-markets bookbuild', () => {
     expect(bad.fundingMarketAssessment?.drivers.some(driver => driver.key === 'capital' && driver.spreadBps > 0)).toBe(true);
   });
 
-  it('limits the AT1 stack to half of CET1 even when coupon payment is skipped', () => {
+  it('does not apply a fixed CET1 multiple cap to an issuer whose coupons are current', () => {
     const state = cloneBankState(initialState);
-    state.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'skip' };
+    state.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'pay' };
     state.financial.capital.at1 = state.financial.capital.cet1 * 0.5;
+
+    const book = buildCapitalMarketsBook(state, baseConfig, {
+      instrument: 'at1', targetAmount: 100e6, maxSpreadBps: 10_000,
+    });
+
+    expect(book.executedAmount).toBeGreaterThan(0);
+  });
+
+  it('suspends AT1 issuance during a skipped coupon and through the clean-payment period', () => {
+    const state = cloneBankState(initialState);
+    state.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'pay' };
+    state.financial.capital.at1 = 100e6;
+    state.capitalMarkets = {
+      transactions: [],
+      at1CouponSkipStreakMonths: 1,
+      at1CouponIssuanceLockoutMonthsRemaining: 12,
+    };
 
     const book = buildCapitalMarketsBook(state, baseConfig, {
       instrument: 'at1', targetAmount: 1e9, maxSpreadBps: 10_000,
@@ -116,6 +133,19 @@ describe('capital-markets bookbuild', () => {
     expect(book.executedAmount).toBe(0);
     expect(book.demandAmount).toBe(0);
     expect(book.status).toBe('failed-demand');
+    expect(book.marketAccessBlockReason).toContain('12 consecutive months');
+  });
+
+  it('blocks AT1 issuance when management plans to skip coupons in the current turn', () => {
+    const state = cloneBankState(initialState);
+    state.behaviour.capitalPolicy = { dividendPayoutRatio: 0, at1CouponMode: 'pay' };
+
+    const book = buildCapitalMarketsBook(state, baseConfig, {
+      instrument: 'at1', targetAmount: 100e6, maxSpreadBps: 10_000,
+    }, { at1CouponMode: 'skip' });
+
+    expect(book.executedAmount).toBe(0);
+    expect(book.marketAccessBlockReason).toContain('current coupon');
   });
 
   it('prices future AT1 issuance more tightly after a run of skipped coupons', () => {
@@ -123,7 +153,7 @@ describe('capital-markets bookbuild', () => {
     const skipping = cloneBankState(initialState);
     paying.financial.capital.at1 = 100e6;
     skipping.financial.capital.at1 = 100e6;
-    skipping.capitalMarkets = { transactions: [], at1CouponSkipStreakMonths: 12 };
+    skipping.capitalMarkets = { transactions: [], at1CouponSkipStreakMonths: 12, at1CouponIssuanceLockoutMonthsRemaining: 12 };
     const order = { instrument: 'at1' as const, targetAmount: 200e6, maxSpreadBps: 10_000 };
 
     const paidBook = buildCapitalMarketsBook(paying, baseConfig, order);
