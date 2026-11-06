@@ -38,6 +38,14 @@ export interface ActionFormState {
   hedgeMaturityMonths: string;
 }
 
+export type TransactionKind = 'capitalMarkets' | 'giltTrade' | 'boeFunding' | 'hedge';
+
+export interface QueuedTransactionSummary {
+  id: number;
+  kind: TransactionKind;
+  label: string;
+}
+
 export interface CapitalMarketsPlanImpact {
   cet1Before: number;
   cet1After: number;
@@ -58,6 +66,9 @@ interface Props {
   capitalMarketsPlanImpact?: CapitalMarketsPlanImpact;
   maxGiltSaleAmount?: number;
   maxBoeFundingAmount?: number;
+  queuedTransactions?: QueuedTransactionSummary[];
+  onQueueTransaction?: (kind: TransactionKind) => void;
+  onCancelQueuedTransaction?: (id: number) => void;
 }
 
 interface FieldProps {
@@ -146,7 +157,7 @@ const DEPARTMENT_FIELDS:Record<Department,Array<keyof ActionFormState>>={
 
 const tenorLabel = (months: number): string => months % 12 === 0 ? `${months / 12} years` : `${months} months`;
 
-const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,allowedInstruments,title,otherArea,bankState}:{bankState?:BankState;state:ActionFormState;onChange:(s:ActionFormState)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact;allowedInstruments:CapitalMarketsInstrument[];title:string;otherArea:string}) => {
+const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,allowedInstruments,title,otherArea,bankState,queuedTransactions,onQueueTransaction}:{bankState?:BankState;state:ActionFormState;onChange:(s:ActionFormState)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact;allowedInstruments:CapitalMarketsInstrument[];title:string;otherArea:string;queuedTransactions:QueuedTransactionSummary[];onQueueTransaction:()=>void}) => {
   const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
   const queuedInstrument = state.capitalMarketsInstrument;
   const instrument = queuedInstrument !== 'none' && allowedInstruments.includes(queuedInstrument) ? queuedInstrument : 'none';
@@ -160,20 +171,21 @@ const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,a
     const tenor=Number(state.capitalMarketsTenorMonths);
     onChange({...state,capitalMarketsInstrument:value as ActionFormState['capitalMarketsInstrument'],capitalMarketsTargetAmount:value==='none'?'':state.capitalMarketsTargetAmount,capitalMarketsTenorMonths:next?.permittedTenorMonths&&!next.permittedTenorMonths.includes(tenor)?String(next.defaultTenorMonths??next.permittedTenorMonths[0]):state.capitalMarketsTenorMonths});
   };
-  const validOrder=definition&&((parseMoneyInput(state.capitalMarketsTargetAmount).value??0)>0)&&!Object.entries(errors??{}).some(([key,value])=>key.startsWith('capitalMarkets')&&value);
+  const validOrder=Boolean(definition&&((parseMoneyInput(state.capitalMarketsTargetAmount).value??0)>0)&&!Object.entries(errors??{}).some(([key,value])=>key.startsWith('capitalMarkets')&&value));
+  const transactionAlreadyQueued=queuedTransactions.some(transaction=>transaction.kind==='capitalMarkets');
   const latestTransaction=bankState?.capitalMarkets?.transactions.filter(t=>allowedInstruments.includes(t.instrument)).at(-1);
   const newShares=quote?.issuePrice&&quote.issuePrice>0?quote.grossProceeds/quote.issuePrice:0;
   const dilution=bankState&&newShares>0?newShares/(bankState.equityMarket.sharesOutstanding+newShares):0;
   return <section className="policy-disclosure capital-markets-ticket" aria-label="Capital markets">
-    <div className="policy-section-title"><h3>{title}</h3><span className="order-status">{definition?(validOrder?'Queued for next close':'Draft · enter valid terms'):'No transaction queued'}</span></div>
-    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is already queued in {otherArea}.</strong><div className="muted">Complete or cancel it there first.</div></div>}
+    <div className="policy-section-title"><h3>{title}</h3><span className="order-status">{definition?(validOrder?'Draft · not queued':'Draft · enter valid terms'):transactionAlreadyQueued?'Queued for next close':'No transaction drafted'}</span></div>
+    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is drafted in {otherArea}.</strong><div className="muted">Switch areas to queue or discard this draft.</div></div>}{transactionAlreadyQueued&&!definition&&<p className="order-status">Remove the queued order above before adding another capital-markets transaction.</p>}
     <div className="policy-fields policy-fields-primary">
-      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere} onChange={e=>selectInstrument(e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select></label>
-      <MoneyField field="capitalMarketsTargetAmount" label="Target size (£)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
+      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere||transactionAlreadyQueued} onChange={e=>selectInstrument(e.target.value)}><option value="none">Select an instrument</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select></label>
+      <MoneyField field="capitalMarketsTargetAmount" label="Target size (£)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
       {isDiscountPriced
-        ? <PercentageField field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxDiscount}/>
-        : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
-      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select></label>}
+        ? <PercentageField field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsMaxDiscount}/>
+        : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
+      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select></label>}
     </div>
     {definition&&quote&&<div className={`capital-markets-book ${quote.status.startsWith('failed')?'warning':'info'}`}>
       <div className="forecast-heading"><strong>Indicative book · {definition.label}</strong><span>{quote.status==='filled'?'Full fill projected':quote.status==='partial'?'Partial fill projected':'Execution would fail'}</span></div>
@@ -192,13 +204,13 @@ const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,a
       {quote.recentIssuanceRatio>0&&<small>Recent issuance reduces capacity and worsens terms.</small>}
     </div>}
     {latestTransaction&&<details className="transaction-receipt"><summary>Last execution · {getCapitalMarketsInstrument(latestTransaction.instrument).label} · {latestTransaction.status==='filled'?'Executed':latestTransaction.status==='partial'?'Partially filled':'Failed'}</summary><dl className="deal-details"><div><dt>Date</dt><dd>{latestTransaction.date}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(latestTransaction.executedAmount)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(latestTransaction.netProceeds)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(latestTransaction.fees)}</dd></div></dl></details>}
-    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">One-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div></div>}
-    {definition&&<button className="button ghost" disabled={disabled} onClick={()=>onChange({...state,capitalMarketsInstrument:'none',capitalMarketsTargetAmount:''})}>Cancel {definition.label} transaction</button>}
+    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">If queued, one-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div></div>}
+    {definition&&<><button type="button" className="button primary" disabled={disabled||!validOrder||transactionAlreadyQueued||queuedElsewhere} onClick={onQueueTransaction}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>onChange({...state,capitalMarketsInstrument:'none',capitalMarketsTargetAmount:''})}>Discard draft</button></>}
 
   </section>;
 };
 
-export default function ActionsPanel({department,bankState,state,onChange,disabled,errors,hasValidationErrors,giltQuotedYield,capitalMarketsQuote,capitalMarketsPlanImpact,maxGiltSaleAmount,maxBoeFundingAmount}:Props) {
+export default function ActionsPanel({department,bankState,state,onChange,disabled,errors,hasValidationErrors,giltQuotedYield,capitalMarketsQuote,capitalMarketsPlanImpact,maxGiltSaleAmount,maxBoeFundingAmount,queuedTransactions=[],onQueueTransaction=()=>{},onCancelQueuedTransaction=()=>{}}:Props) {
   const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
   const localFields=DEPARTMENT_FIELDS[department];
   const firstError = Object.entries(errors ?? {}).find(([field,message]) => !!message&&localFields.includes(field as keyof ActionFormState)) as [keyof ActionFormState,string] | undefined;
@@ -209,9 +221,11 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
   const setGiltDirection=(value:ActionFormState['giltTradeDirection'])=>onChange({...state,giltTradeDirection:value,giltTradeAmount:value==='none'?'':state.giltTradeAmount});
   const setBoeFacility=(value:ActionFormState['boeFacility'])=>onChange({...state,boeFacility:value,boeFundingAmount:value==='none'?'':state.boeFundingAmount});
   const setHedgeDirection=(value:ActionFormState['hedgeDirection'])=>onChange({...state,hedgeDirection:value,hedgeNotional:value==='none'?'':state.hedgeNotional,hedgeFixedRate:value==='none'?'':state.hedgeFixedRate});
+  const transactionAlreadyQueued=(kind:TransactionKind)=>queuedTransactions.some(transaction=>transaction.kind===kind);
 
   return <div className="stack department-policy-panel">
     <div className="policy-section-title"><h3>{department==='Treasury'?'Treasury actions':'Standing policy'}</h3></div>
+    {queuedTransactions.length>0&&<section className="alert info queued-transaction-summary" aria-label="Queued transactions for next close" role="status"><strong>{queuedTransactions.length===1?'Transaction':'Transactions'} queued for next close</strong><p>They will execute once when you roll the game forward one month.</p><ul>{queuedTransactions.map(transaction=><li key={transaction.id}><span>{transaction.label}</span><button type="button" className="button ghost" onClick={()=>onCancelQueuedTransaction(transaction.id)}>Remove</button></li>)}</ul></section>}
     {hasLocalValidationErrors && <div role="alert" className="alert danger">Fix this management area's invalid input before advancing time.{firstError && <> <strong>{FIELD_LABELS[firstError[0]] ?? firstError[0]}:</strong> {firstError[1]}</>}</div>}
 
     {department==='Customers'&&<div className="decision-product-grid" aria-label="Deposit product policies">
@@ -252,19 +266,20 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
 
     </>}
 
-    {department==='Capital'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={capitalInstruments} title="Raise capital" otherArea="Treasury & Funding"/>}
-    {department==='Treasury'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={treasuryCapitalInstruments} title="Wholesale funding markets" otherArea="Finance & Capital"/>}
+    {department==='Capital'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={capitalInstruments} title="Raise capital" otherArea="Treasury & Funding" queuedTransactions={queuedTransactions} onQueueTransaction={()=>onQueueTransaction('capitalMarkets')}/>}
+    {department==='Treasury'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={treasuryCapitalInstruments} title="Wholesale funding markets" otherArea="Finance & Capital" queuedTransactions={queuedTransactions} onQueueTransaction={()=>onQueueTransaction('capitalMarkets')}/>}
 
     {department==='Treasury'&&<>
       <div className="policy-fields policy-fields-primary">
-        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">No gilt trade queued</option><option value="buy">Buy gilts</option><option value="sell">Sell gilts</option></select></label>
-        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="" state={state} update={update} disabled={disabled||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
-        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}><option value="2">2 years</option><option value="5">5 years</option><option value="10">10 years</option></select><small>{state.giltTradeDirection==='sell'?'Proportional sale across maturities.':giltQuotedYield!==undefined?`Yield: ${formatPct(giltQuotedYield)}`:''}</small></label>
+        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled||transactionAlreadyQueued('giltTrade')} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">Select a gilt trade</option><option value="buy">Buy gilts</option><option value="sell">Sell gilts</option></select></label>
+        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('giltTrade')||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
+        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||transactionAlreadyQueued('giltTrade')||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}><option value="2">2 years</option><option value="5">5 years</option><option value="10">10 years</option></select><small>{state.giltTradeDirection==='sell'?'Proportional sale across maturities.':giltQuotedYield!==undefined?`Yield: ${formatPct(giltQuotedYield)}`:''}</small></label>
       </div>
-      {state.giltTradeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setGiltDirection('none')}>Cancel gilt transaction</button>}
+      {state.giltTradeDirection!=='none'&&<p className="order-status">Draft · not queued</p>}
+      {state.giltTradeDirection!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('giltTrade')||(parseMoneyInput(state.giltTradeAmount).value??0)<=0||!!errors?.giltTradeAmount} onClick={()=>onQueueTransaction('giltTrade')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setGiltDirection('none')}>Discard draft</button></>}{transactionAlreadyQueued('giltTrade')&&<p className="order-status">A gilt transaction is already queued for the next close.</p>}
 
-      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">No drawing queued</option><option value="STR">STR · 1 week / Level A collateral</option><option value="ILTR">ILTR · 6 months</option></select></label><MoneyField field="boeFundingAmount" label="BoE drawing (£)" hint="" state={state} update={update} disabled={disabled||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Cancel Bank of England drawing</button>}</details>
-      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">No swap queued</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="" state={state} update={update} disabled={disabled||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="60">5 years</option></select></label></div>{state.hedgeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Cancel swap transaction</button>}</details>
+      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled||transactionAlreadyQueued('boeFunding')} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">Select a facility</option><option value="STR">STR · 1 week / Level A collateral</option><option value="ILTR">ILTR · 6 months</option></select></label><MoneyField field="boeFundingAmount" label="BoE drawing (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('boeFunding')||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<p className="order-status">Draft · not queued</p>}{state.boeFacility!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('boeFunding')||(parseMoneyInput(state.boeFundingAmount).value??0)<=0||!!errors?.boeFundingAmount} onClick={()=>onQueueTransaction('boeFunding')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Discard draft</button></>}{transactionAlreadyQueued('boeFunding')&&<p className="order-status">A Bank of England drawing is already queued for the next close.</p>}</details>
+      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled||transactionAlreadyQueued('hedge')} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">Select a swap direction</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('hedge')||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||transactionAlreadyQueued('hedge')||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="60">5 years</option></select></label></div>{state.hedgeDirection!=='none'&&<p className="order-status">Draft · not queued</p>}{state.hedgeDirection!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('hedge')||(parseMoneyInput(state.hedgeNotional).value??0)<=0||!!errors?.hedgeNotional||!!errors?.hedgeFixedRate} onClick={()=>onQueueTransaction('hedge')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Discard draft</button></>}{transactionAlreadyQueued('hedge')&&<p className="order-status">A hedge is already queued for the next close.</p>}</details>
     </>}
 
 
