@@ -1,0 +1,55 @@
+.credit-losses-panel{gap:1rem}
+.credit-losses-heading,.credit-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.credit-losses-heading h2,.credit-section-heading h3{margin:0}
+.credit-losses-heading p,.credit-section-heading p{margin:.2rem 0 0;color:var(--muted);max-width:540px}
+.credit-loss-kpis{grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:.6rem}
+.credit-loss-kpis .metric-card{min-height:82px;padding:.75rem}
+.credit-loss-kpis .metric-label{font-size:.76rem;line-height:1.3}
+.credit-loss-kpis .metric-value{font-size:1.12rem}
+.credit-loss-section{display:grid;gap:.75rem;padding:1rem;border:1px solid var(--border);border-radius:10px;background:var(--panel)}
+.credit-section-heading>span{color:var(--muted);font-size:.88rem}
+.credit-loss-equation{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:.6rem}
+.credit-equation-item{display:grid;gap:.35rem;padding:.85rem 1rem;border:1px solid var(--border);border-radius:8px;background:var(--bg-3);min-width:0}
+.credit-equation-item span{font-size:.83rem;color:var(--muted)}
+.credit-equation-item strong{font-size:1.2rem;overflow-wrap:anywhere}
+.credit-equation-net{border-color:var(--border-strong)}
+.credit-equation-operator{font-size:1.35rem;font-weight:700;color:var(--muted)}
+.credit-equation-foot{display:flex;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap;color:var(--muted);font-size:.82rem}
+.credit-stage-mix{height:14px;display:flex;overflow:hidden;border-radius:999px;background:var(--bg-3)}
+.credit-stage-segment{min-width:0;transition:width .2s ease}
+.credit-stage-segment.stage-one{background:#32845c}
+.credit-stage-segment.stage-two{background:#c28b27}
+.credit-stage-segment.stage-three{background:#bd5656}
+.credit-stage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+.credit-stage-card{padding:.8rem;border:1px solid var(--border);border-top:4px solid var(--border);border-radius:8px;background:var(--bg-3);min-width:0}
+.credit-stage-card.stage-one{border-top-color:#32845c}
+.credit-stage-card.stage-two{border-top-color:#c28b27}
+.credit-stage-card.stage-three{border-top-color:#bd5656}
+.credit-stage-title{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
+.credit-stage-title strong{font-size:1.05rem}
+.credit-stage-title span{font-size:.8rem;color:var(--muted);text-align:right}
+.credit-stage-card>p{min-height:2.4em;margin:.3rem 0 .75rem;color:var(--muted);font-size:.82rem}
+.credit-stage-card dl{display:grid;gap:.45rem;margin:0}
+.credit-stage-card dl>div{display:flex;justify-content:space-between;gap:.5rem;border-top:1px solid var(--border);padding-top:.4rem}
+.credit-stage-card dt{color:var(--muted);font-size:.8rem}
+.credit-stage-card dd{margin:0;text-align:right;font-weight:650;font-size:.84rem}
+.credit-model-note,.credit-accounting-note{margin:0;color:var(--muted);font-size:.83rem;line-height:1.45}
+.credit-history-switch{display:flex;gap:.25rem;padding:.2rem;border:1px solid var(--border);border-radius:7px;background:var(--bg-3)}
+.credit-history-switch button{border:0;border-radius:5px;padding:.45rem .65rem;background:transparent;color:var(--text);font:inherit;font-size:.82rem;cursor:pointer}
+.credit-history-switch button.active{background:var(--panel);box-shadow:0 1px 3px #0002;font-weight:650}
+.credit-history-switch button:focus-visible{outline:2px solid var(--text);outline-offset:1px}
+.credit-table-scroll{overflow-x:auto}
+.credit-loss-table{min-width:900px}
+.credit-empty-state{padding:1rem;border-radius:8px;background:var(--bg-3);color:var(--muted)}
+.credit-vintage-details{border:1px solid var(--border);border-radius:9px;background:var(--panel)}
+.credit-vintage-details>summary{cursor:pointer;padding:.9rem 1rem;font-weight:650}
+.credit-vintage-details>.credit-table-scroll{padding:0 1rem 1rem}
+.credit-vintage-table{min-width:760px}
+@media(max-width:700px){
+  .credit-loss-equation{grid-template-columns:1fr;gap:.35rem}
+  .credit-equation-operator{display:none}
+  .credit-stage-grid{grid-template-columns:1fr}
+  .credit-stage-card>p{min-height:0}
+  .credit-section-heading{align-items:flex-start}
+  .credit-loss-section{padding:.8rem}
+}
