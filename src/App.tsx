@@ -17,8 +17,8 @@ import {
   BalanceSheetSide,
 } from './domain/enums';
 import RiskDashboard from './components/RiskDashboard';
-import { ActionFormState, type CapitalMarketsPlanImpact } from './components/ActionsPanel';
-import { createActionFormState, clearOneOffTransactions } from './ui/actionFormState';
+import { type ActionFormState, type CapitalMarketsPlanImpact, type QueuedTransactionSummary, type TransactionKind } from './components/ActionsPanel';
+import { createActionFormState, clearOneOffTransactions, clearTransactionDraft } from './ui/actionFormState';
 import { useSimulationClock } from './ui/useSimulationClock';
 import { prepareScenarioSession } from './ui/scenarioSession';
 import { useRunSession } from './ui/useRunSession';
@@ -60,6 +60,43 @@ import { creditStageDiagnostics } from './engine/creditStageDiagnostics';
 
 
 
+
+type OneOffTransactionAction = Extract<PlayerAction, { type: 'buySellAsset' | 'launchCapitalMarketsTransaction' | 'drawBoeFunding' | 'enterHedge' }>;
+
+interface QueuedTransaction extends QueuedTransactionSummary {
+  action: OneOffTransactionAction;
+}
+
+const isOneOffTransactionAction = (action: PlayerAction): action is OneOffTransactionAction => {
+  switch (action.type) {
+    case 'buySellAsset':
+    case 'launchCapitalMarketsTransaction':
+    case 'drawBoeFunding':
+    case 'enterHedge':
+      return true;
+    default:
+      return false;
+  }
+};
+
+const transactionKindForAction = (action: OneOffTransactionAction): TransactionKind => {
+  switch (action.type) {
+    case 'buySellAsset': return 'giltTrade';
+    case 'launchCapitalMarketsTransaction': return 'capitalMarkets';
+    case 'drawBoeFunding': return 'boeFunding';
+    case 'enterHedge': return 'hedge';
+  }
+};
+
+const transactionLabel = (action: OneOffTransactionAction): string => {
+  switch (action.type) {
+    case 'buySellAsset': return `${action.amountDelta > 0 ? 'Buy' : 'Sell'} gilts · ${formatCurrency(Math.abs(action.amountDelta))}`;
+    case 'launchCapitalMarketsTransaction': return `${getCapitalMarketsInstrument(action.instrument).label} · ${formatCurrency(action.targetAmount)}`;
+    case 'drawBoeFunding': return `${action.facility} drawing · ${formatCurrency(action.amount)}`;
+    case 'enterHedge': return `${action.direction === 'payFixedReceiveFloat' ? 'Pay fixed' : 'Receive fixed'} swap · ${formatCurrency(action.notional)}`;
+  }
+};
+
 const App = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [simConfig, setSimConfig] = useState<SimulationConfig>(baseConfig);
@@ -69,6 +106,8 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>(() => createActionFormState(initialState, baseConfig));
+  const [queuedTransactions, setQueuedTransactions] = useState<QueuedTransaction[]>([]);
+  const queuedTransactionId = useRef(0);
   const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);
   const clockTickRef = useRef<() => void>(() => {});
   const clock = useSimulationClock({
@@ -99,11 +138,14 @@ const App = () => {
   const [runPeriod, setRunPeriod] = useState('quarter');
   const navigationDepartment: Department | null = activeTab==='Boardroom' ? (isActionsOpen ? activeDepartment : null) : ['Loans','Credit Losses'].includes(activeTab) ? 'Lending' : ['Performance','Accounts','Share Price','Costs'].includes(activeTab) ? 'Capital' : activeTab==='Regulatory' ? reportOriginDepartment : null;
   const pendingActions = [
+    ...queuedTransactions.map(transaction => transaction.label),
+    pendingRiskAppetite!==undefined ? 'Update internal risk appetite' : null,
+  ].filter((item):item is string=>item!==null);
+  const draftTransactions = [
     actionForm.capitalMarketsInstrument!=='none' ? `${getCapitalMarketsInstrument(actionForm.capitalMarketsInstrument).label}: ${actionForm.capitalMarketsTargetAmount || 'amount required'}` : null,
     actionForm.giltTradeDirection!=='none' ? `${actionForm.giltTradeDirection==='buy'?'Buy':'Sell'} gilts: ${actionForm.giltTradeAmount || 'amount required'}` : null,
     actionForm.boeFacility!=='none' ? `${actionForm.boeFacility} drawing: ${actionForm.boeFundingAmount || 'amount required'}` : null,
     actionForm.hedgeDirection!=='none' ? `${actionForm.hedgeDirection==='payFixedReceiveFloat'?'Pay fixed':'Receive fixed'} swap: ${actionForm.hedgeNotional || 'notional required'}` : null,
-    pendingRiskAppetite!==undefined ? 'Update internal risk appetite' : null,
   ].filter((item):item is string=>item!==null);
   const runSession = useRunSession(controller, initialState);
   const { savedRuns, currentTimeline, currentSnapshots } = runSession;
@@ -113,7 +155,7 @@ const App = () => {
     if (!canToggleThreeYearPlan) return;
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
     const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
-    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); runSession.reset(nextState);
+    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setQueuedTransactions([]); setActionForm(clearOneOffTransactions); runSession.reset(nextState);
   };
 
   const totalEquity = useMemo(
@@ -180,7 +222,7 @@ const App = () => {
 
   const preview = useMemo<StepPreview | null>(() => {
     if (parsedActionForm.hasErrors || clockRunning || !(isActionsOpen && activeTab==='Boardroom')) return null;
-    const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
+    const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState, queuedTransactions.map(transaction => transaction.action));
     if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
@@ -205,16 +247,30 @@ const App = () => {
         nim: calculateNim(baseline) - calculateNim(bankState),
       },
     };
-  }, [activeScenarioId, actionForm, bankState, parsedActionForm, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite]);
+  }, [activeScenarioId, actionForm, bankState, parsedActionForm, queuedTransactions, simConfig, isActionsOpen, activeTab, clockRunning, pendingRiskAppetite]);
   const capitalMarketsPlanImpact = useMemo<CapitalMarketsPlanImpact | undefined>(() => {
-    if(!bankState.threeYearPlan?.enabled||actionForm.capitalMarketsInstrument==='none'||!preview?.baseline) return undefined;
+    if(!bankState.threeYearPlan?.enabled||actionForm.capitalMarketsInstrument==='none'||!preview?.baseline||parsedActionForm.hasErrors) return undefined;
+    const draftCapitalTransaction = buildActionsFromParsed(parsedActionForm, actionForm, bankState)
+      .find((action): action is Extract<PlayerAction, { type: 'launchCapitalMarketsTransaction' }> => action.type === 'launchCapitalMarketsTransaction');
+    if(!draftCapitalTransaction) return undefined;
+    const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState, [
+      ...queuedTransactions.map(transaction => transaction.action),
+      draftCapitalTransaction,
+    ]);
+    const scenarioStep = getScenarioStepPayload({
+      scenarioId: activeScenarioId,
+      stepNumber: bankState.time.step,
+      state: bankState,
+      actions,
+    });
+    const projected = controller.preview(bankState, actions, scenarioStep.shocks).baseline;
     return {
       cet1Before:bankState.risk.riskMetrics.cet1Ratio,
-      cet1After:preview.baseline.risk.riskMetrics.cet1Ratio,
+      cet1After:projected.risk.riskMetrics.cet1Ratio,
       epsBefore:bankState.equityMarket.epsTtm,
-      epsAfter:preview.baseline.equityMarket.epsTtm,
+      epsAfter:projected.equityMarket.epsTtm,
     };
-  },[actionForm.capitalMarketsInstrument,bankState,preview]);
+  },[actionForm,activeScenarioId,bankState,controller,parsedActionForm,preview,queuedTransactions]);
 
   const recommendations = useMemo(() => {
     return controller.recommend(bankState);
@@ -238,8 +294,32 @@ const App = () => {
       timestamp: Date.now(),
     }));
 
+  const queueTransaction = (kind: TransactionKind) => {
+    pauseClock();
+    if (queuedTransactions.some(transaction => transaction.kind === kind)) return;
+    const action = buildActionsFromParsed(parsedActionForm, actionForm, bankState)
+      .find((candidate): candidate is OneOffTransactionAction =>
+        isOneOffTransactionAction(candidate) && transactionKindForAction(candidate) === kind
+      );
+    if (!action) return;
+    const transaction: QueuedTransaction = {
+      id: ++queuedTransactionId.current,
+      kind,
+      action,
+      label: transactionLabel(action),
+    };
+    setQueuedTransactions(current => current.some(item => item.kind === kind) ? current : [...current, transaction]);
+    setActionForm(current => clearTransactionDraft(current, kind));
+  };
+
+  const cancelQueuedTransaction = (id: number) => {
+    pauseClock();
+    setQueuedTransactions(current => current.filter(transaction => transaction.id !== id));
+  };
+
   const clearTransactions = () => {
     setPendingRiskAppetite(undefined);
+    setQueuedTransactions([]);
     setActionForm(clearOneOffTransactions);
   };
   const handleRunNextMonth = (automatic = false) => {
@@ -257,7 +337,7 @@ const App = () => {
       ]);
       return;
     }
-    const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState);
+    const actions = buildActionsFromParsed(parsedActionForm, actionForm, bankState, queuedTransactions.map(transaction => transaction.action));
     if(pendingRiskAppetite!==undefined) actions.push({type:'setRiskAppetite',targets:pendingRiskAppetite});
     const scenarioStep = getScenarioStepPayload({
       scenarioId: activeScenarioId,
@@ -811,6 +891,7 @@ const App = () => {
     setSelectedAttributionLine(null);
     setActiveScenarioId(scenarioId);
     setSelectedScenarioId(scenarioId);
+    setQueuedTransactions([]);
     runSession.reset(scenarioState);
     setActionForm(prepared.actionForm);
   };
@@ -865,8 +946,8 @@ const App = () => {
       <FunctionalReportNavigation activeTab={activeTab} activeDepartment={navigationDepartment} regulatoryMetric={regulatoryMetric} onReport={openReport} onManage={openDepartment}/>
 
 
-      {activeTab === 'Boardroom' && <Boardroom attribution={lastAttribution} pendingActions={pendingActions} state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
-        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();setActionForm(next);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact}/>
+      {activeTab === 'Boardroom' && <Boardroom attribution={lastAttribution} pendingActions={pendingActions} draftTransactions={draftTransactions} state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
+        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();setActionForm(next);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} queuedTransactions={queuedTransactions} onQueueTransaction={queueTransaction} onCancelQueuedTransaction={cancelQueuedTransaction}/>
         {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
       </Boardroom>}
       {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
@@ -1182,7 +1263,8 @@ const parseActionFormInputs = (state: ActionFormState): ParsedActionFormInputs =
 const buildActionsFromParsed = (
   parsed: ParsedActionFormInputs,
   formState: ActionFormState,
-  currentState: BankState
+  currentState: BankState,
+  queuedTransactions?: OneOffTransactionAction[],
 ): PlayerAction[] => {
   const actions: PlayerAction[] = [];
   const values = parsed.values;
@@ -1243,7 +1325,10 @@ const buildActionsFromParsed = (
     });
   }
   if (values.mortgageMaxLtv!==undefined && values.mortgageFixedPeriodMonths!==undefined) actions.push({type:'setMortgagePolicy',maxLtv:values.mortgageMaxLtv,fixedPeriodMonths:values.mortgageFixedPeriodMonths});
-  if (formState.giltTradeDirection!=='none' && values.giltTradeAmount!==undefined && values.giltTradeAmount>0) {
+  const queuedGiltTrade = queuedTransactions?.find((action): action is Extract<OneOffTransactionAction, { type: 'buySellAsset' }> => action.type === 'buySellAsset');
+  if (queuedTransactions !== undefined) {
+    if (queuedGiltTrade) actions.push(queuedGiltTrade);
+  } else if (formState.giltTradeDirection!=='none' && values.giltTradeAmount!==undefined && values.giltTradeAmount>0) {
     actions.push({
       type:'buySellAsset',
       productType:AssetProductType.Gilts,
@@ -1251,8 +1336,16 @@ const buildActionsFromParsed = (
       tenorMonths:Math.round(values.giltDurationYears * 12),
     });
   }
-  if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
-  if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
+  const queuedBoeFunding = queuedTransactions?.find((action): action is Extract<OneOffTransactionAction, { type: 'drawBoeFunding' }> => action.type === 'drawBoeFunding');
+  if (queuedTransactions !== undefined) {
+    if (queuedBoeFunding) actions.push(queuedBoeFunding);
+  } else if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) {
+    actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
+  }
+  const queuedCapitalMarkets = queuedTransactions?.find((action): action is Extract<OneOffTransactionAction, { type: 'launchCapitalMarketsTransaction' }> => action.type === 'launchCapitalMarketsTransaction');
+  if (queuedTransactions !== undefined) {
+    if (queuedCapitalMarkets) actions.push(queuedCapitalMarkets);
+  } else if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
     const definition=getCapitalMarketsInstrument(formState.capitalMarketsInstrument);
     actions.push({
       type: 'launchCapitalMarketsTransaction',
@@ -1272,7 +1365,10 @@ const buildActionsFromParsed = (
     dividendPayoutRatio: payoutRatio,
     at1CouponMode: 'auto',
   });
-  if (
+  const queuedHedge = queuedTransactions?.find((action): action is Extract<OneOffTransactionAction, { type: 'enterHedge' }> => action.type === 'enterHedge');
+  if (queuedTransactions !== undefined) {
+    if (queuedHedge) actions.push(queuedHedge);
+  } else if (
     formState.hedgeDirection !== 'none' &&
     values.hedgeNotional !== undefined &&
     values.hedgeNotional > 0
