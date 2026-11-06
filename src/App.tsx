@@ -926,7 +926,6 @@ const App = () => {
         history={stateHistory}
         config={simConfig}
         metric={regulatoryMetric}
-        onMetricChange={setRegulatoryMetric}
         pendingRiskAppetite={pendingRiskAppetite}
         onRiskAppetite={t=>{pauseClock();setPendingRiskAppetite(t);}}
         attribution={lastAttribution}

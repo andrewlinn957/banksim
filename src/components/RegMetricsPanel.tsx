@@ -1,6 +1,5 @@
 import { hedgeExposures } from '../engine/hedgeValuation';
 import { assetCreditRwa } from '../engine/creditRwa';
-import { useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { BalanceSheetSide, HQLALevel } from '../domain/enums';
@@ -19,7 +18,7 @@ import CapitalHistory from './CapitalHistory';
 import RiskAppetiteEditor, { RiskAppetite } from './RiskAppetiteEditor';
 
 export type RegulatoryMetric = 'capital' | 'rwa' | 'leverage' | 'lcr' | 'nsfr';
-interface Props { state: BankState; history: BankState[]; config: SimulationConfig; metric?:RegulatoryMetric; onMetricChange?:(metric:RegulatoryMetric)=>void; pendingRiskAppetite?:RiskAppetite|null; onRiskAppetite?:(t:RiskAppetite|null)=>void; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; }
+interface Props { state: BankState; history: BankState[]; config: SimulationConfig; metric:RegulatoryMetric; pendingRiskAppetite?:RiskAppetite|null; onRiskAppetite?:(t:RiskAppetite|null)=>void; attribution?: StepAttribution | null; onAttributionLineSelect?: (s: AttributionLineSelection) => void; }
 interface Row { label: string; value: number; factor?: number; ratio?: boolean; total?: boolean; }
 
 const DERIVATIVE_LEVERAGE_PRODUCTS = new Set(productTypesWithLeverageTreatment('derivativeAssetReplacement'));
@@ -88,14 +87,10 @@ export const regulatoryRows = (s: BankState, c: SimulationConfig, metric: Regula
   ];
 };
 
-export default function RegMetricsPanel({ state, history, config, metric: controlledMetric, onMetricChange, pendingRiskAppetite, onRiskAppetite }: Props) {
-  const [internalMetric, setInternalMetric] = useState<RegulatoryMetric>('capital');
-  const metric=controlledMetric??internalMetric;
-  const setMetric=(next:RegulatoryMetric)=>{setInternalMetric(next);onMetricChange?.(next);};
+export default function RegMetricsPanel({ state, history, config, metric, pendingRiskAppetite, onRiskAppetite }: Props) {
   const labels: Record<RegulatoryMetric, string> = { capital: 'Capital', rwa: 'Risk-weighted assets', leverage: 'Leverage', lcr: 'Liquidity coverage', nsfr: 'Stable funding' };
   return <section className="card regulatory-detail">
     <div className="section-heading"><div><div className="eyebrow">Regulatory metrics</div><h3>{labels[metric]}</h3></div></div>
-    <div className="metric-switch" role="group" aria-label="Regulatory metric">{(Object.keys(labels) as RegulatoryMetric[]).map(k => <button key={k} className={`button ${metric === k ? 'primary' : 'ghost'}`} aria-pressed={metric === k} onClick={() => setMetric(k)}>{labels[k]}</button>)}</div>
     {metric === 'capital' ? <CapitalDashboard state={state} config={config}/> : metric === 'lcr' ? <LcrDashboard state={state} config={config} history={history}/> : metric === 'nsfr' ? <NsfrDashboard state={state} config={config} history={history}/> : metric === 'leverage' ? <LeverageDashboard state={state} config={config} history={history}/> : <RwaDashboard state={state} config={config} history={history}/>}
     {metric === 'capital' && <><CapitalHistory history={history}/>{onRiskAppetite&&<RiskAppetiteEditor state={state} config={config} pending={pendingRiskAppetite} onQueue={onRiskAppetite}/>}</>}
   </section>;
