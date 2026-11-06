@@ -3,7 +3,7 @@ import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { AssetProductType } from '../domain/enums';
 import { baseConfig } from '../config/baseConfig';
 import { Department, departmentSummary } from '../game/departments';
-import ActionsPanel, { ActionFormState, type CapitalMarketsPlanImpact } from './ActionsPanel';
+import ActionsPanel, { type ActionFormState, type CapitalMarketsPlanImpact, type QueuedTransactionSummary, type TransactionKind } from './ActionsPanel';
 import { periodHistory } from '../game/management';
 import { customerDeposits } from '../game/management';
 import { formatPct } from '../utils/formatters';
@@ -18,6 +18,7 @@ interface Props {
  onChange:(form:ActionFormState)=>void;
  onReport:(tab:string,metric?:RegulatoryMetric,origin?:Department)=>void; onHelp:(id:string)=>void; estimate:BankState|null;
  capitalMarketsQuote?:CapitalMarketsBookbuildResult; capitalMarketsPlanImpact?:CapitalMarketsPlanImpact;
+ queuedTransactions?:QueuedTransactionSummary[]; onQueueTransaction?:(kind:TransactionKind)=>void; onCancelQueuedTransaction?:(id:number)=>void;
 }
 
 const labels:Record<Department,string>={Customers:'Deposits',Lending:'Lending',Capital:'Finance & Capital',Treasury:'Treasury & Funding'};
@@ -29,7 +30,7 @@ const helpLinks:Record<Department,[string,string]>={
  Capital:['tier2-and-equity','How capital instruments differ'],
 };
 
-export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact}:Props) {
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact,queuedTransactions,onQueueTransaction,onCancelQueuedTransaction}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const selectedGiltMaturity = Math.max(.25, Number(form.giltDurationYears) || 5);
@@ -57,7 +58,7 @@ export default function DepartmentOffice({department,state,history,form,errors,h
   <p className="office-status">{summary.status}<small>{period?`${period.label} · ${period.months}/3 months closed`:'Opening position · no months closed'}</small></p>
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
 
-  <ActionsPanel department={department} bankState={state} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} maxGiltSaleAmount={unencumberedGilts} maxBoeFundingAmount={maxBoeFunding}/>
+  <ActionsPanel department={department} bankState={state} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} maxGiltSaleAmount={unencumberedGilts} maxBoeFundingAmount={maxBoeFunding} queuedTransactions={queuedTransactions} onQueueTransaction={onQueueTransaction} onCancelQueuedTransaction={onCancelQueuedTransaction}/>
   {estimate&&<section className={`decision-forecast ${projectedBreach?'warning':'info'}`} aria-label="Next monthly close preview">
     <div className="forecast-heading"><strong>Next close</strong><span>{projectedBreach?'Projected breach':'No breach projected'}</span></div>
     <dl>
