@@ -42,8 +42,6 @@ export interface CapitalMarketsInstrumentDefinition {
   equityReturnDemandFloor?: number;
   /** Maximum added discount when the return on the proposed issue is below the cost of equity. */
   equityReturnMaxDiscount?: number;
-  /** Investor appetite limit for perpetual AT1 as a share of common equity. */
-  maxOutstandingMultiple?: number;
   baseFeeRate: number;
   fundingMarket?: FundingMarketInstrumentCalibration;
 }
@@ -70,7 +68,6 @@ const AT1_DEFINITION: CapitalMarketsInstrumentDefinition = {
   benchmark: 'riskFreeLong',
   spreadSensitivity: 1.45,
   baseCapacityMultiple: 0.22,
-  maxOutstandingMultiple: 0.5,
   basePremiumBps: 350,
   baseFeeRate: 0,
   fundingMarket: {
