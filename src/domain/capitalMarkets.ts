@@ -4,6 +4,9 @@ export type CapitalMarketsInstrument = 'cet1' | 'at1' | 'tier2' | 'senior';
 export type CapitalMarketsPricingKind = 'discount' | 'spread';
 export type CapitalMarketsBookbuildStatus = 'filled' | 'partial' | 'failed-price' | 'failed-demand';
 
+/** Consecutive fully paid months required to restore AT1 market access after a coupon suspension. */
+export const AT1_COUPON_ISSUANCE_REENTRY_MONTHS = 12;
+
 export interface CapitalMarketsOrder {
   instrument: CapitalMarketsInstrument;
   targetAmount: number;
@@ -29,6 +32,8 @@ export interface CapitalMarketsBookbuildResult {
   fees: number;
   netProceeds: number;
   recentIssuanceRatio: number;
+  /** Explains why no new AT1 demand is available, when issuance is suspended. */
+  marketAccessBlockReason?: string;
   /** Estimated post-issue ROE at the requested size, assuming proceeds earn the current reserve rate. */
   equityPostIssueRoe?: number;
   /** Estimated annual dividend per share at the requested size and permitted payout ratio. */
@@ -58,4 +63,6 @@ export interface CapitalMarketsState {
   at1CouponRateAnnual?: number;
   /** Consecutive months in which an outstanding AT1 coupon was skipped or underpaid. */
   at1CouponSkipStreakMonths?: number;
+  /** Full-payment months still required before fresh AT1 can be issued again. */
+  at1CouponIssuanceLockoutMonthsRemaining?: number;
 }
