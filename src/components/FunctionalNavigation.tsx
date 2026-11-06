@@ -56,7 +56,7 @@ export default function FunctionalNavigation({
       <div className="functional-nav-group">
         <span className="functional-nav-label">Operate</span>
         <DepartmentButton department="Customers" label="Deposits" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />
-        <div className="area-nav-entry"><DepartmentButton department="Lending" label="Lending" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />{jumpMenu('Lending',[['Pricing & policy',()=>onDepartment('Lending')],['Loan portfolio',()=>onReport('Loans',undefined,'Lending')]])}</div>
+        <div className="area-nav-entry"><DepartmentButton department="Lending" label="Lending" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />{jumpMenu('Lending',[['Pricing & policy',()=>onDepartment('Lending')],['Loan portfolio',()=>onReport('Loans',undefined,'Lending')],['Credit losses',()=>onReport('Credit Losses',undefined,'Lending')]])}</div>
         <div className="area-nav-entry"><DepartmentButton department="Treasury" label="Treasury & Funding" activeDepartment={activeDepartment} activeTab={activeTab} onDepartment={onDepartment} />{jumpMenu('Treasury & Funding',[['Treasury actions',()=>onDepartment('Treasury')],['Liquidity coverage',()=>onReport('Regulatory','lcr','Treasury')],['Stable funding',()=>onReport('Regulatory','nsfr','Treasury')]])}</div>
       </div>
       <div className="functional-nav-group">
