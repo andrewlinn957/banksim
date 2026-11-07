@@ -1173,7 +1173,7 @@ export const stepLoanCohorts = (args: {
               lgd: clamp(cohort.lgd, 0, 1),
               affordabilityIndex: renewalAffordability,
               renewalCount: (cohort.renewalCount ?? 0) + 1,
-              stage: cohort.stage,
+              stage: 'stage1',
               sector: cohort.sector,
               geography: cohort.geography,
             };

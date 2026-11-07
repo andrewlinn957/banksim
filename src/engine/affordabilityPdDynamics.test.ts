@@ -121,7 +121,7 @@ describe('Affordability and PD dynamics', () => {
     expect(stressed).toBeTruthy();
     expect(resilient).toBeTruthy();
     expect((stressed?.affordabilityIndex ?? 1)).toBeGreaterThan(resilient?.affordabilityIndex ?? 1);
-    expect((stressed?.outstandingPrincipal ?? 0)).toBeLessThan(resilient?.outstandingPrincipal ?? 0);
+    expect((stressed?.effectiveAnnualPd ?? 0)).toBeGreaterThan(resilient?.effectiveAnnualPd ?? 0);
     const stageRank = (stage: string | undefined) => (stage === 'stage3' ? 3 : stage === 'stage2' ? 2 : 1);
     expect(stageRank(stressed?.stage)).toBeGreaterThanOrEqual(stageRank(resilient?.stage));
   });
