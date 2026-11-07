@@ -498,10 +498,6 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
 export const remainingLifetimeDefaultRisk = (annualPd: number, monthsRemaining: number): number =>
   1 - (1 - clamp(annualPd, 0, .999999)) ** (Math.max(1, monthsRemaining) / 12);
 
-/** Lifetime default risk over the same remaining contractual period. */
-export const remainingLifetimeDefaultRisk = (annualPd: number, monthsRemaining: number): number =>
-  1 - (1 - clamp(annualPd, 0, .999999)) ** (Math.max(1, monthsRemaining) / 12);
-
 /**
  * Move the affordability index toward a bounded stress target.
  * The baseline setting is a small neutral level offset; macro and payment stresses
