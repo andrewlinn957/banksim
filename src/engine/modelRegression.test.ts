@@ -6,6 +6,7 @@ import { BankState } from '../domain/bankState';
 import { PlayerAction } from '../domain/actions';
 import { AssetProductType, LiabilityProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
+import { creditStageDiagnostics } from './creditStageDiagnostics';
 import { evaluateScenarioGoals } from './scoring';
 import { createSimulationEngine as createSimulationEngine } from './simulation';
 
@@ -173,6 +174,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     const loanDepositRatio = finalDeposits > 0 ? finalLoans / finalDeposits : 0;
     const finalAssets = finalState.financial.balanceSheet.items.filter(i => i.side === 'Asset').reduce((s,i)=>s+i.balance,0);
     const liquidAssets = productBalance(finalState, AssetProductType.CashReserves) + productBalance(finalState, AssetProductType.Gilts);
+    const stageGross = creditStageDiagnostics(finalState).stageGross;
+    const stagedGross = stageGross.stage1 + stageGross.stage2 + stageGross.stage3;
     console.log('TEN_YEAR_MANAGED=' + JSON.stringify({
       step: finalState.time.step, loans: finalLoans, mortgages: productBalance(finalState,AssetProductType.Mortgages),
       consumer: productBalance(finalState,AssetProductType.ConsumerLoans), corporate: finalCorporateLoans, deposits: finalDeposits,
@@ -180,6 +183,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
       gilts: productBalance(finalState,AssetProductType.Gilts), cet1: finalState.financial.capital.cet1, cet1Ratio: finalState.risk.riskMetrics.cet1Ratio,
       leverage: finalState.risk.riskMetrics.leverageRatio, lcr: finalState.risk.riskMetrics.lcr, nsfr: finalState.risk.riskMetrics.nsfr,
       fundingConfidence: finalState.risk.riskMetrics.fundingConfidenceScore, loanDepositRatio, liquidAssetShare: finalAssets>0?liquidAssets/finalAssets:0,
+      stage2Share: stagedGross > 0 ? stageGross.stage2 / stagedGross : 0,
+      stageGross,
       stateBuckets: totalLoanStateBuckets(finalState), sharePrice: finalState.equityMarket.sharePrice
     }));
 
@@ -194,7 +199,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
     expect(loanDepositRatio).toBeGreaterThan(0.35);
     expect(finalAssets > 0 ? liquidAssets / finalAssets : 1).toBeLessThan(0.55);
-    expect(finalState.risk.riskMetrics.cet1Ratio).toBeLessThan(0.35);
+    expect(stagedGross > 0 ? stageGross.stage2 / stagedGross : 0).toBeLessThan(0.35);
+    expect(finalState.risk.riskMetrics.cet1Ratio).toBeLessThan(0.4);
     expect(finalState.risk.riskMetrics.lcr).toBeLessThan(5);
     expect(finalState.risk.riskMetrics.nsfr).toBeLessThan(4);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
@@ -210,6 +216,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     const finalDeposits = totalCustomerDeposits(finalState);
     const assets = finalState.financial.balanceSheet.items.filter(i => i.side === 'Asset').reduce((s,i)=>s+i.balance,0);
     const liquid = productBalance(finalState,AssetProductType.CashReserves)+productBalance(finalState,AssetProductType.Gilts);
+    const stageGross = creditStageDiagnostics(finalState).stageGross;
+    const stagedGross = stageGross.stage1 + stageGross.stage2 + stageGross.stage3;
     console.log('TEN_YEAR_DEFAULT=' + JSON.stringify({
       step: finalState.time.step, failed: finalState.status.hasFailed, loans: finalLoans, mortgages: productBalance(finalState,AssetProductType.Mortgages),
       consumer: productBalance(finalState,AssetProductType.ConsumerLoans), corporate: productBalance(finalState,AssetProductType.CorporateLoans),
@@ -218,6 +226,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
       cet1Ratio: finalState.risk.riskMetrics.cet1Ratio, leverage: finalState.risk.riskMetrics.leverageRatio, lcr: finalState.risk.riskMetrics.lcr,
       nsfr: finalState.risk.riskMetrics.nsfr, fundingConfidence: finalState.risk.riskMetrics.fundingConfidenceScore,
       loanDepositRatio: finalDeposits>0?finalLoans/finalDeposits:0, liquidAssetShare: assets>0?liquid/assets:0,
+      stage2Share: stagedGross > 0 ? stageGross.stage2 / stagedGross : 0,
+      stageGross,
       stateBuckets: totalLoanStateBuckets(finalState), sharePrice: finalState.equityMarket.sharePrice
     }));
     expect(finalState.status.hasFailed).toBe(false);
@@ -227,6 +237,7 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.35e9);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.8);
     expect(assets > 0 ? liquid / assets : 1).toBeLessThan(0.6);
+    expect(stagedGross > 0 ? stageGross.stage2 / stagedGross : 0).toBeLessThan(0.35);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
   });
 

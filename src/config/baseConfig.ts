@@ -312,6 +312,7 @@ const behaviour: BehaviourParameters = {
         policyRateSensitivity: 0.7,
         unemploymentSensitivity: 3.0,
         gdpContractionSensitivity: 12.0,
+        stressTargetHorizonMonths: 8.5,
         recoverySpeedMonthly: 0.06,
         pdStressSlope: 0.9,
         minIndex: 0.75,
@@ -320,7 +321,8 @@ const behaviour: BehaviourParameters = {
       },
       [AssetProductType.ConsumerLoans]: {
         baselineDriftMonthly: 0.004, couponGapSensitivity: 2.5, policyRateSensitivity: 0.8,
-        unemploymentSensitivity: 5.0, gdpContractionSensitivity: 18, recoverySpeedMonthly: 0.05,
+        unemploymentSensitivity: 5.0, gdpContractionSensitivity: 18,
+        stressTargetHorizonMonths: 8.5, recoverySpeedMonthly: 0.05,
         pdStressSlope: 1.5, minIndex: 0.7, maxIndex: 3.5, resetShareOnRenewal: 0.3,
       },
       [AssetProductType.CorporateLoans]: {
@@ -329,6 +331,7 @@ const behaviour: BehaviourParameters = {
         policyRateSensitivity: 0.5,
         unemploymentSensitivity: 3.8,
         gdpContractionSensitivity: 16.0,
+        stressTargetHorizonMonths: 8.5,
         recoverySpeedMonthly: 0.05,
         pdStressSlope: 1.2,
         minIndex: 0.7,
@@ -390,6 +393,8 @@ const behaviour: BehaviourParameters = {
   },
   ifrs9: {
     sicrPdMultiplierThreshold: 1.75,
+    sicrMinLifetimeRiskIncrease: 0.01,
+    sicrAbsoluteLifetimeRiskIncrease: 0.05,
     delinquency: {
       enabled: true,
       monthlyEntryPdMultiplier: 1.2,
@@ -399,7 +404,8 @@ const behaviour: BehaviourParameters = {
       directDefaultShare: 0.80,
       affordabilityRollSensitivity: 0.18,
     },
-    sicrCurePdMultiplier: 1.1,
+    sicrCurePdMultiplier: 1.25,
+    sicrCureMaxLifetimeRiskIncrease: 0.02,
     sicrCureMonths: 3,
     initialAffordabilityLogSd: 0.45,
     initialAffordabilitySeasoningMonths: 12,
