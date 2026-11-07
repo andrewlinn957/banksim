@@ -312,7 +312,7 @@ const behaviour: BehaviourParameters = {
         policyRateSensitivity: 0.7,
         unemploymentSensitivity: 3.0,
         gdpContractionSensitivity: 12.0,
-        stressTargetHorizonMonths: 4,
+        stressTargetHorizonMonths: 12,
         recoverySpeedMonthly: 0.06,
         pdStressSlope: 0.9,
         minIndex: 0.75,
@@ -322,7 +322,7 @@ const behaviour: BehaviourParameters = {
       [AssetProductType.ConsumerLoans]: {
         baselineDriftMonthly: 0.004, couponGapSensitivity: 2.5, policyRateSensitivity: 0.8,
         unemploymentSensitivity: 5.0, gdpContractionSensitivity: 18,
-        stressTargetHorizonMonths: 4, recoverySpeedMonthly: 0.05,
+        stressTargetHorizonMonths: 12, recoverySpeedMonthly: 0.05,
         pdStressSlope: 1.5, minIndex: 0.7, maxIndex: 3.5, resetShareOnRenewal: 0.3,
       },
       [AssetProductType.CorporateLoans]: {
@@ -331,7 +331,7 @@ const behaviour: BehaviourParameters = {
         policyRateSensitivity: 0.5,
         unemploymentSensitivity: 3.8,
         gdpContractionSensitivity: 16.0,
-        stressTargetHorizonMonths: 4,
+        stressTargetHorizonMonths: 12,
         recoverySpeedMonthly: 0.05,
         pdStressSlope: 1.2,
         minIndex: 0.7,
