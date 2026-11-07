@@ -117,6 +117,8 @@ export interface AffordabilityDynamicsParameters {
   policyRateSensitivity: number;
   unemploymentSensitivity: number;
   gdpContractionSensitivity: number;
+  /** Months of persistent pressure represented in the bounded affordability target. */
+  stressTargetHorizonMonths?: number;
   /** Fraction of the gap to the target stress level closed each month. */
   recoverySpeedMonthly: number;
   pdStressSlope: number;

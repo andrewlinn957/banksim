@@ -16,12 +16,13 @@ describe('Affordability and PD dynamics', () => {
     let stressed = 1;
     for (let month = 0; month < 240; month++) {
       stressed = nextAffordabilityIndex({
-        currentIndex: stressed, annualInterestRate: .09, benchmarkRate: .04,
+        currentIndex: stressed, annualInterestRate: .05, benchmarkRate: .04,
         baseRate: .04, unemploymentRate: .05, gdpGrowthMoM: 0, parameters,
       });
     }
     const expectedStress = 1 + parameters.baselineDriftMonthly +
-      parameters.couponGapSensitivity * .05 + parameters.policyRateSensitivity * .02;
+      parameters.stressTargetHorizonMonths! *
+        (parameters.couponGapSensitivity * .01 + parameters.policyRateSensitivity * .02);
     expect(stressed).toBeCloseTo(expectedStress, 4);
     expect(stressed).toBeLessThan(parameters.maxIndex);
 

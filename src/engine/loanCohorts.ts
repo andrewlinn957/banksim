@@ -519,7 +519,12 @@ export const nextAffordabilityIndex = (args: {
     p.policyRateSensitivity * Math.max(0, args.baseRate - 0.02) +
     p.unemploymentSensitivity * Math.max(0, args.unemploymentRate - 0.05) +
     p.gdpContractionSensitivity * Math.max(0, -args.gdpGrowthMoM);
-  const target = clamp(1 + p.baselineDriftMonthly + stressOffset, p.minIndex, p.maxIndex);
+  const stressTargetHorizon = Math.max(0, p.stressTargetHorizonMonths ?? 4);
+  const target = clamp(
+    1 + p.baselineDriftMonthly + stressOffset * stressTargetHorizon,
+    p.minIndex,
+    p.maxIndex
+  );
   const recoverySpeed = clamp(p.recoverySpeedMonthly, 0, 1);
   return clamp(current + recoverySpeed * (target - current), p.minIndex, p.maxIndex);
 };
