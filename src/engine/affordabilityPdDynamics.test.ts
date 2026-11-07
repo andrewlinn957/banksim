@@ -3,12 +3,39 @@ import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { AssetProductType } from '../domain/enums';
 import { cloneBankState } from './clone';
-import { stepLoanCohorts } from './loanCohorts';
+import { nextAffordabilityIndex, stepLoanCohorts } from './loanCohorts';
 
 const cohortById = (state: typeof initialState, id: number) =>
   (state.loanCohorts[AssetProductType.Mortgages] ?? []).find((cohort) => cohort.cohortId === id);
 
 describe('Affordability and PD dynamics', () => {
+  it('converges to a bounded stress target and recovers when conditions normalise', () => {
+    const parameters = baseConfig.behaviour.creditRiskDynamics?.affordabilityByProduct?.[AssetProductType.Mortgages];
+    if (!parameters) throw new Error('Missing mortgage affordability configuration');
+
+    let stressed = 1;
+    for (let month = 0; month < 240; month++) {
+      stressed = nextAffordabilityIndex({
+        currentIndex: stressed, annualInterestRate: .09, benchmarkRate: .04,
+        baseRate: .04, unemploymentRate: .05, gdpGrowthMoM: 0, parameters,
+      });
+    }
+    const expectedStress = 1 + parameters.baselineDriftMonthly +
+      parameters.couponGapSensitivity * .05 + parameters.policyRateSensitivity * .02;
+    expect(stressed).toBeCloseTo(expectedStress, 4);
+    expect(stressed).toBeLessThan(parameters.maxIndex);
+
+    let recovering = parameters.maxIndex;
+    for (let month = 0; month < 120; month++) {
+      recovering = nextAffordabilityIndex({
+        currentIndex: recovering, annualInterestRate: .04, benchmarkRate: .04,
+        baseRate: .02, unemploymentRate: .05, gdpGrowthMoM: 0, parameters,
+      });
+    }
+    expect(recovering).toBeLessThan(1.01);
+    expect(recovering).toBeGreaterThan(1);
+  });
+
   it('same base-PD cohorts diverge as affordability stress diverges', () => {
     const state = cloneBankState(initialState);
     const mortgageItem = state.financial.balanceSheet.items.find(

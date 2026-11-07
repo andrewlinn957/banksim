@@ -111,11 +111,13 @@ export interface AdverseSelectionLifecycleParameters {
 }
 
 export interface AffordabilityDynamicsParameters {
+  /** Small neutral offset in the target affordability index; it does not accumulate each month. */
   baselineDriftMonthly: number;
   couponGapSensitivity: number;
   policyRateSensitivity: number;
   unemploymentSensitivity: number;
   gdpContractionSensitivity: number;
+  /** Fraction of the gap to the target stress level closed each month. */
   recoverySpeedMonthly: number;
   pdStressSlope: number;
   minIndex: number;
@@ -173,6 +175,10 @@ export interface FundingLadderParameters {
 
 export interface Ifrs9Parameters {
   sicrPdMultiplierThreshold: number;
+  /** Minimum lifetime default-risk increase (decimal fraction) for the relative SICR trigger. */
+  sicrMinLifetimeRiskIncrease?: number;
+  /** Independent absolute lifetime default-risk increase (decimal fraction) for SICR. */
+  sicrAbsoluteLifetimeRiskIncrease?: number;
   /** Expected flow between arrears buckets, calibrated as a portfolio approximation. */
   delinquency?: {
     enabled: boolean;
@@ -183,8 +189,10 @@ export interface Ifrs9Parameters {
     directDefaultShare: number;
     affordabilityRollSensitivity: number;
   };
-  /** Model cure policy: consecutive months below the lower PD ratio. */
+  /** Model cure policy: consecutive months below the lower PD ratio and within absolute risk tolerance. */
   sicrCurePdMultiplier?: number;
+  /** Maximum excess lifetime default risk while accumulating cure months (decimal fraction). */
+  sicrCureMaxLifetimeRiskIncrease?: number;
   sicrCureMonths?: number;
   /** Seeded historical affordability dispersion, not a target Stage 2 share. */
   initialAffordabilityLogSd?: number;

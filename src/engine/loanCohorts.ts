@@ -21,6 +21,7 @@ import { advanceCohortArrears, cohortArrearsGross, cohortArrearsStage2Gross, acc
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
+import type { AffordabilityDynamicsParameters } from '../domain/config';
 import { AssetProductType, ProductType } from '../domain/enums';
 import {
   LoanCohort,
@@ -497,7 +498,37 @@ const monthlyPayment = (outstandingPrincipal: number, annualRate: number, remain
 export const remainingLifetimeDefaultRisk = (annualPd: number, monthsRemaining: number): number =>
   1 - (1 - clamp(annualPd, 0, .999999)) ** (Math.max(1, monthsRemaining) / 12);
 
-/** SICR compares lifetime default risk with its origination expectation. */
+/** Lifetime default risk over the same remaining contractual period. */
+export const remainingLifetimeDefaultRisk = (annualPd: number, monthsRemaining: number): number =>
+  1 - (1 - clamp(annualPd, 0, .999999)) ** (Math.max(1, monthsRemaining) / 12);
+
+/**
+ * Move the affordability index toward a bounded stress target.
+ * The baseline setting is a small neutral level offset; macro and payment stresses
+ * affect the target instead of adding another permanent monthly increment.
+ */
+export const nextAffordabilityIndex = (args: {
+  currentIndex: number;
+  annualInterestRate: number;
+  benchmarkRate: number;
+  baseRate: number;
+  unemploymentRate: number;
+  gdpGrowthMoM: number;
+  parameters: AffordabilityDynamicsParameters;
+}): number => {
+  const p = args.parameters;
+  const current = clamp(args.currentIndex, p.minIndex, p.maxIndex);
+  const stressOffset =
+    p.couponGapSensitivity * Math.max(0, args.annualInterestRate - args.benchmarkRate) +
+    p.policyRateSensitivity * Math.max(0, args.baseRate - 0.02) +
+    p.unemploymentSensitivity * Math.max(0, args.unemploymentRate - 0.05) +
+    p.gdpContractionSensitivity * Math.max(0, -args.gdpGrowthMoM);
+  const target = clamp(1 + p.baselineDriftMonthly + stressOffset, p.minIndex, p.maxIndex);
+  const recoverySpeed = clamp(p.recoverySpeedMonthly, 0, 1);
+  return clamp(current + recoverySpeed * (target - current), p.minIndex, p.maxIndex);
+};
+
+/** SICR compares remaining lifetime default risk with its origination expectation. */
 export const updateCohortStage = (cohort: LoanCohort, config: SimulationConfig): LoanStage => {
   if (cohort.stage === 'stage3') return 'stage3';
   if ((cohort.daysPastDue ?? 0) >= 90 || cohort.unlikelyToPay === true) {
@@ -508,16 +539,23 @@ export const updateCohortStage = (cohort: LoanCohort, config: SimulationConfig):
   const reference = remainingLifetimeDefaultRisk(cohort.sicrReferenceAnnualPd ?? cohort.annualPd, remainingMonths);
   const current = remainingLifetimeDefaultRisk(cohort.effectiveAnnualPd ?? cohort.annualPd, remainingMonths);
   const ratio = current / Math.max(1e-9, reference);
-  const threshold = config.behaviour.ifrs9?.sicrPdMultiplierThreshold ?? 1.75;
-  const cureRatio = Math.min(threshold, config.behaviour.ifrs9?.sicrCurePdMultiplier ?? 1.1);
-  const cureMonths = Math.max(1, Math.round(config.behaviour.ifrs9?.sicrCureMonths ?? 3));
-  // IFRS 9's more-than-30-days-past-due SICR presumption is a backstop.
-  if (ratio >= threshold || (cohort.daysPastDue ?? 0) > 30) {
+  const increase = current - reference;
+  const parameters = config.behaviour.ifrs9;
+  const threshold = parameters?.sicrPdMultiplierThreshold ?? 1.75;
+  const minimumIncrease = Math.max(0, parameters?.sicrMinLifetimeRiskIncrease ?? 0.01);
+  const absoluteIncrease = Math.max(0, parameters?.sicrAbsoluteLifetimeRiskIncrease ?? 0.05);
+  const cureRatio = Math.min(threshold, parameters?.sicrCurePdMultiplier ?? 1.25);
+  const cureMaxIncrease = Math.max(0, parameters?.sicrCureMaxLifetimeRiskIncrease ?? 0.02);
+  const cureMonths = Math.max(1, Math.round(parameters?.sicrCureMonths ?? 3));
+  const relativeSicr = ratio >= threshold && increase >= minimumIncrease;
+  // IFRS 9's more-than-30-days-past-due SICR presumption remains a backstop.
+  if (relativeSicr || increase >= absoluteIncrease || (cohort.daysPastDue ?? 0) > 30) {
     cohort.sicrCureMonths = 0;
     return 'stage2';
   }
   if (cohort.stage === 'stage2') {
-    cohort.sicrCureMonths = ratio <= cureRatio ? (cohort.sicrCureMonths ?? 0) + 1 : 0;
+    const improvedEnough = ratio <= cureRatio && increase <= cureMaxIncrease;
+    cohort.sicrCureMonths = improvedEnough ? (cohort.sicrCureMonths ?? 0) + 1 : 0;
     if (cohort.sicrCureMonths < cureMonths) return 'stage2';
   }
   cohort.sicrCureMonths = 0;
@@ -1046,27 +1084,38 @@ export const stepLoanCohorts = (args: {
           prepaymentsByProduct[productType] = (prepaymentsByProduct[productType] ?? 0) + prepaid;
         }
 
-        const affordabilityCurrent = clamp(
-          cohort.affordabilityIndex ?? 1,
-          affordabilityConfig.minIndex,
-          affordabilityConfig.maxIndex
-        );
-        const affordabilityDrift =
-          affordabilityConfig.baselineDriftMonthly +
-          affordabilityConfig.couponGapSensitivity * Math.max(0, cohort.annualInterestRate - benchmarkRate) +
-          affordabilityConfig.policyRateSensitivity * Math.max(0, state.market.baseRate - 0.02) +
-          affordabilityConfig.unemploymentSensitivity * Math.max(0, state.market.unemploymentRate - 0.05) +
-          affordabilityConfig.gdpContractionSensitivity * Math.max(0, -state.market.gdpGrowthMoM);
-        const affordabilityReversion = affordabilityConfig.recoverySpeedMonthly * (affordabilityCurrent - 1);
-        const affordabilityIndex = clamp(
-          affordabilityCurrent + affordabilityDrift - affordabilityReversion,
-          affordabilityConfig.minIndex,
-          affordabilityConfig.maxIndex
-        );
+        const affordabilityIndex = nextAffordabilityIndex({
+          currentIndex: cohort.affordabilityIndex ?? 1,
+          annualInterestRate: cohort.annualInterestRate,
+          benchmarkRate,
+          baseRate: state.market.baseRate,
+          unemploymentRate: state.market.unemploymentRate,
+          gdpGrowthMoM: state.market.gdpGrowthMoM,
+          parameters: affordabilityConfig,
+        });
         cohort.affordabilityIndex = affordabilityIndex;
 
+        const sectorShare =
+          concentrationStressActive && productOutstanding > 0
+            ? (sectorTotals[cohort.sector] ?? 0) / productOutstanding
+            : 0;
+        const geographyShare =
+          concentrationStressActive && productOutstanding > 0
+            ? (geographyTotals[cohort.geography] ?? 0) / productOutstanding
+            : 0;
+        const sectorStressMultiplier =
+          concentrationParams?.sectorPdMultiplierByStress?.[cohort.sector] ?? 1;
+        const geographyStressMultiplier =
+          concentrationParams?.geographyPdMultiplierByStress?.[cohort.geography] ?? 1;
+        const concentrationMultiplier =
+          1 +
+          sectorShare * Math.max(0, sectorStressMultiplier - 1) +
+          geographyShare * Math.max(0, geographyStressMultiplier - 1);
+
         const shouldRenew =
-          !cohort.borrowerId && adverseConfig.renewalShareMonthly > 0 &&
+          !cohort.borrowerId && cohort.stage !== 'stage3' && cohort.unlikelyToPay !== true &&
+          (cohort.daysPastDue ?? 0) <= 30 &&
+          adverseConfig.renewalShareMonthly > 0 &&
           remainingMonths <= adverseConfig.renewalEligibilityMonths &&
           cohort.ageMonths > 0 &&
           cohort.outstandingPrincipal > 0;
@@ -1099,6 +1148,12 @@ export const stepLoanCohorts = (args: {
               affordabilityConfig.minIndex,
               affordabilityConfig.maxIndex
             );
+            const renewalEffectiveAnnualPd = clamp(
+              renewalAnnualPd * args.pdMultiplier * concentrationMultiplier *
+                clamp(1 + (renewalAffordability - 1) * affordabilityConfig.pdStressSlope, 0.55, 4),
+              0,
+              0.999999
+            );
             cohort.outstandingPrincipal -= renewalPrincipal;
             renewedPrincipal += renewalPrincipal;
             renewalsByProduct[productType] = (renewalsByProduct[productType] ?? 0) + renewalPrincipal;
@@ -1113,9 +1168,11 @@ export const stepLoanCohorts = (args: {
               termMonths: getDefaultTermMonths(config, productType),
               ageMonths: 0,
               annualPd: renewalAnnualPd,
-              sicrReferenceAnnualPd: cohort.sicrReferenceAnnualPd ?? cohort.annualPd,
+              // A renewal represents a new, repriced and screened contract.
+              // Anchor SICR to the risk at this new origination, not the old loan's history.
+              sicrReferenceAnnualPd: renewalEffectiveAnnualPd,
               sicrCureMonths: 0,
-              effectiveAnnualPd: clamp(renewalAnnualPd * args.pdMultiplier * clamp(1 + (renewalAffordability - 1) * affordabilityConfig.pdStressSlope, 0.55, 4), 0, 0.999999),
+              effectiveAnnualPd: renewalEffectiveAnnualPd,
               effectiveLgd: clamp(cohort.lgd * args.lgdMultiplier, 0, 1),
               lgd: clamp(cohort.lgd, 0, 1),
               affordabilityIndex: renewalAffordability,
@@ -1129,22 +1186,6 @@ export const stepLoanCohorts = (args: {
           }
         }
 
-        const sectorShare =
-          concentrationStressActive && productOutstanding > 0
-            ? (sectorTotals[cohort.sector] ?? 0) / productOutstanding
-            : 0;
-        const geographyShare =
-          concentrationStressActive && productOutstanding > 0
-            ? (geographyTotals[cohort.geography] ?? 0) / productOutstanding
-            : 0;
-        const sectorStressMultiplier =
-          concentrationParams?.sectorPdMultiplierByStress?.[cohort.sector] ?? 1;
-        const geographyStressMultiplier =
-          concentrationParams?.geographyPdMultiplierByStress?.[cohort.geography] ?? 1;
-        const concentrationMultiplier =
-          1 +
-          sectorShare * Math.max(0, sectorStressMultiplier - 1) +
-          geographyShare * Math.max(0, geographyStressMultiplier - 1);
         const affordabilityPdMultiplier = clamp(
           1 + (affordabilityIndex - 1) * affordabilityConfig.pdStressSlope,
           0.55,
@@ -1156,6 +1197,15 @@ export const stepLoanCohorts = (args: {
           0.999999
         );
         cohort.effectiveAnnualPd = annualPd;
+        // The first close captures current conditions in the SICR baseline for
+        // newly originated loans, including the macro and affordability state.
+        if (
+          cohort.sicrReferenceAnnualPd === undefined &&
+          cohort.ageMonths === 0 &&
+          cohort.originationStep === state.time.step + 1
+        ) {
+          cohort.sicrReferenceAnnualPd = annualPd;
+        }
         cohort.effectiveLgd = clamp(cohort.lgd * args.lgdMultiplier, 0, 1);
         cohort.stage = updateCohortStage(cohort, config);
 

@@ -6,7 +6,7 @@ import type { LoanCohort } from '../domain/loanCohorts';
 import { cloneBankState } from './clone';
 import { creditStageDiagnostics } from './creditStageDiagnostics';
 import { cohortEcl } from './impairment';
-import { generateSeasonedLoanCohorts, stepLoanCohorts, updateCohortStage } from './loanCohorts';
+import { generateSeasonedLoanCohorts, remainingLifetimeDefaultRisk, stepLoanCohorts, updateCohortStage, upsertOriginationCohort } from './loanCohorts';
 import { createSimulationEngine } from './simulation';
 
 const product = AssetProductType.Mortgages;
@@ -24,11 +24,53 @@ describe('SICR across seasoning, deterioration, renewal and cure', () => {
     expect(cohorts.some(c => c.stage === 'stage1')).toBe(true);
     expect(cohorts.some(c => c.stage === 'stage2')).toBe(true);
     for (const c of cohorts.filter(c => c.stage === 'stage2')) {
-      expect(c.effectiveAnnualPd! / c.sicrReferenceAnnualPd!).toBeGreaterThanOrEqual(1.75);
+      const remainingMonths = Math.max(1, c.termMonths - c.ageMonths);
+      const reference = remainingLifetimeDefaultRisk(c.sicrReferenceAnnualPd!, remainingMonths);
+      const current = remainingLifetimeDefaultRisk(c.effectiveAnnualPd!, remainingMonths);
+      const increase = current - reference;
+      const ratio = current / Math.max(1e-9, reference);
+      expect(
+        (ratio >= baseConfig.behaviour.ifrs9!.sicrPdMultiplierThreshold &&
+          increase >= baseConfig.behaviour.ifrs9!.sicrMinLifetimeRiskIncrease!) ||
+        increase >= baseConfig.behaviour.ifrs9!.sicrAbsoluteLifetimeRiskIncrease!
+      ).toBe(true);
     }
     const noDispersion = structuredClone(baseConfig);
     noDispersion.behaviour.ifrs9!.initialAffordabilityLogSd = 0;
     expect(generateSeasonedLoanCohorts({ ...args, config: noDispersion }).every(c => c.stage === 'stage1')).toBe(true);
+  });
+
+  it('ignores small low-PD multiples but catches material relative and absolute lifetime risk increases', () => {
+    const lowRisk = borrower();
+    lowRisk.annualPd = .001;
+    lowRisk.sicrReferenceAnnualPd = .001;
+    lowRisk.effectiveAnnualPd = .0018;
+    expect(updateCohortStage(lowRisk, baseConfig)).toBe('stage1');
+
+    lowRisk.effectiveAnnualPd = .0022;
+    expect(updateCohortStage(lowRisk, baseConfig)).toBe('stage2');
+
+    const absoluteDeterioration = borrower();
+    absoluteDeterioration.annualPd = .05;
+    absoluteDeterioration.sicrReferenceAnnualPd = .05;
+    absoluteDeterioration.effectiveAnnualPd = .07;
+    expect(updateCohortStage(absoluteDeterioration, baseConfig)).toBe('stage2');
+  });
+
+  it('anchors a new loan to the risk conditions present at origination', () => {
+    const state = cloneBankState(initialState);
+    const cohortId = 999_999;
+    const funded = upsertOriginationCohort({
+      state, config: baseConfig, productType: product, cohortId,
+      principal: 1_000_000, annualInterestRate: .05, annualPd: .005, lgd: .25,
+    });
+    expect(funded).toBe(1_000_000);
+
+    stepLoanCohorts({ state, config: baseConfig, dtMonths: 1, pdMultiplier: 2, lgdMultiplier: 1 });
+    const originated = state.loanCohorts[product]!.find(c => c.cohortId === cohortId);
+    expect(originated).toBeTruthy();
+    expect(originated?.sicrReferenceAnnualPd).toBeCloseTo(originated?.effectiveAnnualPd ?? 0, 10);
+    expect(originated?.stage).toBe('stage1');
   });
 
   it('retains a visible Stage 2 portfolio over the first six monthly closes and reconciles gross stage exposures', () => {
@@ -61,7 +103,7 @@ describe('SICR across seasoning, deterioration, renewal and cure', () => {
     }
   });
 
-  it('does not erase borrower deterioration when a loan is renewed', () => {
+  it('anchors performing renewals to newly screened risk while retaining the old loan history', () => {
     const state = cloneBankState(initialState);
     const c = { ...borrower(), ageMonths: 115, stage: 'stage2' as const, affordabilityIndex: 2.5 };
     state.loanCohorts = { [product]: [c] };
@@ -69,8 +111,23 @@ describe('SICR across seasoning, deterioration, renewal and cure', () => {
     const renewed = state.loanCohorts[product]!.filter(c => c.renewalCount === 1);
     expect(renewed.length).toBeGreaterThan(0);
     for (const r of renewed) {
-      expect(r.stage).toBe('stage2');
-      expect(r.sicrReferenceAnnualPd).toBe(.01);
+      expect(r.stage).toBe('stage1');
+      expect(r.sicrReferenceAnnualPd).toBeCloseTo(r.effectiveAnnualPd ?? 0, 12);
+      expect(r.effectiveAnnualPd).toBeGreaterThan(.01);
+    }
+    expect(c.sicrReferenceAnnualPd).toBe(.01);
+  });
+
+  it('does not renew credit-impaired, unlikely-to-pay or more-than-30-days-past-due loans', () => {
+    for (const c of [
+      { ...borrower(), ageMonths: 115, stage: 'stage3' as const },
+      { ...borrower(), ageMonths: 115, unlikelyToPay: true },
+      { ...borrower(), ageMonths: 115, daysPastDue: 31 },
+    ]) {
+      const state = cloneBankState(initialState);
+      state.loanCohorts = { [product]: [c] };
+      stepLoanCohorts({ state, config: baseConfig, dtMonths: 1, pdMultiplier: 1, lgdMultiplier: 1 });
+      expect((state.loanCohorts[product] ?? []).some(r => r.renewalCount === 1)).toBe(false);
     }
   });
 
