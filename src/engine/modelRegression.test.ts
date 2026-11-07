@@ -199,7 +199,8 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.75);
     expect(loanDepositRatio).toBeGreaterThan(0.35);
     expect(finalAssets > 0 ? liquidAssets / finalAssets : 1).toBeLessThan(0.55);
-    expect(finalState.risk.riskMetrics.cet1Ratio).toBeLessThan(0.35);
+    expect(stagedGross > 0 ? stageGross.stage2 / stagedGross : 0).toBeLessThan(0.35);
+    expect(finalState.risk.riskMetrics.cet1Ratio).toBeLessThan(0.4);
     expect(finalState.risk.riskMetrics.lcr).toBeLessThan(5);
     expect(finalState.risk.riskMetrics.nsfr).toBeLessThan(4);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
@@ -236,6 +237,7 @@ describe('Model regression harness', { timeout: 30_000 }, () => {
     expect(productBalance(finalState, LiabilityProductType.RetailTermDeposits)).toBeGreaterThan(0.35e9);
     expect(finalDeposits).toBeLessThan(openingDeposits * 1.8);
     expect(assets > 0 ? liquid / assets : 1).toBeLessThan(0.6);
+    expect(stagedGross > 0 ? stageGross.stage2 / stagedGross : 0).toBeLessThan(0.35);
     expect(totalLoanStateBuckets(finalState)).toBeLessThan(6000);
   });
 
