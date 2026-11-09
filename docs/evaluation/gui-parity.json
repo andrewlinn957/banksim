@@ -1,0 +1,1163 @@
+{
+  "schemaVersion": 3,
+  "repositoryRevision": "f42df91d2416a5fa499554d1e771f6c86b3206a3",
+  "auditDate": "2026-11-08",
+  "actions": [
+    {
+      "id": "policy.deposit.retail_current",
+      "area": "Customers",
+      "gui": "Deposits / Retail current accounts",
+      "category": "standing-policy",
+      "fields": [
+        "retailCurrentAccountRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Retail current account rate",
+      "description": "Offer for retail current account deposits.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.deposit.term_rate",
+      "area": "Customers",
+      "gui": "Deposits / Fixed-term savings",
+      "category": "standing-policy",
+      "fields": [
+        "termDepositRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Fixed-term savings rate",
+      "description": "Offer for retail fixed-term savings.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.deposit.term_tenor",
+      "area": "Customers",
+      "gui": "Deposits / Fixed-term savings / Term",
+      "category": "standing-policy",
+      "fields": [
+        "termDepositTenorMonths"
+      ],
+      "units": "months",
+      "choices": [
+        12,
+        24,
+        36
+      ],
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Fixed-term savings tenor",
+      "description": "Contractual tenor for new fixed-term savings.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "policy.deposit.corporate_rate",
+      "area": "Customers",
+      "gui": "Deposits / Business deposits",
+      "category": "standing-policy",
+      "fields": [
+        "corporateDepositRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Business deposit rate",
+      "description": "Single offer applied to both corporate operating and non-operating deposits.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.loan.mortgage_rate",
+      "area": "Lending",
+      "gui": "Lending / Mortgages / New rate",
+      "category": "standing-policy",
+      "fields": [
+        "mortgageRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Mortgage new rate",
+      "description": "Rate for new mortgage lending.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.loan.mortgage_selectivity",
+      "area": "Lending",
+      "gui": "Lending / Mortgages / New lending selectivity",
+      "category": "standing-policy",
+      "fields": [
+        "mortgageUnderwritingTightness"
+      ],
+      "units": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Mortgage selectivity",
+      "description": "Selectivity for new mortgage lending.",
+      "sliderStep": 0.05,
+      "exactInputAllowsIntermediateValues": true,
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI range slider step is 0.05; adjacent numeric input accepts intermediate values within 0 to 1. API accepts those same values."
+    },
+    {
+      "id": "policy.loan.mortgage_ltv",
+      "area": "Lending",
+      "gui": "Lending / Mortgages / Maximum LTV",
+      "category": "standing-policy",
+      "fields": [
+        "mortgageMaxLtv"
+      ],
+      "units": "ratio",
+      "choices": [
+        0.6,
+        0.75,
+        0.85,
+        0.9,
+        0.95
+      ],
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Mortgage maximum LTV",
+      "description": "Maximum LTV permitted for new mortgages.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "policy.loan.mortgage_fixed_period",
+      "area": "Lending",
+      "gui": "Lending / Mortgages / Initial fixed period",
+      "category": "standing-policy",
+      "fields": [
+        "mortgageFixedPeriodMonths"
+      ],
+      "units": "months",
+      "choices": [
+        24,
+        36,
+        60
+      ],
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Mortgage initial fixed period",
+      "description": "Initial fixed-rate period for new mortgages.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "policy.loan.consumer_rate",
+      "area": "Lending",
+      "gui": "Lending / Personal credit / New rate",
+      "category": "standing-policy",
+      "fields": [
+        "consumerLoanRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Personal-credit new rate",
+      "description": "Rate for new personal-credit lending.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.loan.consumer_selectivity",
+      "area": "Lending",
+      "gui": "Lending / Personal credit / New lending selectivity",
+      "category": "standing-policy",
+      "fields": [
+        "consumerUnderwritingTightness"
+      ],
+      "units": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Personal-credit selectivity",
+      "description": "Selectivity for new personal-credit lending.",
+      "sliderStep": 0.05,
+      "exactInputAllowsIntermediateValues": true,
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI range slider step is 0.05; adjacent numeric input accepts intermediate values within 0 to 1. API accepts those same values."
+    },
+    {
+      "id": "policy.loan.corporate_rate",
+      "area": "Lending",
+      "gui": "Lending / SME and business / New rate",
+      "category": "standing-policy",
+      "fields": [
+        "corporateLoanRate"
+      ],
+      "units": "annual rate, ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "SME and business new rate",
+      "description": "Rate for new SME and business lending.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI renders rate fields using the existing percent formatter; API control values use annual-rate ratios."
+    },
+    {
+      "id": "policy.loan.corporate_selectivity",
+      "area": "Lending",
+      "gui": "Lending / SME and business / New lending selectivity",
+      "category": "standing-policy",
+      "fields": [
+        "corporateUnderwritingTightness"
+      ],
+      "units": "ratio",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "SME and business selectivity",
+      "description": "Selectivity for new SME and business lending.",
+      "sliderStep": 0.05,
+      "exactInputAllowsIntermediateValues": true,
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "displayPrecision": "GUI range slider step is 0.05; adjacent numeric input accepts intermediate values within 0 to 1. API accepts those same values."
+    },
+    {
+      "id": "policy.capital.dividend_payout",
+      "area": "Capital",
+      "gui": "Finance & Capital / Share of profit paid out",
+      "category": "standing-policy",
+      "fields": [
+        "dividendPayoutRatio"
+      ],
+      "units": "ratio from 0 to 1",
+      "minimum": 0,
+      "maximum": 1,
+      "persistent": true,
+      "operation": [
+        "update_decisions"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Profit payout",
+      "description": "Share of positive net income paid to shareholders.",
+      "defaultSource": "Opening form derived from opening BankState and run configuration; current value is returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "policy.capital.risk_appetite",
+      "area": "Capital",
+      "gui": "Finance & Capital / Board risk appetite; Risk & Regulatory",
+      "category": "pending-policy",
+      "fields": [],
+      "units": "ratios and GBP EVE limit",
+      "persistent": true,
+      "operation": [
+        "set_risk_appetite"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Board risk appetite",
+      "description": "Internal capital, leverage, liquidity and IRRBB EVE targets. Targets apply on the next close and persist until changed.",
+      "defaultSource": "Automatic targets come from the run configuration; current/pending targets, floors and ceilings are returned by GET /api/v1/runs/{runId}/controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "transaction.capital_markets",
+      "area": "Capital",
+      "gui": "Finance & Capital / Raise capital; Treasury & Funding / Wholesale funding markets",
+      "category": "one-off-transaction",
+      "fields": [
+        "capitalMarketsInstrument",
+        "capitalMarketsTargetAmount",
+        "capitalMarketsMaxDiscount",
+        "capitalMarketsMaxSpreadBps",
+        "capitalMarketsTenorMonths"
+      ],
+      "units": "GBP, discount ratio, spread basis points, tenor months",
+      "areaChoices": {
+        "Capital": [
+          "cet1",
+          "at1",
+          "tier2"
+        ],
+        "Treasury": [
+          "senior"
+        ]
+      },
+      "persistent": false,
+      "operation": [
+        "queue_transaction",
+        "cancel_transaction"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Capital markets transaction",
+      "description": "At most one capital or debt issue ticket may be drafted for the next close.",
+      "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "transaction.gilt",
+      "area": "Treasury",
+      "gui": "Treasury & Funding / Gilt transaction",
+      "category": "one-off-transaction",
+      "fields": [
+        "giltTradeDirection",
+        "giltTradeAmount",
+        "giltDurationYears"
+      ],
+      "units": "GBP and tenor years",
+      "fieldChoices": {
+        "giltTradeDirection": [
+          "buy",
+          "sell"
+        ],
+        "giltDurationYears": [
+          2,
+          5,
+          10
+        ]
+      },
+      "persistent": false,
+      "operation": [
+        "queue_transaction",
+        "cancel_transaction"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Gilt transaction",
+      "description": "Buy gilts at one selected tenor, or sell proportionally across maturities.",
+      "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "transaction.boe_funding",
+      "area": "Treasury",
+      "gui": "Treasury & Funding / Central-bank funding",
+      "category": "one-off-transaction",
+      "fields": [
+        "boeFacility",
+        "boeFundingAmount"
+      ],
+      "units": "GBP",
+      "fieldChoices": {
+        "boeFacility": [
+          "STR",
+          "ILTR"
+        ]
+      },
+      "persistent": false,
+      "operation": [
+        "queue_transaction",
+        "cancel_transaction"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Bank of England funding",
+      "description": "Draw STR or ILTR funding subject to current collateral and funding capacity.",
+      "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "transaction.hedge",
+      "area": "Treasury",
+      "gui": "Treasury & Funding / Interest-rate hedging",
+      "category": "one-off-transaction",
+      "fields": [
+        "hedgeDirection",
+        "hedgeNotional",
+        "hedgeMaturityMonths"
+      ],
+      "units": "GBP notional and months",
+      "fieldChoices": {
+        "hedgeDirection": [
+          "payFixedReceiveFloat",
+          "receiveFixedPayFloat"
+        ],
+        "hedgeMaturityMonths": [
+          12,
+          24,
+          60
+        ]
+      },
+      "minimum": 0,
+      "persistent": false,
+      "operation": [
+        "queue_transaction",
+        "cancel_transaction"
+      ],
+      "currentValueSource": "createActionFormState(opening BankState, run config); GET /controls.currentValues",
+      "validationSource": "TypeBox request schema plus shared playerControls registry/parser and shared transaction limit helper",
+      "availability": "run is active and BankState has not failed",
+      "source": [
+        "src/application/playerControls.ts",
+        "src/application/playerSessionCommands.ts",
+        "src/application/playerSession.ts"
+      ],
+      "label": "Interest-rate swap",
+      "description": "Enter a swap with a current-market fixed rate and a GUI-permitted maturity.",
+      "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+    },
+    {
+      "id": "time.advance",
+      "area": "Time",
+      "gui": "Time console / month, quarter, year, continuous, pause",
+      "category": "time-control",
+      "operation": [
+        "advance_time",
+        "set_safety_pause"
+      ],
+      "units": "months per command; 1 to configured maximum (default 12)",
+      "choices": [
+        "month",
+        "quarter",
+        "year",
+        "continuous"
+      ],
+      "persistent": false,
+      "boundarySource": "shared monthsForPlayerAdvance(openingStep,currentStep,target)",
+      "availability": "run is active; bounded by horizon and safety pause",
+      "source": [
+        "src/application/playerTime.ts",
+        "src/application/playerSession.ts",
+        "src/ui/useSimulationClock.ts",
+        "server/app.ts"
+      ],
+      "label": "Advance time and pause",
+      "description": "Run monthly closes up to the requested count, stopping at the configured horizon, bank failure or a safety pause.",
+      "defaultSource": "GUI selected period initializes to quarter. API requires an explicit month count and returns the next quarter/year boundary lengths in GET /controls.",
+      "validationBehaviour": "TypeBox validates months; service advance limits, run horizon, bank failure and shared safety-pause behaviour bound execution."
+    },
+    {
+      "id": "mode.scenario",
+      "area": "Opening setup",
+      "gui": "Scenarios / select and start",
+      "category": "opening-mode",
+      "operation": [
+        "admin_create_run"
+      ],
+      "persistent": true,
+      "availability": "administrator assigns at run creation; cannot change during play",
+      "source": [
+        "src/application/scenarioSession.ts",
+        "src/config/scenarios.ts",
+        "server/app.ts"
+      ],
+      "label": "Opening scenario",
+      "description": "Administrator selects the scenario before opening; the player cannot change it in-run.",
+      "defaultSource": "Admin run creation; fixed before player credentials are issued",
+      "validationBehaviour": "Unknown scenario/mode combinations are rejected by admin run creation; player commands cannot edit opening configuration.",
+      "choices": [
+        null,
+        "supervisory-review",
+        "wholesale-funding-reliance",
+        "corporate-credit-boom"
+      ],
+      "choiceLabels": {
+        "null": "Sandbox",
+        "supervisory-review": "The supervisory review",
+        "wholesale-funding-reliance": "Wholesale Funding Reliance",
+        "corporate-credit-boom": "Corporate Credit Boom"
+      }
+    },
+    {
+      "id": "mode.three_year_plan",
+      "area": "Opening setup",
+      "gui": "Settings / three-year plan mode",
+      "category": "opening-mode",
+      "operation": [
+        "admin_create_run"
+      ],
+      "persistent": true,
+      "availability": "administrator assigns before opening; sandbox only",
+      "source": [
+        "src/config/threeYearPlan.ts",
+        "src/application/scenarioSession.ts",
+        "server/app.ts"
+      ],
+      "label": "Three-year plan mode",
+      "description": "Administrator selects this sandbox-only mode before the opening bank is created.",
+      "defaultSource": "Admin run creation defaults threeYearPlan to false; the GUI toggle is available only for sandbox before the first close.",
+      "validationBehaviour": "Unknown scenario/mode combinations are rejected by admin run creation; player commands cannot edit opening configuration.",
+      "choices": [
+        false,
+        true
+      ],
+      "defaultValue": false,
+      "choiceLabels": {
+        "false": "Off",
+        "true": "On"
+      }
+    }
+  ],
+  "reports": [
+    {
+      "id": "report.overview",
+      "title": "Bank overview",
+      "gui": "Bank / Boardroom",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/overview.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.department.customers",
+      "title": "Deposits management",
+      "gui": "Deposits management",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/game/departments.ts",
+        "src/presentation/playerPreviews.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.department.lending",
+      "title": "Lending management",
+      "gui": "Lending management",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/game/departments.ts",
+        "src/presentation/playerPreviews.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.department.treasury",
+      "title": "Treasury and funding management",
+      "gui": "Treasury & Funding management",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/game/departments.ts",
+        "src/presentation/quotes.ts",
+        "src/presentation/playerPreviews.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.department.capital",
+      "title": "Finance and capital management",
+      "gui": "Finance & Capital management",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/game/departments.ts",
+        "src/presentation/quotes.ts",
+        "src/presentation/playerPreviews.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.dashboard.risk",
+      "title": "Risk dashboard",
+      "gui": "Risk & Regulatory / Risk overview",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/risk.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.regulatory.capital",
+      "title": "Capital",
+      "gui": "Risk & Regulatory / Capital",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/capital.ts",
+        "src/presentation/reports/regulatory.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.regulatory.rwa",
+      "title": "Risk-weighted assets",
+      "gui": "Risk & Regulatory / RWA",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/rwa.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.regulatory.leverage",
+      "title": "Leverage",
+      "gui": "Risk & Regulatory / Leverage",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/leverage.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.regulatory.lcr",
+      "title": "Liquidity coverage ratio",
+      "gui": "Risk & Regulatory / LCR",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/lcr.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.regulatory.nsfr",
+      "title": "Net stable funding ratio",
+      "gui": "Risk & Regulatory / NSFR",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/nsfr.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.capital_history",
+      "title": "Capital and risk history",
+      "gui": "Risk & Regulatory / Capital history",
+      "availability": "history",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/capitalHistory.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "unit",
+        "selected",
+        "years"
+      ],
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.performance",
+      "title": "Performance",
+      "gui": "Performance",
+      "availability": "history",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/performance.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "periodMonths"
+      ],
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.accounts",
+      "title": "Accounts",
+      "gui": "Accounts",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/accounts.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.share_price",
+      "title": "Share price",
+      "gui": "Share Price",
+      "availability": "history",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/sharePrice.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.loans",
+      "title": "Loan portfolio",
+      "gui": "Lending / Loan portfolio",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/loans.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "portfolio"
+      ],
+      "note": "All displayed cohort/product details are returned; GUI sorting/filtering changes visible row selection only.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.credit_losses",
+      "title": "Credit losses",
+      "gui": "Lending / Credit losses",
+      "availability": "history",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/creditLosses.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.costs",
+      "title": "Costs",
+      "gui": "Finance & Capital / Costs",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/costs.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.events",
+      "title": "Event log",
+      "gui": "Settings / Event log",
+      "availability": "active-run",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/components/EventLog.tsx",
+        "src/application/playerSession.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "offset",
+        "limit"
+      ],
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.reconciliations",
+      "title": "Reconciliations",
+      "gui": "Settings / Reconciliations",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/reconciliations.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.scenario",
+      "title": "Scenario briefing and progress",
+      "gui": "Scenarios",
+      "availability": "scenario",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/scenario.ts",
+        "src/game/scenarioBriefing.ts",
+        "src/game/scenarioDebrief.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.help",
+      "title": "Help",
+      "gui": "Help",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/help.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.preview",
+      "title": "Next-close preview",
+      "gui": "Management areas / Next close",
+      "availability": "valid-draft",
+      "operation": "POST /api/v1/runs/{runId}/preview",
+      "source": [
+        "src/presentation/playerPreviews.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "department"
+      ],
+      "note": "Returns only fields displayed by the GUI next-close preview.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.player_export",
+      "title": "Player run extract",
+      "gui": "Masthead / Export run",
+      "availability": "active-run",
+      "operation": "GET /api/v1/runs/{runId}/export",
+      "source": [
+        "src/application/playerExport.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.past_games",
+      "title": "Past games",
+      "gui": "Past games",
+      "availability": "history",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/ui/useRunSession.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "query": [
+        "offset",
+        "limit"
+      ],
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.quote",
+      "title": "Capital-market quote",
+      "gui": "Finance & Capital / Treasury ticket",
+      "availability": "valid-draft",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/quotes.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
+      "id": "report.validation",
+      "title": "Input validation",
+      "gui": "Management controls",
+      "availability": "always",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/application/playerControls.ts"
+      ],
+      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "status": "shared-builder-and-player-api"
+    }
+  ],
+  "presentationOnlyExclusions": [
+    {
+      "id": "ui.theme",
+      "reason": "Light/dark styling has no simulation effect."
+    },
+    {
+      "id": "ui.animation_speed",
+      "reason": "1x/3x changes browser timer duration only."
+    },
+    {
+      "id": "ui.chart_selection",
+      "reason": "Selecting a displayed chart series does not mutate simulation state; all series remain queryable."
+    },
+    {
+      "id": "ui.sort_filter",
+      "reason": "Loan/account sorting and filters only change the visible table selection."
+    },
+    {
+      "id": "ui.visibility_pause",
+      "reason": "Browser tab visibility has no remote client equivalent; explicit pause remains supported."
+    }
+  ],
+  "sharedSource": {
+    "controls": "src/application/playerControls.ts",
+    "commands": "src/application/playerSessionCommands.ts",
+    "sessionClose": "src/application/playerSession.ts",
+    "reports": "src/presentation/reportRegistry.ts and src/application/playerReports.ts",
+    "playerExport": "src/application/playerExport.ts",
+    "treasuryLimits": "src/presentation/treasuryLimits.ts"
+  },
+  "knownUnresolved": [
+    "The engine-free evaluation client/provider adapter, joined client transcript collection, replay/batch CLI and operator/container workflow are not implemented yet.",
+    "The current Pages GUI bundles src/config/scenarios.ts. Treat the current scenario catalogue as public; no server-only private-scenario loader is implemented.",
+    "Loan report sorting and cohort filter state are presentation interactions; the API returns the full report categories and supports portfolio selection, not separate sort/filter parameters.",
+    "The API Past games report is scoped to the assigned run and returns its decision timeline and summary snapshots. The browser may also list other attempts saved in that browser profile.",
+    "Live VPS installation, HTTPS reverse-proxy configuration, backup/restore and production hardening have not been performed.",
+    "Registry parity tests detect missing registered reports/controls, but cannot automatically discover future unregistered UI screens; new player surfaces require a parity review."
+  ],
+  "inventoryUpdatedAt": "2026-11-08",
+  "specialOperations": [
+    {
+      "id": "overview",
+      "operation": "GET /api/v1/runs/{runId}/overview",
+      "source": [
+        "src/presentation/reports/overview.ts"
+      ]
+    },
+    {
+      "id": "controls",
+      "operation": "GET /api/v1/runs/{runId}/controls",
+      "source": [
+        "src/application/playerControls.ts",
+        "server/app.ts"
+      ]
+    },
+    {
+      "id": "help",
+      "operation": "GET /api/v1/runs/{runId}/help/{topicId}",
+      "source": [
+        "src/presentation/help.ts"
+      ]
+    },
+    {
+      "id": "preview",
+      "operation": "POST /api/v1/runs/{runId}/preview",
+      "source": [
+        "src/application/playerPreview.ts",
+        "src/presentation/playerPreviews.ts"
+      ]
+    },
+    {
+      "id": "player_export",
+      "operation": "GET /api/v1/runs/{runId}/export",
+      "source": [
+        "src/application/playerExport.ts"
+      ]
+    }
+  ],
+  "episodeAdministration": {
+    "source": "POST /admin/v1/runs; fixed before a player credential is issued",
+    "fields": [
+      {
+        "id": "engineVersion",
+        "required": true,
+        "meaning": "Immutable served engine release; mismatches are rejected."
+      },
+      {
+        "id": "scenarioId",
+        "required": true,
+        "type": "null or one of choices in mode.scenario",
+        "default": "null (sandbox)",
+        "choices": [
+          null,
+          "supervisory-review",
+          "wholesale-funding-reliance",
+          "corporate-credit-boom"
+        ]
+      },
+      {
+        "id": "seed",
+        "required": true,
+        "type": "integer, 0 to Number.MAX_SAFE_INTEGER",
+        "meaning": "Applied by banksim-seed-v1 before initial portfolio generation; never sent through player routes."
+      },
+      {
+        "id": "startDate",
+        "required": false,
+        "default": "Opening date selected by shared scenario factory",
+        "type": "ISO date string"
+      },
+      {
+        "id": "horizonMonths",
+        "required": true,
+        "type": "integer, 1 to 120; service may configure a lower maximum"
+      },
+      {
+        "id": "mode.threeYearPlan",
+        "required": false,
+        "default": false,
+        "meaning": "Available only for sandbox openings."
+      },
+      {
+        "id": "limits.maxModelTurns",
+        "required": false,
+        "default": 1000,
+        "meaning": "Harness evaluation budget, not a game rule."
+      },
+      {
+        "id": "limits.maxToolCalls",
+        "required": false,
+        "default": 5000,
+        "meaning": "Harness evaluation budget, not a game rule."
+      }
+    ]
+  }
+}

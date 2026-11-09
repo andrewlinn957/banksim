@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+dist-server
+coverage
+.vitest
+test-results
+evaluation-client
+*.log
+.env
+.env.*

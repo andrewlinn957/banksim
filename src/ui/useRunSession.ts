@@ -3,9 +3,10 @@ import { PlayerAction } from '../domain/actions';
 import { BankState } from '../domain/bankState';
 import { ActionTimelineEntry, RunRecord, RunSnapshot } from '../domain/runHistory';
 import { Shock } from '../domain/shocks';
-import { SimulationController } from './simulationController';
+import { SimulationController } from '../application/simulationController';
 
 interface SaveRunArgs {
+  runId: string;
   scenarioId: string | null;
   initialState: BankState;
   finalState: BankState;
@@ -36,10 +37,10 @@ export const useRunSession = (controller: SimulationController, initialState: Ba
     setCurrentSnapshots([controller.createSnapshot(state)]);
   }, [controller]);
 
-  const saveCurrent = useCallback(({ scenarioId, initialState: runInitialState, finalState }: SaveRunArgs): RunRecord | null => {
+  const saveCurrent = useCallback(({ runId, scenarioId, initialState: runInitialState, finalState }: SaveRunArgs): RunRecord | null => {
     if (currentTimeline.length === 0 || currentSnapshots.length === 0) return null;
     const record = controller.toRunRecord({
-      id: `run-${Date.now()}`,
+      id: runId,
       label: `${scenarioId ?? 'sandbox'} run ${runCounter}`,
       initialState: runInitialState,
       finalState,

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "24.22.x"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,20 +15,40 @@
     "test:regression": "vitest run src/engine/modelRegression.test.ts src/engine/passiveBankCalibration.test.ts src/engine/threeYearPlanRegression.test.ts",
     "test:calibration": "vitest run src/engine/integratedCalibration.test.ts --reporter=verbose",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
+    "server:dev": "tsx server/main.ts",
+    "server:build": "esbuild server/main.ts --bundle --platform=node --format=esm --target=node24 --packages=external --outfile=dist-server/server.js",
+    "server:start": "node dist-server/server.js",
+    "client:build": "npm --prefix evaluation-client run build",
+    "client:typecheck": "npm --prefix evaluation-client run typecheck",
+    "test:client": "vitest run evaluation-client/test",
+    "test:client:smoke": "npm run server:build && npm run client:build && node scripts/client-clean-smoke.mjs",
+    "audit:collect": "node --import tsx scripts/collect-audit.ts",
+    "audit:verify": "node --import tsx scripts/verify-audit.ts",
     "test:browser": "playwright test"
   },
   "dependencies": {
+    "@fastify/rate-limit": "11.2.2",
+    "@fastify/swagger": "9.9.3",
+    "@fastify/type-provider-typebox": "6.3.0",
+    "better-sqlite3": "13.0.3",
     "chart.js": "^4.5.1",
+    "fastify": "5.12.8",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.3.1",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "typebox": "1.4.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "24.10.1",
     "@types/react": "^18.2.14",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^5.2.0",
+    "esbuild": "0.27.0",
+    "tsx": "4.23.15",
     "typescript": "^5.3.3",
     "vite": "^7.3.6",
     "vitest": "^4.1.11"

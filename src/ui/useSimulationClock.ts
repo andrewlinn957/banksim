@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
 import { clockAfterStep } from '../game/management';
+import { applySafetyPauseToggle } from '../application/playerTime';
 
 interface UseSimulationClockArgs {
   canRun: boolean;
@@ -40,27 +41,16 @@ export const useSimulationClock = ({ canRun, onTick }: UseSimulationClockArgs) =
   }, [safetyPause, stop]);
 
   const setSafetyPause = useCallback((enabled: boolean) => {
-    if (enabled) {
-      setSafetyPauseState(true);
-      setSafetyDisableArmed(false);
-      setPauseReason('Safety pauses are on. Automatic running will stop when buffers need attention.');
-      return;
-    }
-    if (autoRemaining !== null) {
-      setAutoRemaining(null);
-      setSafetyDisableArmed(true);
-      setPauseReason('Simulation paused before changing a safety control. Safety pauses remain ON; toggle again to confirm disabling them.');
-      return;
-    }
-    if (!safetyDisableArmed) {
-      setSafetyDisableArmed(true);
-      setPauseReason('Safety pauses remain ON. Toggle again to confirm that automatic running may continue while buffers need attention.');
-      return;
-    }
-    setSafetyPauseState(false);
-    setSafetyDisableArmed(false);
-    setPauseReason('Safety pauses are OFF. Automatic running may continue while capital or liquidity buffers need attention.');
-  }, [autoRemaining, safetyDisableArmed]);
+    const transition = applySafetyPauseToggle({
+      enabled: safetyPause,
+      disableArmed: safetyDisableArmed,
+      automaticRunActive: autoRemaining !== null,
+    }, enabled);
+    setSafetyPauseState(transition.enabled);
+    setSafetyDisableArmed(transition.disableArmed);
+    if (transition.stopAutomaticRun) setAutoRemaining(null);
+    setPauseReason(transition.message);
+  }, [autoRemaining, safetyDisableArmed, safetyPause]);
 
   const afterAutomaticStep = useCallback((state: BankState, config: SimulationConfig) => {
     setAutoRemaining((remaining) => {

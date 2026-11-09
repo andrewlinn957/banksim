@@ -1,4 +1,5 @@
 import { SimulationEvent } from '../engine/simulation';
+import { buildPlayerEventLog } from '../presentation/reports/events';
 
 interface Props {
   events: SimulationEvent[];
@@ -7,34 +8,30 @@ interface Props {
 }
 
 const EventLog = ({ events, highlightEventIds = [], onClearHighlight }: Props) => {
-  const highlightSet = new Set(highlightEventIds);
-  const hasHighlight = highlightSet.size > 0;
-  const linkedCount = hasHighlight
-    ? events.reduce((count, event) => (highlightSet.has(event.id) ? count + 1 : count), 0)
-    : 0;
+  const report = buildPlayerEventLog(events, highlightEventIds);
 
   return (
     <div className="card stack">
       <h3>Event Log</h3>
-      {hasHighlight && (
+      {report.hasHighlight && (
         <div className="event-log-highlight">
           <span>
-            Showing {linkedCount} linked event{linkedCount === 1 ? '' : 's'} from selected attribution driver.
+            Showing {report.linkedCount} linked event{report.linkedCount === 1 ? '' : 's'} from selected attribution driver.
           </span>
           <button type="button" className="button ghost small" onClick={onClearHighlight}>
             Clear filter
           </button>
         </div>
       )}
-      {events.length === 0 ? (
-        <div className="muted">No events yet.</div>
+      {report.emptyMessage ? (
+        <div className="muted">{report.emptyMessage}</div>
       ) : (
         <ul className="event-log">
-          {events.map((e) => (
+          {report.events.map((e) => (
             <li
               key={e.id}
               id={e.id}
-              className={`event ${e.severity} ${hasHighlight ? (highlightSet.has(e.id) ? 'linked' : 'dimmed') : ''}`}
+              className={`event ${e.severity} ${report.hasHighlight ? (e.linked ? 'linked' : 'dimmed') : ''}`}
             >
               [{e.severity.toUpperCase()}] {e.message}
               {e.tags && e.tags.length > 0 ? ` (${e.tags.join(', ')})` : ''}

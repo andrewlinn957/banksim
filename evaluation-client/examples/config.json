@@ -1,0 +1,20 @@
+{
+  "serverUrl": "https://YOUR-BANKSIM-SERVER",
+  "runId": "OWNER-CREATED-RUN-ID",
+  "playerTokenEnv": "BANKSIM_PLAYER_TOKEN",
+  "provider": {
+    "adapter": "openai-compatible",
+    "baseUrl": "https://api.openai.com/v1",
+    "apiKeyEnv": "MODEL_API_KEY",
+    "model": "EXPLICIT-MODEL-ID",
+    "temperature": 0.2,
+    "seed": 17
+  },
+  "promptFile": "./prompts/manage-bank.md",
+  "limits": {
+    "maxModelTurns": 1000,
+    "maxToolCalls": 5000,
+    "maxNoProgressTurns": 12
+  },
+  "outputDirectory": "./results"
+}

@@ -1,7 +1,8 @@
 // Simple scenario system with scheduled shocks and initial state overrides
 import { BankState } from '../domain/bankState';
 import { Shock } from '../domain/shocks';
-import { initialState as baseInitialState } from './initialState';
+import { createSeededInitialState } from './initialState';
+import { deriveSimulationStreamSeed } from '../engine/seedScheme';
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { LiabilityProductType, AssetProductType, ProductType, MaturityBucket } from '../domain/enums';
 import { SimulationConfig } from '../domain/config';
@@ -91,9 +92,11 @@ export interface Scenario {
 
 const applyInitialOverride = (
   override: Scenario['initialStateOverride'] | undefined,
-  config: SimulationConfig
+  config: SimulationConfig,
+  openingState: BankState,
+  seed: number,
 ): BankState => {
-  const state = cloneBankState(baseInitialState);
+  const state = cloneBankState(openingState);
   if (override?.financial?.balanceSheet?.items) {
     const overrides = override.financial.balanceSheet.items;
     state.financial.balanceSheet.items = state.financial.balanceSheet.items.map((item) => {
@@ -144,9 +147,8 @@ const applyInitialOverride = (
     state.status = { ...state.status, ...override.status } as BankState['status'];
   }
 
-  const initialSeed = config.global.initialPortfolioSeed ?? state.market.macroModel.rngSeed;
   const loanProducts = productTypesWithCapability('loan');
-  loanProducts.forEach((productType, idx) => {
+  loanProducts.forEach((productType) => {
     const item = state.financial.balanceSheet.items.find((i) => i.productType === productType);
     if (!item) return;
     if (item.balance <= 0) {
@@ -175,7 +177,7 @@ const applyInitialOverride = (
       baseAnnualPd: params.baseDefaultRate,
       baseLgd: params.lossGivenDefault,
       config,
-      seed: initialSeed + idx,
+      seed: deriveSimulationStreamSeed(seed, `loan-cohorts:${productType}`),
     });
     state.loanCohorts[productType] = seeded;
     item.balance = sumLoanOutstanding(seeded);
@@ -417,10 +419,13 @@ export const applyScenarioConfig = (
 
 export const getScenarioInitialState = (
   scenarioId: string | null | undefined,
-  config: SimulationConfig = baseConfig
+  config: SimulationConfig = baseConfig,
+  options: { seed?: number; startDate?: Date | string } = {},
 ): BankState => {
   const scenario = scenarios.find((s) => s.id === scenarioId);
-  return applyInitialOverride(scenario?.initialStateOverride, config);
+  const seed = options.seed ?? config.global.initialPortfolioSeed ?? 123456789;
+  const openingState = createSeededInitialState({ seed, config, startDate: options.startDate });
+  return applyInitialOverride(scenario?.initialStateOverride, config, openingState, seed);
 };
 
 const readMetric = (state: BankState, metric: ScenarioMetricTrigger['metric']): number => {

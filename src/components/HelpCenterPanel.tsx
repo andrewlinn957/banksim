@@ -1,11 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { BankState } from '../domain/bankState';
 import { SimulationConfig } from '../domain/config';
-import { buildMechanicsDynamicContext } from '../content/mechanicsContext';
-import { buildMechanicsRegistry, MechanicCategory } from '../content/mechanicsRegistry';
-import { pillar2AHelpEntry } from '../content/pillar2AHelp';
-import { capitalBuffersHelpEntry } from '../content/capitalBuffersHelp';
-import { leverageHelpEntry } from '../content/leverageHelp';
+import { buildHelpCenterData } from '../presentation/help';
 import './HelpCenterPanel.css';
 
 interface Props {
@@ -15,35 +11,8 @@ interface Props {
   onFocusHandled?: () => void;
 }
 
-const CATEGORY_ORDER: MechanicCategory[] = [
-  'Start Here',
-  'Customers',
-  'Lending',
-  'Treasury',
-  'Capital',
-  'Risk Measures',
-  'Market & Reports',
-];
-
-const CATEGORY_LABEL: Record<MechanicCategory, string> = {
-  'Start Here': 'Playing the game',
-  Customers: 'Customers',
-  Lending: 'Lending',
-  Treasury: 'Treasury',
-  Capital: 'Capital',
-  'Risk Measures': 'Risk and regulation',
-  'Market & Reports': 'Market and reports',
-};
-
 const HelpCenterPanel = ({ state, config, focusSectionId, onFocusHandled }: Props) => {
-  const mechanicsContext = useMemo(
-    () => buildMechanicsDynamicContext({ state, config }),
-    [state, config]
-  );
-  const entries = useMemo(
-    () => [...buildMechanicsRegistry(mechanicsContext), capitalBuffersHelpEntry, pillar2AHelpEntry, leverageHelpEntry],
-    [mechanicsContext]
-  );
+  const help = useMemo(() => buildHelpCenterData(state, config), [state, config]);
 
   useEffect(() => {
     if (!focusSectionId) return;
@@ -62,21 +31,14 @@ const HelpCenterPanel = ({ state, config, focusSectionId, onFocusHandled }: Prop
     <article className="help-manual">
       <header>
         <h1>Help</h1>
-        <p>
-          BankSim advances one month at a time. Your decisions change customer behaviour,
-          lending, funding, profit, and risk.
-        </p>
+        <p>{help.introduction}</p>
       </header>
 
-      {CATEGORY_ORDER.map((category) => {
-        const rows = entries.filter((entry) => entry.category === category);
-        if (rows.length === 0) return null;
+      {help.categories.map((group) => (
+          <section key={group.category} id={`help-cat-${group.id}`}>
+            <h2>{group.label}</h2>
 
-        return (
-          <section key={category} id={`help-cat-${encodeCategory(category)}`}>
-            <h2>{CATEGORY_LABEL[category]}</h2>
-
-            {rows.map((entry) => (
+            {group.entries.map((entry) => (
               <section
                 key={entry.id}
                 id={`help-${entry.id}`}
@@ -101,13 +63,9 @@ const HelpCenterPanel = ({ state, config, focusSectionId, onFocusHandled }: Prop
               </section>
             ))}
           </section>
-        );
-      })}
+      ))}
     </article>
   );
 };
-
-const encodeCategory = (category: MechanicCategory): string =>
-  category.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export default HelpCenterPanel;

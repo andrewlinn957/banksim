@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "BankSim evaluation client",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "banksim-eval",
+      "args": ["run", "${workspaceFolder}/config.json"],
+      "console": "integratedTerminal",
+      "env": {
+        "BANKSIM_PLAYER_TOKEN": "${env:BANKSIM_PLAYER_TOKEN}",
+        "MODEL_API_KEY": "${env:MODEL_API_KEY}"
+      }
+    }
+  ]
+}

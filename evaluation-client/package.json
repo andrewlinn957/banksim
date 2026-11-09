@@ -1,0 +1,17 @@
+{
+  "name": "banksim-evaluation-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.22.x" },
+  "bin": { "banksim-eval": "./dist/cli.js" },
+  "files": ["dist", "README.md", "examples"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -62,10 +62,10 @@ const weightedRemainingYears = (buckets: readonly ContractualMaturityBucket[], f
 };
 
 const lifecycleEvent = (productType: ProductType, message: string, step: number): SimulationEvent => ({
-  id: `asset-maturity-${productType}-${step}-${Date.now()}`,
+  id: `pending-asset-maturity-${productType}-${step}`,
   severity: 'info',
   message,
-  timestamp: Date.now(),
+  timestamp: 0,
   tags: ['market', 'liquidity'],
 });
 

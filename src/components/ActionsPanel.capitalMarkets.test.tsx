@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
-import { buildCapitalMarketsBook } from '../engine/capitalMarkets';
+import { buildPlayerCapitalMarketsQuote } from '../presentation/quotes';
 import ActionsPanel, { type ActionFormState } from './ActionsPanel';
 
 const form = (overrides: Partial<ActionFormState> = {}): ActionFormState => ({
@@ -16,7 +16,7 @@ const form = (overrides: Partial<ActionFormState> = {}): ActionFormState => ({
 describe('capital-markets transaction ticket', () => {
   it('shows an indicative equity book with demand, coverage and clearing discount', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
-    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
+    const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
     expect(markup).toContain('Indicative book');
     expect(markup).toContain('CET1 equity');
@@ -27,7 +27,7 @@ describe('capital-markets transaction ticket', () => {
 
   it('shows the return estimate that drives CET1 investor demand', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
-    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.5});
+    const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.5});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" bankState={initialState} state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
     expect(markup).toContain('Post-raise ROE proxy');
     expect(markup).toContain('Expected dividend/share');
@@ -39,7 +39,7 @@ describe('capital-markets transaction ticket', () => {
 
   it('shows spread and tenor controls for a Tier 2 book on the Capital desk', () => {
     const state=form({capitalMarketsInstrument:'tier2',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
-    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});
+    const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'tier2',targetAmount:100e6,maxSpreadBps:1000,tenorMonths:84});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
     expect(markup).toContain('Raise capital');
     expect(markup).toContain('Tier 2');
@@ -75,9 +75,9 @@ describe('capital-markets transaction ticket', () => {
 
   it('only shows quantified plan impact when supplied', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
-    const quote=buildCapitalMarketsBook(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
+    const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
     const withoutPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
-    const withPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote} capitalMarketsPlanImpact={{cet1Before:.13,cet1After:.145,epsBefore:.08,epsAfter:.075}}/>);
+    const withPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote} capitalMarketsPlanImpactText="One-month preview: CET1 13.00% → 14.50% · EPS 8.0p → 7.5p."/>);
     expect(withoutPlan).not.toContain('Three-Year Plan impact');
     expect(withPlan).toContain('Three-Year Plan impact');
     expect(withPlan).toContain('13.00% → 14.50%');

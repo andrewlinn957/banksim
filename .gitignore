@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+dist-server/
 
 # Test and coverage output
 coverage/
@@ -25,4 +26,10 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+!evaluation-client/examples/.vscode/
+!evaluation-client/examples/.vscode/**
 .idea/
+
+# Evaluation artifacts
+evaluation-client/**/results/
+banksim-evaluation-client-*.tgz

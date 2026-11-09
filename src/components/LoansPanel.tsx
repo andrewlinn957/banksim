@@ -2,12 +2,24 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { BalanceSheetItem } from '../domain/balanceSheet';
 import { LoanPipelineState } from '../domain/bankState';
-import { AssetProductType, MaturityBucket, ProductType } from '../domain/enums';
-import { LoanCohort, LoanGeography, LoanSector, LoanStage, LoanWorkoutBucket } from '../domain/loanCohorts';
-import { canonicalLoanGeography, UK_ITL1_LABELS, UK_ITL1_REGIONS } from '../domain/ukItl1';
-import { formatCurrency, formatRate, formatInt } from '../utils/formatters';
-import { getProduct } from '../products/catalogue';
-import { LoanProductType, productTypesWithCapability } from '../products/capabilities';
+import { ProductType } from '../domain/enums';
+import { LoanCohort, LoanWorkoutBucket } from '../domain/loanCohorts';
+import { LoanProductType } from '../products/capabilities';
+import {
+  buildLoanPortfolioReportData,
+  EMPTY_LOAN_COHORT_FILTERS,
+  EMPTY_LOAN_SUMMARY_FILTERS,
+  filterLoanCohorts,
+  filterLoanProducts,
+  LoanCohortColumnKey,
+  LoanCohortFilters,
+  LoanCohortSort,
+  LoanSummaryFilters,
+  LoanSummarySort,
+  LOAN_REPORT_PORTFOLIOS,
+  sortLoanCohorts,
+  sortLoanProducts,
+} from '../presentation/reports/loans';
 import './LoanPortfolio.css';
 
 interface Props {
@@ -17,308 +29,14 @@ interface Props {
   workoutPipelines?: Partial<Record<ProductType, LoanWorkoutBucket[]>>;
 }
 
-const LOAN_PORTFOLIOS = productTypesWithCapability('loan');
 type LoanPortfolioType = LoanProductType;
-
-const SECTOR_ORDER = ['retailMortgage', 'consumer', 'commercialRealEstate', 'sme', 'largeCorporate', 'other'] as const;
-const GEOGRAPHY_ORDER = UK_ITL1_REGIONS;
-
-const STAGE_LABEL: Record<LoanStage, string> = {
-  stage1: 'Stage 1',
-  stage2: 'Stage 2',
-  stage3: 'Stage 3',
-};
-
-const SECTOR_LABEL: Record<LoanSector, string> = {
-  retailMortgage: 'Residential mortgage',
-  consumer: 'Consumer',
-  commercialRealEstate: 'Commercial real estate',
-  sme: 'SME',
-  largeCorporate: 'Large corporate',
-  other: 'Other',
-};
-
-const GEOGRAPHY_LABEL: Record<LoanGeography, string> = {
-  ...UK_ITL1_LABELS,
-  south: 'South',
-  midlands: 'Midlands',
-  north: 'North',
-  other: 'Other',
-};
-
-const cohortSector = (cohort: LoanCohort): LoanSector => cohort.sector ?? 'other';
-const cohortGeography = (cohort: LoanCohort): LoanGeography =>
-  canonicalLoanGeography(cohort.geography, cohort.cohortId);
-
-const MATURITY_LABEL: Record<MaturityBucket, string> = {
-  [MaturityBucket.Overnight]: 'Overnight',
-  [MaturityBucket.LessThan1Y]: '<1 year',
-  [MaturityBucket.OneToThreeY]: '1–3 years',
-  [MaturityBucket.ThreeToFiveY]: '3–5 years',
-  [MaturityBucket.GreaterThan5Y]: '>5 years',
-  [MaturityBucket.Perpetual]: 'Perpetual',
-};
-
-const maturityLabel = (bucket: MaturityBucket | undefined): string => bucket ? MATURITY_LABEL[bucket] : '—';
-const currentPd = (cohort: LoanCohort): number => cohort.effectiveAnnualPd ?? cohort.annualPd;
-const currentLgd = (cohort: LoanCohort): number => cohort.effectiveLgd ?? cohort.lgd;
-
-const remainingTermMonths = (cohort: LoanCohort): number => Math.max(0, Math.floor(cohort.termMonths - cohort.ageMonths));
-
-const weightedAverage = (cohorts: readonly LoanCohort[], valueFn: (cohort: LoanCohort) => number): number => {
-  let weightSum = 0;
-  let weightedSum = 0;
-
-  cohorts.forEach((cohort) => {
-    const weight = Math.max(0, cohort.outstandingPrincipal ?? 0);
-    const value = valueFn(cohort);
-    if (!Number.isFinite(weight) || weight <= 0) return;
-    if (!Number.isFinite(value)) return;
-
-    weightSum += weight;
-    weightedSum += weight * value;
-  });
-
-  return weightSum > 0 ? weightedSum / weightSum : Number.NaN;
-};
-
-type SortDirection = 'asc' | 'desc';
-type FilterUnit = 'raw' | 'percent' | 'billions';
-
-type NumericFilter =
-  | { kind: 'cmp'; op: '>' | '>=' | '<' | '<=' | '='; value: number }
-  | { kind: 'range'; min: number; max: number };
-
-const parseNumberToken = (token: string, unit: FilterUnit): number | null => {
-  const raw = token.trim().toLowerCase().replace(/,/g, '');
-  if (!raw) return null;
-
-  const suffixMatch = raw.match(/^(.*?)(%|bn|m|k)$/);
-  let numericPart = raw;
-  let multiplier = 1;
-
-  if (suffixMatch) {
-    numericPart = suffixMatch[1];
-    const suffix = suffixMatch[2];
-    if (suffix === '%') multiplier = 0.01;
-    if (suffix === 'bn') multiplier = 1e9;
-    if (suffix === 'm') multiplier = 1e6;
-    if (suffix === 'k') multiplier = 1e3;
-  } else {
-    if (unit === 'percent') multiplier = 0.01;
-    if (unit === 'billions') multiplier = 1e9;
-  }
-
-  const parsed = Number(numericPart);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed * multiplier;
-};
-
-const parseNumericFilter = (input: string, unit: FilterUnit): NumericFilter | null => {
-  const text = input.trim();
-  if (!text) return null;
-
-  if (text.includes('..')) {
-    const [minRaw, maxRaw] = text.split('..', 2);
-    const min = parseNumberToken(minRaw, unit);
-    const max = parseNumberToken(maxRaw, unit);
-    if (min === null || max === null) return null;
-    return { kind: 'range', min: Math.min(min, max), max: Math.max(min, max) };
-  }
-
-  const match = text.match(/^(<=|>=|<|>|=)\s*(.+)$/);
-  if (match) {
-    const value = parseNumberToken(match[2], unit);
-    if (value === null) return null;
-    return { kind: 'cmp', op: match[1] as '>' | '>=' | '<' | '<=' | '=', value };
-  }
-
-  return null;
-};
-
-const matchesNumericFilter = (value: number, filter: NumericFilter): boolean => {
-  if (!Number.isFinite(value)) return false;
-
-  if (filter.kind === 'range') {
-    return value >= filter.min && value <= filter.max;
-  }
-
-  if (filter.op === '>') return value > filter.value;
-  if (filter.op === '>=') return value >= filter.value;
-  if (filter.op === '<') return value < filter.value;
-  if (filter.op === '<=') return value <= filter.value;
-  return value === filter.value;
-};
-
-const compareNumbers = (a: number, b: number): number => {
-  const aFinite = Number.isFinite(a);
-  const bFinite = Number.isFinite(b);
-  if (!aFinite && !bFinite) return 0;
-  if (!aFinite) return 1;
-  if (!bFinite) return -1;
-  return a - b;
-};
-
-const compareStrings = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-
-type LoanSummaryColumnKey = 'product' | 'balance' | 'rate' | 'maturity';
-const EMPTY_LOAN_SUMMARY_FILTERS: Record<LoanSummaryColumnKey, string> = {
-  product: '',
-  balance: '',
-  rate: '',
-  maturity: '',
-};
-
-type CohortColumnKey =
-  | 'cohortId'
-  | 'stage'
-  | 'sector'
-  | 'geography'
-  | 'ageMonths'
-  | 'remainingTermMonths'
-  | 'outstandingPrincipal'
-  | 'annualInterestRate'
-  | 'annualPd'
-  | 'lgd'
-  | 'pdxlgd';
-
-const EMPTY_COHORT_FILTERS: Record<CohortColumnKey, string> = {
-  cohortId: '',
-  stage: '',
-  sector: '',
-  geography: '',
-  ageMonths: '',
-  remainingTermMonths: '',
-  outstandingPrincipal: '',
-  annualInterestRate: '',
-  annualPd: '',
-  lgd: '',
-  pdxlgd: '',
-};
-
-type CohortColumnConfig = {
-  key: CohortColumnKey;
-  label: string;
-  filterUnit: FilterUnit;
-  placeholder: string;
-  value: (cohort: LoanCohort) => number;
-  display: (cohort: LoanCohort) => string;
-  cell: (cohort: LoanCohort) => JSX.Element | string;
-};
-
-const COHORT_COLUMNS: readonly CohortColumnConfig[] = [
-  {
-    key: 'cohortId',
-    label: 'Cohort ID',
-    filterUnit: 'raw',
-    placeholder: 'e.g. >= 0',
-    value: (cohort) => cohort.cohortId,
-    display: (cohort) => formatInt(cohort.cohortId),
-    cell: (cohort) => formatInt(cohort.cohortId),
-  },
-  {
-    key: 'stage',
-    label: 'Stage',
-    filterUnit: 'raw',
-    placeholder: 'e.g. Stage 2',
-    value: (cohort) => (cohort.stage === 'stage3' ? 3 : cohort.stage === 'stage2' ? 2 : 1),
-    display: (cohort) => STAGE_LABEL[cohort.stage],
-    cell: (cohort) => STAGE_LABEL[cohort.stage],
-  },
-  {
-    key: 'sector',
-    label: 'Sector',
-    filterUnit: 'raw',
-    placeholder: 'e.g. SME',
-    value: (cohort) =>
-      Math.max(0, SECTOR_ORDER.indexOf(cohortSector(cohort) as (typeof SECTOR_ORDER)[number])),
-    display: (cohort) => SECTOR_LABEL[cohortSector(cohort)],
-    cell: (cohort) => SECTOR_LABEL[cohortSector(cohort)],
-  },
-  {
-    key: 'geography',
-    label: 'Geography',
-    filterUnit: 'raw',
-    placeholder: 'e.g. London',
-    value: (cohort) =>
-      Math.max(0, GEOGRAPHY_ORDER.indexOf(cohortGeography(cohort) as (typeof GEOGRAPHY_ORDER)[number])),
-    display: (cohort) => GEOGRAPHY_LABEL[cohortGeography(cohort)],
-    cell: (cohort) => GEOGRAPHY_LABEL[cohortGeography(cohort)],
-  },
-  {
-    key: 'ageMonths',
-    label: 'Age (m)',
-    filterUnit: 'raw',
-    placeholder: 'e.g. > 12',
-    value: (cohort) => cohort.ageMonths,
-    display: (cohort) => formatInt(cohort.ageMonths),
-    cell: (cohort) => formatInt(cohort.ageMonths),
-  },
-  {
-    key: 'remainingTermMonths',
-    label: 'Remaining term (m)',
-    filterUnit: 'raw',
-    placeholder: 'e.g. < 60',
-    value: (cohort) => remainingTermMonths(cohort),
-    display: (cohort) => formatInt(remainingTermMonths(cohort)),
-    cell: (cohort) => formatInt(remainingTermMonths(cohort)),
-  },
-  {
-    key: 'outstandingPrincipal',
-    label: 'Outstanding',
-    filterUnit: 'billions',
-    placeholder: 'bn (e.g. > 10)',
-    value: (cohort) => cohort.outstandingPrincipal,
-    display: (cohort) => formatCurrency(cohort.outstandingPrincipal),
-    cell: (cohort) => formatCurrency(cohort.outstandingPrincipal),
-  },
-  {
-    key: 'annualInterestRate',
-    label: 'Coupon',
-    filterUnit: 'percent',
-    placeholder: '% (e.g. < 5)',
-    value: (cohort) => cohort.annualInterestRate,
-    display: (cohort) => formatRate(cohort.annualInterestRate),
-    cell: (cohort) => formatRate(cohort.annualInterestRate),
-  },
-  {
-    key: 'annualPd',
-    label: 'Current PD',
-    filterUnit: 'percent',
-    placeholder: '% (e.g. > 2)',
-    value: currentPd,
-    display: (cohort) => formatRate(currentPd(cohort)),
-    cell: (cohort) => formatRate(currentPd(cohort)),
-  },
-  {
-    key: 'lgd',
-    label: 'Current LGD',
-    filterUnit: 'percent',
-    placeholder: '% (e.g. > 45)',
-    value: currentLgd,
-    display: (cohort) => formatRate(currentLgd(cohort)),
-    cell: (cohort) => formatRate(currentLgd(cohort)),
-  },
-  {
-    key: 'pdxlgd',
-    label: 'PD×LGD',
-    filterUnit: 'percent',
-    placeholder: '% (e.g. > 0.8)',
-    value: (cohort) => currentPd(cohort) * currentLgd(cohort),
-    display: (cohort) => formatRate(currentPd(cohort) * currentLgd(cohort)),
-    cell: (cohort) => formatRate(currentPd(cohort) * currentLgd(cohort)),
-  },
-] as const;
+const LOAN_PORTFOLIOS = LOAN_REPORT_PORTFOLIOS;
 
 const hasPortfolioData = (
   items: readonly BalanceSheetItem[],
   loanCohorts: Partial<Record<ProductType, LoanCohort[]>> | undefined,
   portfolio: LoanPortfolioType
-): boolean => {
-  const hasItem = items.some((item) => item.productType === portfolio);
-  const cohortCount = loanCohorts?.[portfolio]?.length ?? 0;
-  return hasItem || cohortCount > 0;
-};
+): boolean => items.some((item) => item.productType === portfolio) || (loanCohorts?.[portfolio]?.length ?? 0) > 0;
 
 const getDefaultPortfolio = (
   items: readonly BalanceSheetItem[],
@@ -330,218 +48,52 @@ const getDefaultPortfolio = (
   return available ?? fallback;
 };
 
-const isLoanPortfolioItem = (
-  item: BalanceSheetItem
-): item is BalanceSheetItem & { productType: LoanPortfolioType } =>
-  LOAN_PORTFOLIOS.includes(item.productType as LoanPortfolioType);
-
 const LoansPanel = ({ items, loanCohorts, loanPipelines, workoutPipelines }: Props) => {
-  const loans = useMemo(() => items.filter(isLoanPortfolioItem), [items]);
-  const totalLoans = useMemo(() => loans.reduce((sum, loan) => sum + loan.balance, 0), [loans]);
-
   const [selectedPortfolio, setSelectedPortfolio] = useState<LoanPortfolioType>(() => getDefaultPortfolio(items, loanCohorts));
-
   const selectedPortfolioAvailable = useMemo(
-  () => hasPortfolioData(items, loanCohorts, selectedPortfolio),
-  [items, loanCohorts, selectedPortfolio]
-);
+    () => hasPortfolioData(items, loanCohorts, selectedPortfolio),
+    [items, loanCohorts, selectedPortfolio]
+  );
+  useEffect(() => {
+    if (!selectedPortfolioAvailable) setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
+  }, [items, loanCohorts, selectedPortfolioAvailable]);
 
-useEffect(() => {
-  if (selectedPortfolioAvailable) return;
-  setSelectedPortfolio(getDefaultPortfolio(items, loanCohorts));
-}, [items, loanCohorts, selectedPortfolioAvailable]);
-
-  const [loanSummarySort, setLoanSummarySort] = useState<{ key: LoanSummaryColumnKey; direction: SortDirection } | null>(null);
-  const [loanSummaryFilters, setLoanSummaryFilters] = useState<Record<LoanSummaryColumnKey, string>>(() => ({
-    ...EMPTY_LOAN_SUMMARY_FILTERS,
-  }));
-
-  const loanSummaryFiltersActive = useMemo(
-    () => Object.values(loanSummaryFilters).some((value) => value.trim() !== ''),
-    [loanSummaryFilters]
+  const [loanSummarySort, setLoanSummarySort] = useState<LoanSummarySort>(null);
+  const [loanSummaryFilters, setLoanSummaryFilters] = useState<LoanSummaryFilters>(() => ({ ...EMPTY_LOAN_SUMMARY_FILTERS }));
+  const loanSummaryFiltersActive = Object.values(loanSummaryFilters).some((value) => value.trim() !== '');
+  const visibleLoans = useMemo(
+    () => sortLoanProducts(filterLoanProducts(items, loanSummaryFilters), loanSummarySort),
+    [items, loanSummaryFilters, loanSummarySort]
   );
 
-  const filteredLoans = useMemo(() => {
-    const productNeedle = loanSummaryFilters.product.trim().toLowerCase();
-    const maturityNeedle = loanSummaryFilters.maturity.trim().toLowerCase();
-
-    const balanceRaw = loanSummaryFilters.balance.trim();
-    const rateRaw = loanSummaryFilters.rate.trim();
-
-    const balanceFilter = balanceRaw ? parseNumericFilter(balanceRaw, 'billions') : null;
-    const rateFilter = rateRaw ? parseNumericFilter(rateRaw, 'percent') : null;
-
-    return loans.filter((loan) => {
-      if (productNeedle && !loan.label.toLowerCase().includes(productNeedle)) return false;
-      if (maturityNeedle && !maturityLabel(loan.maturityBucket).toLowerCase().includes(maturityNeedle)) return false;
-
-      if (balanceRaw) {
-        if (balanceFilter) {
-          if (!matchesNumericFilter(loan.balance, balanceFilter)) return false;
-        } else if (!formatCurrency(loan.balance).toLowerCase().includes(balanceRaw.toLowerCase())) {
-          return false;
-        }
-      }
-
-      if (rateRaw) {
-        if (rateFilter) {
-          if (!matchesNumericFilter(loan.interestRate, rateFilter)) return false;
-        } else if (!formatRate(loan.interestRate).toLowerCase().includes(rateRaw.toLowerCase())) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [loanSummaryFilters, loans]);
-
-  const visibleLoans = useMemo(() => {
-    if (!loanSummarySort) return filteredLoans;
-
-    const dir = loanSummarySort.direction === 'asc' ? 1 : -1;
-    const sorted = filteredLoans.slice();
-
-    sorted.sort((a, b) => {
-      if (loanSummarySort.key === 'product') return compareStrings(a.label, b.label) * dir;
-      if (loanSummarySort.key === 'maturity')
-        return compareStrings(maturityLabel(a.maturityBucket), maturityLabel(b.maturityBucket)) * dir;
-      if (loanSummarySort.key === 'balance') return compareNumbers(a.balance, b.balance) * dir;
-      if (loanSummarySort.key === 'rate') return compareNumbers(a.interestRate, b.interestRate) * dir;
-      return 0;
-    });
-
-    return sorted;
-  }, [filteredLoans, loanSummarySort]);
-
-  const [cohortSort, setCohortSort] = useState<{ key: CohortColumnKey; direction: SortDirection }>(() => ({
-    key: 'cohortId',
-    direction: 'asc',
-  }));
-  const [cohortFilters, setCohortFilters] = useState<Record<CohortColumnKey, string>>(() => ({ ...EMPTY_COHORT_FILTERS }));
-
-  const cohortFiltersActive = useMemo(
-    () => Object.values(cohortFilters).some((value) => value.trim() !== ''),
-    [cohortFilters]
-  );
-
+  const [cohortSort, setCohortSort] = useState<LoanCohortSort>(() => ({ key: 'cohortId', direction: 'asc' }));
+  const [cohortFilters, setCohortFilters] = useState<LoanCohortFilters>(() => ({ ...EMPTY_LOAN_COHORT_FILTERS }));
+  const cohortFiltersActive = Object.values(cohortFilters).some((value) => value.trim() !== '');
   const portfolioCohorts = useMemo(
     () => (loanCohorts?.[selectedPortfolio] ?? []).filter((cohort) => cohort.productType === selectedPortfolio),
     [loanCohorts, selectedPortfolio]
   );
-
-  const filteredCohorts = useMemo(() => {
-    if (!cohortFiltersActive) return portfolioCohorts;
-
-    return portfolioCohorts.filter((cohort) => {
-      for (const column of COHORT_COLUMNS) {
-        const rawFilter = cohortFilters[column.key]?.trim() ?? '';
-        if (!rawFilter) continue;
-
-        const numericFilter = parseNumericFilter(rawFilter, column.filterUnit);
-        if (numericFilter) {
-          if (!matchesNumericFilter(column.value(cohort), numericFilter)) return false;
-          continue;
-        }
-
-        if (!column.display(cohort).toLowerCase().includes(rawFilter.toLowerCase())) return false;
-      }
-
-      return true;
-    });
-  }, [cohortFilters, cohortFiltersActive, portfolioCohorts]);
-
-  const visibleCohorts = useMemo(() => {
-    const sortColumn = COHORT_COLUMNS.find((column) => column.key === cohortSort.key);
-    if (!sortColumn) return filteredCohorts;
-
-    const dir = cohortSort.direction === 'asc' ? 1 : -1;
-    const sorted = filteredCohorts.slice();
-
-    sorted.sort((a, b) => {
-      const cmp = compareNumbers(sortColumn.value(a), sortColumn.value(b));
-      if (cmp !== 0) return cmp * dir;
-      return compareNumbers(a.cohortId, b.cohortId);
-    });
-
-    return sorted;
-  }, [cohortSort, filteredCohorts]);
-
-  const cohortSummary = useMemo(() => {
-    const cohortCount = visibleCohorts.length;
-    const totalOutstanding = visibleCohorts.reduce((sum, cohort) => sum + (cohort.outstandingPrincipal ?? 0), 0);
-    const weightedCoupon = weightedAverage(visibleCohorts, (cohort) => cohort.annualInterestRate);
-    const weightedPd = weightedAverage(visibleCohorts, currentPd);
-    const weightedLgd = weightedAverage(visibleCohorts, currentLgd);
-    const weightedRisk = weightedAverage(visibleCohorts, (cohort) => currentPd(cohort) * currentLgd(cohort));
-    const weightedAffordability = weightedAverage(visibleCohorts, (cohort) => cohort.affordabilityIndex ?? 1);
-    const sectorTotals = new Map<string, number>();
-    const geographyTotals = new Map<string, number>();
-    visibleCohorts.forEach((cohort) => {
-      const exposure = Math.max(0, cohort.outstandingPrincipal ?? 0);
-      if (exposure <= 0) return;
-      const sector = cohort.sector ?? 'other';
-      const geography = cohort.geography ?? 'other';
-      sectorTotals.set(sector, (sectorTotals.get(sector) ?? 0) + exposure);
-      geographyTotals.set(geography, (geographyTotals.get(geography) ?? 0) + exposure);
-    });
-    const sectorConcentration =
-      totalOutstanding > 0
-        ? Math.max(0, ...Array.from(sectorTotals.values()).map((value) => value / totalOutstanding))
-        : 0;
-    const geographyConcentration =
-      totalOutstanding > 0
-        ? Math.max(0, ...Array.from(geographyTotals.values()).map((value) => value / totalOutstanding))
-        : 0;
-
-    return {
-      cohortCount,
-      totalOutstanding,
-      weightedCoupon,
-      weightedPd,
-      weightedLgd,
-      weightedRisk,
-      weightedAffordability,
-      sectorConcentration,
-      geographyConcentration,
-    };
-  }, [visibleCohorts]);
-
-  const pipeline = loanPipelines?.[selectedPortfolio];
-  const workoutSummary = useMemo(() => {
-    const buckets = workoutPipelines?.[selectedPortfolio] ?? [];
-    const stock = buckets.reduce((sum, bucket) => sum + Math.max(0, bucket.defaultedPrincipal ?? 0), 0);
-    const expectedRecoveries = buckets.reduce(
-      (sum, bucket) =>
-        sum +
-        Math.max(0, bucket.defaultedPrincipal ?? 0) *
-          Math.max(0, Math.min(1, bucket.expectedRecoveryRate ?? 0)),
-      0
-    );
-    const weightedMonths =
-      stock > 0
-        ? buckets.reduce(
-            (sum, bucket) =>
-              sum +
-              Math.max(0, bucket.defaultedPrincipal ?? 0) *
-                Math.max(0, bucket.monthsToResolution ?? 0),
-            0
-          ) / stock
-        : 0;
-    return {
-      bucketCount: buckets.length,
-      stock,
-      expectedRecoveries,
-      expectedChargeOffs: Math.max(0, stock - expectedRecoveries),
-      weightedMonths,
-    };
-  }, [selectedPortfolio, workoutPipelines]);
+  const visibleCohorts = useMemo(
+    () => sortLoanCohorts(filterLoanCohorts(portfolioCohorts, cohortFilters), cohortSort),
+    [cohortFilters, cohortSort, portfolioCohorts]
+  );
+  const reportData = useMemo(() => buildLoanPortfolioReportData({
+    items,
+    loanCohorts,
+    loanPipelines,
+    workoutPipelines,
+    selectedPortfolio,
+    visibleCohorts,
+    portfolioCohortCount: portfolioCohorts.length,
+    cohortFiltersActive,
+  }), [items, loanCohorts, loanPipelines, workoutPipelines, selectedPortfolio, visibleCohorts, portfolioCohorts.length, cohortFiltersActive]);
 
   return (
     <div className="card stack">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <h3>Loan Portfolio</h3>
         <div className="tabs" role="tablist" aria-label="Loan portfolio selector">
-          {LOAN_PORTFOLIOS.map((productType) => (
+          {reportData.productChoices.map(({ productType, label, available }) => (
   <button
     key={productType}
     type="button"
@@ -549,30 +101,19 @@ useEffect(() => {
     onClick={() => setSelectedPortfolio(productType)}
     role="tab"
     aria-selected={selectedPortfolio === productType}
-    disabled={!hasPortfolioData(items, loanCohorts, productType)}
+    disabled={!available}
   >
-    {getProduct(productType).label}
+    {label}
   </button>
 ))}
         </div>
       </div>
       <div className="muted">
-        Net loans: <strong>{formatCurrency(totalLoans)}</strong>
+        Net loans: <strong>{reportData.netLoans}</strong>
       </div>
-      {pipeline && (
+      {reportData.pipeline.length > 0 && (
         <div className="grid-metrics">
-          <div className="metric-card">
-            <div className="metric-label">Demand this month</div>
-            <div className="metric-value">{formatCurrency(pipeline.demandNotional)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Approved this month</div>
-            <div className="metric-value">{formatCurrency(pipeline.approvedNotional)}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Approved, not yet drawn</div>
-            <div className="metric-value">{formatCurrency(pipeline.committedNotional)}</div>
-          </div>
+          {reportData.pipeline.map((item) => <div className="metric-card" key={item.label}><div className="metric-label">{item.label}</div><div className="metric-value">{item.value}</div></div>)}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
@@ -711,9 +252,9 @@ useEffect(() => {
                 onClick={() => setSelectedPortfolio(l.productType)}
               >
                 <td>{l.label}</td>
-                <td className="numeric">{formatCurrency(l.balance)}</td>
-                <td className="numeric">{formatRate(l.interestRate)}</td>
-                <td>{maturityLabel(l.maturityBucket)}</td>
+                <td className="numeric">{reportData.products.find((item) => item.productType === l.productType)?.balance}</td>
+                <td className="numeric">{reportData.products.find((item) => item.productType === l.productType)?.rate}</td>
+                <td>{reportData.products.find((item) => item.productType === l.productType)?.maturity}</td>
               </tr>
             ))
           )}
@@ -722,7 +263,7 @@ useEffect(() => {
 
       <div className="stack" style={{ marginTop: 10 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0 }}>Cohort breakdown — {getProduct(selectedPortfolio).label}</h3>
+          <h3 style={{ margin: 0 }}>Cohort breakdown — {reportData.selectedPortfolioLabel}</h3>
         </div>
 
         {portfolioCohorts.length === 0 ? (
@@ -730,67 +271,13 @@ useEffect(() => {
         ) : (
           <>
             <div className="grid-metrics cohort-summary-grid">
-              <div className="metric-card">
-                <div className="metric-label">Cohorts</div>
-                <div className="metric-value">{cohortSummary.cohortCount}</div>
-                {cohortFiltersActive && (
-                  <div className="metric-helper">
-                    Showing {cohortSummary.cohortCount}/{portfolioCohorts.length}
-                  </div>
-                )}
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">Performing cohort exposure</div>
-                <div className="metric-value">{formatCurrency(cohortSummary.totalOutstanding)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA coupon</div>
-                <div className="metric-value">{formatRate(cohortSummary.weightedCoupon)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA PD</div>
-                <div className="metric-value">{formatRate(cohortSummary.weightedPd)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA LGD</div>
-                <div className="metric-value">{formatRate(cohortSummary.weightedLgd)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA PD×LGD</div>
-                <div className="metric-value">{formatRate(cohortSummary.weightedRisk)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">Largest sector share</div>
-                <div className="metric-value">{formatRate(cohortSummary.sectorConcentration)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">Largest geography share</div>
-                <div className="metric-value">{formatRate(cohortSummary.geographyConcentration)}</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA affordability index</div>
-                <div className="metric-value">
-                  {Number.isFinite(cohortSummary.weightedAffordability)
-                    ? cohortSummary.weightedAffordability.toFixed(2)
-                    : '—'}
+              {[...reportData.summary, ...reportData.workout].map((item) => (
+                <div className="metric-card" key={item.label}>
+                  <div className="metric-label">{item.label}</div>
+                  <div className="metric-value">{item.value}</div>
+                  {item.helper && <div className="metric-helper">{item.helper}</div>}
                 </div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">NPL workout stock</div>
-                <div className="metric-value">{formatCurrency(workoutSummary.stock)}</div>
-                <div className="metric-helper">{workoutSummary.bucketCount} buckets pending</div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">Expected recoveries</div>
-                <div className="metric-value">{formatCurrency(workoutSummary.expectedRecoveries)}</div>
-                <div className="metric-helper">
-                  Expected charge-off {formatCurrency(workoutSummary.expectedChargeOffs)}
-                </div>
-              </div>
-              <div className="metric-card">
-                <div className="metric-label">WA workout lag</div>
-                <div className="metric-value">{workoutSummary.weightedMonths.toFixed(1)}m</div>
-              </div>
+              ))}
             </div>
 
             <details className="loan-cohort-explorer">
@@ -803,7 +290,7 @@ useEffect(() => {
               <button
                 type="button"
                 className="button small"
-                onClick={() => setCohortFilters({ ...EMPTY_COHORT_FILTERS })}
+                onClick={() => setCohortFilters({ ...EMPTY_LOAN_COHORT_FILTERS })}
                 disabled={!cohortFiltersActive}
               >
                 Clear cohort filters
@@ -813,53 +300,55 @@ useEffect(() => {
             <table className="data-table">
               <thead>
                 <tr>
-                  {COHORT_COLUMNS.map((column) => (
-                    <th key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
+                  {reportData.columns.map(({ key, label }) => {
+                    const columnKey = key as LoanCohortColumnKey;
+                    return <th key={key} className={['stage', 'sector', 'geography'].includes(key) ? undefined : 'numeric'}>
                       <button
                         type="button"
                         className="table-sort-button"
                         onClick={() =>
                           setCohortSort((prev) => {
-                            if (prev.key !== column.key) return { key: column.key, direction: 'asc' };
-                            return { key: column.key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+                            if (prev.key !== columnKey) return { key: columnKey, direction: 'asc' };
+                            return { key: columnKey, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
                           })
                         }
                       >
-                        {column.label}
-                        {cohortSort.key === column.key && (
+                        {label}
+                        {cohortSort.key === columnKey && (
                           <span className="table-sort-indicator">{cohortSort.direction === 'asc' ? '▲' : '▼'}</span>
                         )}
                       </button>
-                    </th>
-                  ))}
+                    </th>;
+                  })}
                 </tr>
                 <tr className="table-filter-row">
-                  {COHORT_COLUMNS.map((column) => (
-                    <th key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
+                  {reportData.columns.map(({ key, label, placeholder }) => {
+                    const columnKey = key as LoanCohortColumnKey;
+                    return <th key={key} className={['stage', 'sector', 'geography'].includes(key) ? undefined : 'numeric'}>
                       <input
                         className="table-filter-input"
-                        value={cohortFilters[column.key]}
-                        onChange={(e) => setCohortFilters((prev) => ({ ...prev, [column.key]: e.target.value }))}
-                        placeholder={column.placeholder}
-                        aria-label={`Filter ${column.label}`}
+                        value={cohortFilters[columnKey]}
+                        onChange={(e) => setCohortFilters((prev) => ({ ...prev, [columnKey]: e.target.value }))}
+                        placeholder={placeholder}
+                        aria-label={`Filter ${label}`}
                       />
-                    </th>
-                  ))}
+                    </th>;
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {visibleCohorts.length === 0 ? (
                   <tr>
-                    <td colSpan={COHORT_COLUMNS.length}>
+                    <td colSpan={reportData.columns.length}>
                       <span className="muted">No cohorts match the current filters.</span>
                     </td>
                   </tr>
                 ) : (
-                  visibleCohorts.map((cohort) => (
-                    <tr key={`${cohort.productType}-${cohort.cohortId}`}>
-                      {COHORT_COLUMNS.map((column) => (
-                        <td key={column.key} className={['stage', 'sector', 'geography'].includes(column.key) ? undefined : 'numeric'}>
-                          {column.cell(cohort)}
+                  reportData.cohortRows.map((row) => (
+                    <tr key={row.key}>
+                      {reportData.columns.map(({ key }) => (
+                        <td key={key} className={['stage', 'sector', 'geography'].includes(key) ? undefined : 'numeric'}>
+                          {row.cells[key as LoanCohortColumnKey]}
                         </td>
                       ))}
                     </tr>

@@ -1,29 +1,18 @@
 import { IncomeStatement } from '../domain/pnl';
 import { formatCurrency } from '../utils/formatters';
+import { buildCostsReportData } from '../presentation/reports/costs';
 
 interface Props {
   income: IncomeStatement;
 }
 
 const CostsPanel = ({ income }: Props) => {
+  const rows = buildCostsReportData(income);
   return (
     <div className="card stack">
       <h3>Costs & P&L (Monthly)</h3>
       <table className="data-table">
-        <tbody>
-          <Row label="Interest Income" value={formatCurrency(income.interestIncome)} />
-          <Row label="Interest Expense" value={formatCurrency(income.interestExpense)} />
-          <Row label="Net Interest Income" value={formatCurrency(income.netInterestIncome)} bold />
-          <Row label="Fees" value={formatCurrency(income.feeIncome)} />
-          <Row label="Credit Losses" value={formatCurrency(income.creditLosses)} />
-          <Row label="Fixed operating costs" value={formatCurrency(income.fixedOperatingCosts)} />
-          <Row label="Servicing costs" value={formatCurrency(income.servicingCosts)} />
-          <Row label="Origination costs" value={formatCurrency(income.originationCosts)} />
-          <Row label="Workout costs" value={formatCurrency(income.workoutCosts)} />
-          <Row label="Operating Expenses" value={formatCurrency(income.operatingExpenses)} />
-          <Row label="Tax" value={formatCurrency(income.tax)} />
-          <Row label="Net Income" value={formatCurrency(income.netIncome)} bold />
-        </tbody>
+        <tbody>{rows.map((row) => <Row key={row.label} label={row.label} value={formatCurrency(row.value)} bold={row.bold} />)}</tbody>
       </table>
     </div>
   );

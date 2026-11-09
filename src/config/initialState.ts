@@ -25,6 +25,9 @@ import { fitNelsonSiegelFrom3Points } from '../engine/ukMarketModel';
 import { calculateProvisionTargetFromCohorts, generateSeasonedLoanCohorts, sumLoanOutstanding } from '../engine/loanCohorts';
 import { createPosition } from '../products/factory';
 import { requireProductPosition } from '../products/selectors';
+import { cloneBankState } from '../engine/clone';
+import { deriveSimulationStreamSeed, SEED_SCHEME_VERSION, validateSimulationSeed } from '../engine/seedScheme';
+import type { SimulationConfig } from '../domain/config';
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
@@ -373,75 +376,99 @@ const seedState: BankState = {
   status,
 };
 
-const initialPortfolioSeed = baseConfig.global.initialPortfolioSeed ?? seedState.market.macroModel.rngSeed;
+export interface SeededOpeningStateOptions {
+  seed: number;
+  config?: SimulationConfig;
+  startDate?: Date | string;
+}
 
-const seedLoanCohorts = (productType: AssetProductType): void => {
-  const item = requireProductPosition(
-    seedState.financial.balanceSheet,
-    productType,
-    `Missing balance sheet item for ${productType} while seeding loan cohorts`
-  );
-  if (item.balance <= 0) return;
+/**
+ * Build a new opening bank from the unseasoned template. The user seed is split into
+ * versioned named streams before any loan cohort or macro state is constructed.
+ */
+export const createSeededInitialState = ({
+  seed,
+  config = baseConfig,
+  startDate = seedState.time.date,
+}: SeededOpeningStateOptions): BankState => {
+  validateSimulationSeed(seed);
+  const state = cloneBankState(seedState);
+  const openingDate = startDate instanceof Date ? new Date(startDate.getTime()) : new Date(startDate);
+  if (!Number.isFinite(openingDate.getTime())) throw new Error('Opening date must be a valid date');
+  state.time.date = openingDate;
+  state.market.macroModel.rngSeed = deriveSimulationStreamSeed(seed, 'macro');
+  state.behaviour.capitalPolicy = {
+    dividendPayoutRatio: config.riskLimits.capitalPolicy.defaultDividendPayoutRatio,
+    at1CouponMode: 'auto',
+  };
 
-  const params = baseConfig.productParameters[productType];
-  const cohorts = generateSeasonedLoanCohorts({
-    productType,
-    targetOutstanding: item.balance,
-    baseAnnualInterestRate: item.interestRate,
-    baseAnnualPd: params.baseDefaultRate,
-    baseLgd: params.lossGivenDefault,
-    config: baseConfig,
-    seed: initialPortfolioSeed + (productType === AssetProductType.Mortgages ? 0 : 1),
+  const loanProducts = [AssetProductType.Mortgages, AssetProductType.ConsumerLoans, AssetProductType.CorporateLoans];
+  loanProducts.forEach((productType) => {
+    const item = requireProductPosition(
+      state.financial.balanceSheet,
+      productType,
+      `Missing balance sheet item for ${productType} while seeding loan cohorts`
+    );
+    if (item.balance <= 0) {
+      state.loanCohorts[productType] = [];
+      return;
+    }
+
+    const params = config.productParameters[productType];
+    const cohorts = generateSeasonedLoanCohorts({
+      productType,
+      targetOutstanding: item.balance,
+      baseAnnualInterestRate: item.interestRate,
+      baseAnnualPd: params.baseDefaultRate,
+      baseLgd: params.lossGivenDefault,
+      config,
+      seed: deriveSimulationStreamSeed(seed, `loan-cohorts:${productType}`),
+    });
+    state.loanCohorts[productType] = cohorts;
+    const net = sumLoanOutstanding(cohorts);
+    const unitAllowance = calculateProvisionTargetFromCohorts({ state, config, productType }).total;
+    const scale = net / Math.max(1, net - unitAllowance);
+    cohorts.forEach((cohort) => {
+      cohort.outstandingPrincipal *= scale;
+      cohort.originalPrincipal *= scale;
+    });
+    const allowance = calculateProvisionTargetFromCohorts({ state, config, productType });
+    item.lossAllowance = allowance.total;
+    item.balance = sumLoanOutstanding(cohorts) - allowance.total;
+    for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) {
+      state.financial.provisionStock[stage] += allowance[stage];
+    }
   });
-  seedState.loanCohorts[productType] = cohorts;
-  const net = sumLoanOutstanding(cohorts);
-  const unitAllowance = calculateProvisionTargetFromCohorts({ state: seedState, config: baseConfig, productType }).total;
-  const scale = net / Math.max(1, net - unitAllowance);
-  cohorts.forEach(c => { c.outstandingPrincipal *= scale; c.originalPrincipal *= scale; });
-  const allowance = calculateProvisionTargetFromCohorts({ state: seedState, config: baseConfig, productType });
-  item.lossAllowance = allowance.total;
-  item.balance = sumLoanOutstanding(cohorts) - allowance.total;
-  for (const stage of ['stage1', 'stage2', 'stage3', 'total'] as const) seedState.financial.provisionStock[stage] += allowance[stage];
+
+  state.financial.balanceSheet.items.forEach((item) => {
+    if (!item.security) return;
+    item.security.valuationReferenceYield =
+      item.productType === AssetProductType.Gilts ? giltYields.y5 : state.market.riskFreeLong;
+    item.security.amortisedCost = item.balance;
+    item.security.lossAllowance = securityEcl(item, config);
+    if (item.security.classification === 'FVOCI') {
+      state.financial.capital.cet1 -= item.security.lossAllowance;
+      state.financial.capital.accumulatedOCI += item.security.lossAllowance;
+    }
+  });
+
+  initializeOpeningSupervisoryAssessments(state, config);
+  const openingCommonEquity = state.financial.capital.cet1 + state.financial.capital.accumulatedOCI;
+  state.equityMarket.bookValuePerShare = openingCommonEquity / state.equityMarket.sharesOutstanding;
+  state.equityMarket.priceToBook = state.equityMarket.bookValuePerShare > 0
+    ? state.equityMarket.sharePrice / state.equityMarket.bookValuePerShare
+    : 0;
+  const riskMetrics = calculateRiskMetrics({ state, config });
+  state.behaviour.fundingConfidenceScore = riskMetrics.fundingConfidenceScore;
+  state.behaviour.fundingConfidenceState = riskMetrics.fundingConfidenceState;
+  state.behaviour.confidenceUpgradeProgressMonths = 0;
+  state.risk = { ...state.risk, riskMetrics, compliance: evaluateCompliance(riskMetrics, config.riskLimits) };
+  return state;
 };
 
-seedLoanCohorts(AssetProductType.Mortgages);
-seedLoanCohorts(AssetProductType.ConsumerLoans);
-seedLoanCohorts(AssetProductType.CorporateLoans);
-
-seedState.financial.balanceSheet.items.forEach((item) => {
-  if (!item.security) return;
-  item.security.valuationReferenceYield =
-    item.productType === AssetProductType.Gilts ? giltYields.y5 : seedState.market.riskFreeLong;
-  item.security.amortisedCost = item.balance;
-  item.security.lossAllowance = securityEcl(item, baseConfig);
-  if (item.security.classification === 'FVOCI') {
-    seedState.financial.capital.cet1 -= item.security.lossAllowance;
-    seedState.financial.capital.accumulatedOCI += item.security.lossAllowance;
-  }
+export const initialState: BankState = createSeededInitialState({
+  seed: baseConfig.global.initialPortfolioSeed ?? seedState.market.macroModel.rngSeed,
+  config: baseConfig,
 });
 
-initializeOpeningSupervisoryAssessments(seedState, baseConfig);
-// Derive the opening book multiples after all opening accounting entries. The
-// share quote is an independent market input, not a target price/book ratio.
-const openingCommonEquity = seedState.financial.capital.cet1 + seedState.financial.capital.accumulatedOCI;
-seedState.equityMarket.bookValuePerShare = openingCommonEquity / seedState.equityMarket.sharesOutstanding;
-seedState.equityMarket.priceToBook = seedState.equityMarket.bookValuePerShare > 0
-  ? seedState.equityMarket.sharePrice / seedState.equityMarket.bookValuePerShare
-  : 0;
-const riskMetrics = calculateRiskMetrics({ state: seedState, config: baseConfig });
-const compliance = evaluateCompliance(riskMetrics, baseConfig.riskLimits);
-
-export const initialState: BankState = {
-  ...seedState,
-  behaviour: {
-    ...seedState.behaviour,
-    fundingConfidenceScore: riskMetrics.fundingConfidenceScore,
-    fundingConfidenceState: riskMetrics.fundingConfidenceState,
-    confidenceUpgradeProgressMonths: 0,
-  },
-  risk: {
-    ...seedState.risk,
-    riskMetrics,
-    compliance,
-  },
-};
+export { SEED_SCHEME_VERSION };

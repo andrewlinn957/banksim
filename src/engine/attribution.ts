@@ -55,10 +55,11 @@ const pickRelatedEventIds = (
 
   if (direct.length > 0) return unique(direct);
 
-  const fallback = [...events]
-    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || b.timestamp - a.timestamp)
+  const fallback = events
+    .map((event, index) => ({ event, index }))
+    .sort((a, b) => severityRank(b.event.severity) - severityRank(a.event.severity) || b.event.timestamp - a.event.timestamp || a.index - b.index)
     .slice(0, 5)
-    .map((event) => event.id);
+    .map(({ event }) => event.id);
   return unique(fallback);
 };
 
@@ -301,7 +302,7 @@ export const buildStepAttribution = (args: {
   }, {});
 
   return {
-    generatedAt: Date.now(),
+    generatedAt: after.time.date.getTime(),
     metrics,
     eventIndex,
   };

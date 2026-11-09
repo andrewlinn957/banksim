@@ -84,7 +84,7 @@ import { bankThreeYearPlanMetricRegistry } from './threeYearPlanMetrics';
 import { buildCapitalMarketsBook } from './capitalMarkets';
 import type { CapitalMarketsBookbuildResult } from '../domain/capitalMarkets';
 import { buildStatements, type BuildStatementsResult } from './simulationStatements';
-import { createSimulationEvent as createEvent, type EventSeverity, type SimulationEvent } from './simulationEvents';
+import { assignLogicalSimulationEventIdentity, createSimulationEvent as createEvent, type EventSeverity, type SimulationEvent } from './simulationEvents';
 import { getConfidenceStateImpact } from './fundingConfidence';
 import { computeMetrics } from './regulatoryClose';
 export type { EventSeverity, SimulationEvent } from './simulationEvents';
@@ -382,6 +382,8 @@ export interface SimulationStepInput {
   config: SimulationConfig;
   actions: PlayerAction[];
   shocks: Shock[];
+  /** Identifies the run scope for deterministic player-visible event IDs. */
+  runId?: string;
 }
 
 export interface SimulationDiagnostics {
@@ -2973,13 +2975,19 @@ export const createSimulationEngine = (): SimulationEngine => {
       );
     }
 
+    const logicalEvents = assignLogicalSimulationEventIdentity(
+      events,
+      input.runId ?? 'standalone',
+      state.time.step,
+      state.time.date.getTime(),
+    );
     const diagnostics: SimulationDiagnostics = {
       attribution: featureFlags.stepDiagnosticsAttribution
         ? buildStepAttribution({
             before: inputState,
             after: state,
             config: activeConfig,
-            events,
+            events: logicalEvents,
           })
         : buildStepAttribution({
             before: inputState,
@@ -2989,7 +2997,7 @@ export const createSimulationEngine = (): SimulationEngine => {
           }),
     };
 
-    return { nextState: state, events, diagnostics, executions: actionExecutions };
+    return { nextState: state, events: logicalEvents, diagnostics, executions: actionExecutions };
   };
 
   return { step };

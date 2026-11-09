@@ -4,6 +4,7 @@ import RiskDashboard from '../components/RiskDashboard';
 import PerformanceReport from '../components/PerformanceReport';
 import { initialState } from '../config/initialState';
 import { baseConfig } from '../config/baseConfig';
+import { buildRiskDashboardData } from '../presentation/reports/risk';
 
 describe('risk reporting UI', () => {
   it('renders a dense risk dashboard with structural, macro and curve intelligence', () => {
@@ -20,6 +21,10 @@ describe('risk reporting UI', () => {
     expect(html).toContain('Gilt curve');
     expect(html).toContain('CET1');
     expect(html).toContain('LCR');
+    const shared = buildRiskDashboardData(initialState, baseConfig);
+    expect(html).toContain(shared.status);
+    expect(html).toContain(shared.macroModel.find((item) => item.label === 'R* real')!.value);
+    expect(html).toContain(shared.curve.diagnostics.find((item) => item.label === '10Y')!.value);
 
     expect(html).toContain('Loan / deposit');
     expect(html).toContain('Liquid assets / assets');

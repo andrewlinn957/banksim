@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BankSim: run evaluation",
+      "type": "shell",
+      "command": "banksim-eval",
+      "args": ["run", "${workspaceFolder}/config.json"],
+      "problemMatcher": []
+    },
+    {
+      "label": "BankSim: resume evaluation",
+      "type": "shell",
+      "command": "banksim-eval",
+      "args": ["resume", "${workspaceFolder}/config.json"],
+      "problemMatcher": []
+    },
+    {
+      "label": "BankSim: inspect result",
+      "type": "shell",
+      "command": "banksim-eval",
+      "args": ["inspect", "${workspaceFolder}/config.json"],
+      "problemMatcher": []
+    },
+    {
+      "label": "BankSim: collect player export",
+      "type": "shell",
+      "command": "banksim-eval",
+      "args": ["collect", "${workspaceFolder}/config.json"],
+      "problemMatcher": []
+    }
+  ]
+}

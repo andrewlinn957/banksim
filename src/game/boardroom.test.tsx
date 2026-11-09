@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { initialState } from '../config/initialState';
 import { createDefaultThreeYearPlan } from '../config/threeYearPlan';
 import Boardroom from '../components/Boardroom';
+import { buildBoardroomOverviewData } from '../presentation/reports/overview';
+import { baseConfig } from '../config/baseConfig';
 
 describe('Three-Year Plan board mandate', () => {
   it('shows normal bank management without any board proposal agenda when plan mode is off', () => {
@@ -10,6 +12,7 @@ describe('Three-Year Plan board mandate', () => {
     const markup = renderToStaticMarkup(
       <Boardroom state={initialState} history={[initialState]} department={null} hasErrors onDepartment={noop} onRisk={noop} onClose={noop} />
     );
+    const presentation = buildBoardroomOverviewData(initialState, [initialState], [], null, baseConfig);
     expect(markup).toContain('invalid management input');
     expect(markup).toContain('Run is blocked');
     expect(markup).toContain('Treasury &amp; Funding');
@@ -19,6 +22,8 @@ describe('Three-Year Plan board mandate', () => {
     expect(markup.match(/class="home-department"/g)).toHaveLength(4);
     expect(markup).toContain('Capital &amp; liquidity');
     expect(markup).toContain('Quarter profit');
+    expect(markup).toContain(presentation.financialPerformance[0].value);
+    expect(markup).toContain(presentation.ratios[0].ariaLabel);
     expect(markup).not.toContain('Board agenda');
     expect(markup).not.toContain('Back proposal');
     expect(markup).not.toContain('12-month mandate');

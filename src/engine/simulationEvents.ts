@@ -8,8 +8,6 @@ export interface SimulationEvent {
   tags?: string[];
 }
 
-let eventSequence = 0;
-
 const EVENT_TAG_RULES: Array<{ tag: string; pattern: RegExp }> = [
   { tag: 'capital', pattern: /\bcet1|at1|capital|equity|dividend|coupon|mda|oci\b/i },
   { tag: 'liquidity', pattern: /\blcr|nsfr|hqla|outflow|inflow|liquidity|run\b/i },
@@ -36,13 +34,25 @@ export const createSimulationEvent = (
   message: string,
   tags: string[] = []
 ): SimulationEvent => {
-  const timestamp = Date.now();
-  const id = `evt-${timestamp}-${eventSequence++}`;
   return {
-    id,
+    // The engine replaces this placeholder at the close boundary, where run, step,
+    // logical order and the simulation date are all available.
+    id: 'pending-event-identity',
     severity,
     message,
-    timestamp,
+    timestamp: 0,
     tags: inferEventTags(message, tags),
   };
 };
+
+export const assignLogicalSimulationEventIdentity = (
+  events: readonly SimulationEvent[],
+  runId: string,
+  step: number,
+  timestamp: number,
+): SimulationEvent[] => events.map((event, index) => ({
+  ...event,
+  id: `evt-${encodeURIComponent(runId)}-${step}-${String(index + 1).padStart(4, '0')}`,
+  timestamp,
+  tags: event.tags ? [...event.tags] : undefined,
+}));

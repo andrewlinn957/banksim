@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { BankState } from '../domain/bankState';
-import { periodHistory } from '../game/management';
 import { formatCurrency, formatPct } from '../utils/formatters';
+import { buildPerformanceReportData } from '../presentation/reports/performance';
 
 export default function PerformanceReport({ history }: { history: BankState[] }) {
   const [period, setPeriod] = useState(3);
-  const periods = periodHistory(history, period);
-  const latest = periods.at(-1);
-  const prior = periods.at(-2);
+  const report = buildPerformanceReportData(history, period as 3 | 12);
+  const { periods, visiblePeriods, latest, prior } = report;
 
   return (
     <div className="stack">
@@ -39,19 +38,14 @@ export default function PerformanceReport({ history }: { history: BankState[] })
         ) : (
           <>
             <div className="profit-timeline" aria-label="Profit by reporting period">
-              {periods.slice(-12).map((item) => (
+              {visiblePeriods.map((item) => (
                 <div className="profit-period" key={item.label}>
                   <span>{formatCurrency(item.profit)}</span>
                   <div className="profit-track">
                     <div
                       className={item.profit < 0 ? 'negative' : ''}
                       style={{
-                        height: `${Math.max(
-                          4,
-                          Math.abs(item.profit) /
-                            Math.max(1, ...periods.slice(-12).map((periodItem) => Math.abs(periodItem.profit))) *
-                            60
-                        )}px`,
+                        height: `${report.barHeightPx(item.profit)}px`,
                       }}
                     />
                   </div>
@@ -61,10 +55,10 @@ export default function PerformanceReport({ history }: { history: BankState[] })
               ))}
             </div>
             <p className="muted">
-              {latest && latest.months < period
+              {report.periodStatus === 'incomplete'
                 ? 'The current period is incomplete. Compare it with a full period only after the books close.'
-                : prior
-                  ? `Profit changed by ${formatCurrency(latest!.profit - prior.profit)} from the previous period.`
+                : report.periodStatus === 'change'
+                  ? `Profit changed by ${formatCurrency(report.profitChange!)} from the previous period.`
                   : 'Your first completed period establishes the baseline.'}
             </p>
             <details>
