@@ -14,6 +14,28 @@ const form = (overrides: Partial<ActionFormState> = {}): ActionFormState => ({
 });
 
 describe('capital-markets transaction ticket', () => {
+  it('keeps a valid capital transaction marked as a draft until the queue button is pressed', () => {
+    const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
+    const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} onQueueTransaction={()=>{}}/>);
+    expect(markup).toContain('Draft · not queued');
+    expect(markup).toContain('Queue transaction');
+    expect(markup).not.toContain('Transaction queued for next close');
+  });
+
+  it('shows committed transactions and explains that they execute when time advances', () => {
+    const markup=renderToStaticMarkup(<ActionsPanel
+      department="Capital"
+      state={form()}
+      onChange={()=>{}}
+      queuedTransactions={[{id:1,kind:'capitalMarkets',label:'AT1 · £100m'}]}
+      onCancelQueuedTransaction={()=>{}}
+    />);
+    expect(markup).toContain('Transaction queued for next close');
+    expect(markup).toContain('They will execute once when you roll the game forward one month.');
+    expect(markup).toContain('AT1 · £100m');
+    expect(markup).toContain('Remove');
+  });
+
   it('shows an indicative equity book with demand, coverage and clearing discount', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
     const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
@@ -49,27 +71,28 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).toContain('all-in yield');
   });
 
-  it('locks a capital-markets ticket when the other management area owns the queued deal', () => {
+  it('identifies a transaction draft in the other management area', () => {
     const state=form({capitalMarketsInstrument:'senior',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}}/>);
-    expect(markup).toContain('is already queued in Treasury &amp; Funding');
-    expect(markup).toContain('Complete or cancel it there first.');
+    expect(markup).toContain('is drafted in Treasury &amp; Funding');
+    expect(markup).toContain('Switch areas to queue or discard this draft.');
     expect(markup).toContain('<select disabled=""');
     expect(markup).not.toContain('Indicative book');
-    expect(markup).not.toContain('Cancel Long-Term Debt transaction');
+    expect(markup).not.toContain('Discard draft');
   });
 
-  it('uses transaction-specific cancellation controls on the Treasury desk', () => {
+  it('shows explicit queue and discard controls for Treasury transactions', () => {
     const state=form({
       capitalMarketsInstrument:'senior',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84',
       giltTradeDirection:'buy',giltTradeAmount:'50m',boeFacility:'ILTR',boeFundingAmount:'100m',
       hedgeDirection:'payFixedReceiveFloat',hedgeNotional:'75m',hedgeMaturityMonths:'24',
     });
     const markup=renderToStaticMarkup(<ActionsPanel department="Treasury" state={state} onChange={()=>{}} maxGiltSaleAmount={200e6} maxBoeFundingAmount={150e6}/>);
-    expect(markup).toContain('Cancel Long-Term Debt transaction');
-    expect(markup).toContain('Cancel gilt transaction');
-    expect(markup).toContain('Cancel Bank of England drawing');
-    expect(markup).toContain('Cancel swap transaction');
+    expect(markup.match(/Queue transaction/g)?.length).toBe(4);
+    expect(markup).toContain('Discard draft');
+    expect(markup).not.toContain('Cancel gilt transaction');
+    expect(markup).not.toContain('Cancel Bank of England drawing');
+    expect(markup).not.toContain('Cancel swap transaction');
     expect(markup).not.toContain('Cancel queued transactions');
   });
 

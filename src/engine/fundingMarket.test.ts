@@ -98,4 +98,16 @@ describe('funding-market engine', () => {
     expect(long.capacityAtFairSpread).toBeLessThan(short.capacityAtFairSpread);
     expect(long.tenorAvailable).toBe(true);
   });
+
+  it('respects a remaining issuer capacity independently of the market demand curve', () => {
+    const model = neutralModel();
+    model.targetAmount = 1e12;
+    model.remainingIssuerCapacity = 250e6;
+
+    const result = calculateFundingMarket(model);
+
+    expect(result.capacityAtFairSpread).toBeLessThanOrEqual(250e6);
+    expect(result.hardCapacity).toBeLessThanOrEqual(250e6);
+    expect(result.demandAtPrice).toBeLessThanOrEqual(250e6);
+  });
 });

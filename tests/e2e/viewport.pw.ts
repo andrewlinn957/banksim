@@ -48,6 +48,30 @@ for (const profile of profiles) {
       await expectNoDocumentOverflow(page, 'Treasury workspace');
     });
 
+    test('capital raising is queued explicitly and executes at the next close', async ({ page }) => {
+      await page.goto('/');
+      await page
+        .getByRole('navigation', { name: 'Bank areas' })
+        .getByRole('button', { name: 'Finance & Capital', exact: true })
+        .click();
+
+      const ticket = page.getByRole('region', { name: 'Capital markets' });
+      await ticket.getByLabel('Instrument').selectOption('cet1');
+      await ticket.getByLabel('Target size (£)').fill('100m');
+      await expect(ticket).toContainText('Draft · not queued');
+      await ticket.getByRole('button', { name: 'Queue transaction' }).click();
+      await expect(page.getByRole('status', { name: 'Queued transactions for next close' })).toContainText('CET1 equity');
+      await expect(ticket).toContainText('Queued for next close');
+
+      await page.getByRole('button', { name: /Bank overview/ }).click();
+      await expect(page.locator('.home-transactions')).toContainText('CET1 equity');
+      await page.getByLabel('Advance time').selectOption('month');
+      await page.getByRole('button', { name: '▶ Run', exact: true }).click();
+      await expect(page.locator('.post-close-links')).toHaveCount(1);
+      await expect(page.locator('.home-transactions')).toContainText('Latest capital-market result');
+      await expect(page.locator('.home-transactions')).toContainText('No transactions queued.');
+    });
+
     test('bank overview shows all operating areas without clipping', async ({ page }) => {
       await page.goto('/');
       await expect(page.getByRole('heading', { name: 'Bank overview' })).toBeVisible();

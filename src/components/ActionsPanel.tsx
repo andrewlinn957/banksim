@@ -1,16 +1,57 @@
 import type { BankState } from '../domain/bankState';
 import './DecisionControls.css';
 import { Department } from '../game/departments';
-import type { CapitalMarketsInstrument } from '../domain/capitalMarkets';
-import { buildLatestCapitalMarketsReceipt, clampPlayerMoneyDraft, formatPlayerMoneyLimit, playerMoneyLimitDescription, type PlayerCapitalMarketsQuote } from '../presentation/quotes';
-import type { ActionFormState } from '../application/playerControls';
-import { capitalMarketsInstrumentsForArea, cancelActionFormTransaction, choicesForFormField, controlForFormField, FORM_FIELDS_BY_DEPARTMENT, updateActionFormFields } from '../application/playerControls';
+import type { CapitalMarketsBookbuildResult, CapitalMarketsInstrument } from '../domain/capitalMarkets';
 import { CAPITAL_MARKETS_INSTRUMENT_ORDER, getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
-import { formatPct } from '../utils/formatters';
+import { formatCurrency, formatPct } from '../utils/formatters';
 import { parseMoneyInput } from '../utils/parsers';
 export type { Department } from '../game/departments';
 
-export type { ActionFormState } from '../application/playerControls';
+export interface ActionFormState {
+  retailCurrentAccountRate: string;
+  termDepositRate: string;
+  termDepositTenorMonths: string;
+  corporateDepositRate: string;
+  mortgageRate: string;
+  consumerLoanRate: string;
+  corporateLoanRate: string;
+  mortgageUnderwritingTightness: string;
+  consumerUnderwritingTightness: string;
+  corporateUnderwritingTightness: string;
+  mortgageMaxLtv: string;
+  mortgageFixedPeriodMonths: string;
+  capitalMarketsInstrument: 'none' | CapitalMarketsInstrument;
+  capitalMarketsTargetAmount: string;
+  capitalMarketsMaxDiscount: string;
+  capitalMarketsMaxSpreadBps: string;
+  capitalMarketsTenorMonths: string;
+  dividendPayoutRatio: string;
+  at1CouponMode: 'auto' | 'pay' | 'skip';
+  giltTradeDirection: 'none' | 'buy' | 'sell';
+  giltTradeAmount: string;
+  giltDurationYears: string;
+  boeFacility: 'none' | 'STR' | 'ILTR';
+  boeFundingAmount: string;
+  hedgeDirection: 'none' | 'payFixedReceiveFloat' | 'receiveFixedPayFloat';
+  hedgeNotional: string;
+  hedgeFixedRate: string;
+  hedgeMaturityMonths: string;
+}
+
+export type TransactionKind = 'capitalMarkets' | 'giltTrade' | 'boeFunding' | 'hedge';
+
+export interface QueuedTransactionSummary {
+  id: number;
+  kind: TransactionKind;
+  label: string;
+}
+
+export interface CapitalMarketsPlanImpact {
+  cet1Before: number;
+  cet1After: number;
+  epsBefore: number;
+  epsAfter: number;
+}
 
 interface Props {
   department: Department;
@@ -21,10 +62,13 @@ interface Props {
   errors?: Partial<Record<keyof ActionFormState,string>>;
   hasValidationErrors?: boolean;
   giltQuotedYield?: number;
-  capitalMarketsQuote?: PlayerCapitalMarketsQuote;
-  capitalMarketsPlanImpactText?: string;
+  capitalMarketsQuote?: CapitalMarketsBookbuildResult;
+  capitalMarketsPlanImpact?: CapitalMarketsPlanImpact;
   maxGiltSaleAmount?: number;
   maxBoeFundingAmount?: number;
+  queuedTransactions?: QueuedTransactionSummary[];
+  onQueueTransaction?: (kind: TransactionKind) => void;
+  onCancelQueuedTransaction?: (id: number) => void;
 }
 
 interface FieldProps {
@@ -58,29 +102,23 @@ const percentageDisplay = (raw: string): string => {
   return raw;
 };
 
-const PercentageField = ({label,hint,field,state,update,disabled,error,max}:{label:string;hint:string;field:keyof ActionFormState;state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;error?:string;max?:number}) => {
-  const definition = controlForFormField(field);
-  const limit = max ?? (definition?.maximum ?? 1) * 100;
-  return <label className="field">
+const PercentageField = ({label,hint,field,state,update,disabled,error,max=100}:{label:string;hint:string;field:keyof ActionFormState;state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;error?:string;max?:number}) => (
+  <label className="field">
     <strong>{label}</strong>
-    <div className="input-with-suffix"><input type="number" inputMode="decimal" step="0.01" min="0" max={limit} value={percentageDisplay(state[field])} disabled={disabled} aria-invalid={!!error} onChange={e=>{if(e.target.value!=='')update(field,`${e.target.value}%`);}}/><span aria-hidden="true">%</span></div>
+    <div className="input-with-suffix"><input type="number" inputMode="decimal" step="0.01" min="0" max={max} value={percentageDisplay(state[field])} disabled={disabled} aria-invalid={!!error} onChange={e=>{if(e.target.value!=='')update(field,`${e.target.value}%`);}}/><span aria-hidden="true">%</span></div>
     {hint&&<small>{hint}</small>}
     {error&&<span role="alert">{error}</span>}
-  </label>;
-};
+  </label>
+);
 
-const RatioField = ({label,field,state,update,disabled,error}:{label:string;hint?:string;field:keyof ActionFormState;state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;error?:string}) => {
-  const definition = controlForFormField(field);
-  const minimum = definition?.minimum ?? 0;
-  const maximum = definition?.maximum ?? 1;
-  const increment = definition?.increment ?? 0.05;
-  return <div className="field selectivity-control">
+const RatioField = ({label,field,state,update,disabled,error}:{label:string;hint?:string;field:keyof ActionFormState;state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;error?:string}) => (
+  <div className="field selectivity-control">
     <strong>{label}</strong>
-    <div className="selectivity-inputs"><input aria-label={`${label} slider`} type="range" min={minimum} max={maximum} step={increment} value={state[field]} disabled={disabled} onChange={e=>update(field,e.target.value)}/><input aria-label={`${label} exact value`} type="number" inputMode="decimal" step={increment} min={minimum} max={maximum} value={state[field]} disabled={disabled} aria-invalid={!!error} onChange={e=>{if(e.target.value!=='')update(field,e.target.value);}}/></div>
+    <div className="selectivity-inputs"><input aria-label={`${label} slider`} type="range" min="0" max="1" step="0.05" value={state[field]} disabled={disabled} onChange={e=>update(field,e.target.value)}/><input aria-label={`${label} exact value`} type="number" inputMode="decimal" step="0.05" min="0" max="1" value={state[field]} disabled={disabled} aria-invalid={!!error} onChange={e=>{if(e.target.value!=='')update(field,e.target.value);}}/></div>
     <div className="selectivity-labels"><span>Loose</span><span>Balanced</span><span>Tight</span></div>
     {error&&<span role="alert">{error}</span>}
-  </div>;
-};
+  </div>
+);
 
 const RateComparison = ({offer,market}:{offer:string;market?:number}) => {
   if(market===undefined)return null;
@@ -88,11 +126,14 @@ const RateComparison = ({offer,market}:{offer:string;market?:number}) => {
   const gap=Math.round((rate-market)*10000);
   return <div className="rate-comparison"><span>Market <strong>{formatPct(market)}</strong></span><strong>{Number.isFinite(gap)?gap===0?'At market':`${Math.abs(gap)}bp ${gap>0?'above':'below'} market`:'Enter a rate'}</strong></div>;
 };
+const moneyMillions=(value:number)=>`£${(value/1e6).toFixed(2)}m`;
+
+const editableMoney = (amount:number):string => amount>=1e9?`${(amount/1e9).toFixed(2).replace(/\.00$/,'')}bn`:`${(amount/1e6).toFixed(1).replace(/\.0$/,'')}m`;
 const MoneyField = ({label,hint,field,state,update,disabled,error,placeholder,maxAmount}:{label:string;hint:string;field:keyof ActionFormState;state:ActionFormState;update:(key:keyof ActionFormState,value:string)=>void;disabled?:boolean;error?:string;placeholder?:string;maxAmount?:number}) => {
-  const capacityHint=maxAmount!==undefined&&Number.isFinite(maxAmount)?`${hint} ${playerMoneyLimitDescription(maxAmount)}`:hint;
+  const capacityHint=maxAmount!==undefined&&Number.isFinite(maxAmount)?`${hint} Maximum executable now: ${formatCurrency(Math.max(0,maxAmount))}.`:hint;
   return <label className="field">
     <strong>{label}</strong>
-    <div className="money-input-row"><input inputMode="decimal" value={state[field]} disabled={disabled} aria-invalid={!!error} onChange={e=>update(field,e.target.value)} onBlur={()=>{if(maxAmount!==undefined)update(field,clampPlayerMoneyDraft(state[field],Math.max(0,maxAmount)));}} placeholder={placeholder}/>{maxAmount!==undefined&&maxAmount>0&&!disabled&&<button type="button" className="button ghost" onClick={()=>update(field,formatPlayerMoneyLimit(maxAmount))}>Max</button>}</div>
+    <div className="money-input-row"><input inputMode="decimal" value={state[field]} disabled={disabled} aria-invalid={!!error} onChange={e=>update(field,e.target.value)} onBlur={()=>{if(maxAmount===undefined)return;const parsed=parseMoneyInput(state[field]);if(parsed.value!==undefined&&parsed.value>maxAmount)update(field,editableMoney(Math.max(0,maxAmount)));}} placeholder={placeholder}/>{maxAmount!==undefined&&maxAmount>0&&!disabled&&<button type="button" className="button ghost" onClick={()=>update(field,editableMoney(maxAmount))}>Max</button>}</div>
     <small>{capacityHint}</small>
     {error&&<span role="alert">{error}</span>}
   </label>;
@@ -107,70 +148,84 @@ const FIELD_LABELS: Partial<Record<keyof ActionFormState,string>> = {
   giltTradeAmount:'Gilt trade amount',
 };
 
+const DEPARTMENT_FIELDS:Record<Department,Array<keyof ActionFormState>>={
+  Customers:['retailCurrentAccountRate','termDepositRate','termDepositTenorMonths','corporateDepositRate'],
+  Lending:['mortgageRate','consumerLoanRate','corporateLoanRate','mortgageUnderwritingTightness','consumerUnderwritingTightness','corporateUnderwritingTightness','mortgageMaxLtv','mortgageFixedPeriodMonths'],
+  Capital:['dividendPayoutRatio','capitalMarketsInstrument','capitalMarketsTargetAmount','capitalMarketsMaxDiscount','capitalMarketsMaxSpreadBps','capitalMarketsTenorMonths'],
+  Treasury:['capitalMarketsInstrument','capitalMarketsTargetAmount','capitalMarketsMaxDiscount','capitalMarketsMaxSpreadBps','capitalMarketsTenorMonths','giltTradeDirection','giltTradeAmount','giltDurationYears','boeFacility','boeFundingAmount','hedgeDirection','hedgeNotional','hedgeFixedRate','hedgeMaturityMonths'],
+};
+
 const tenorLabel = (months: number): string => months % 12 === 0 ? `${months / 12} years` : `${months} months`;
 
-const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpactText,allowedInstruments,title,otherArea,bankState}:{bankState?:BankState;state:ActionFormState;onChange:(s:ActionFormState)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:PlayerCapitalMarketsQuote;planImpactText?:string;allowedInstruments:CapitalMarketsInstrument[];title:string;otherArea:string}) => {
-  const update=(key:keyof ActionFormState,value:string)=>onChange(updateActionFormFields(state,{[key]:value}));
+const CapitalMarketsTicket = ({state,onChange,disabled,errors,quote,planImpact,allowedInstruments,title,otherArea,bankState,queuedTransactions,onQueueTransaction}:{bankState?:BankState;state:ActionFormState;onChange:(s:ActionFormState)=>void;disabled?:boolean;errors?:Partial<Record<keyof ActionFormState,string>>;quote?:CapitalMarketsBookbuildResult;planImpact?:CapitalMarketsPlanImpact;allowedInstruments:CapitalMarketsInstrument[];title:string;otherArea:string;queuedTransactions:QueuedTransactionSummary[];onQueueTransaction:()=>void}) => {
+  const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
   const queuedInstrument = state.capitalMarketsInstrument;
   const instrument = queuedInstrument !== 'none' && allowedInstruments.includes(queuedInstrument) ? queuedInstrument : 'none';
   const queuedElsewhere = queuedInstrument !== 'none' && instrument === 'none';
   const definition = instrument === 'none' ? undefined : getCapitalMarketsInstrument(instrument);
   const isDiscountPriced = definition?.pricingKind === 'discount';
   const tenors = definition?.permittedTenorMonths ?? [];
+  const allInYield = quote?.marketReferenceRate !== undefined && quote.clearingSpreadBps !== undefined ? quote.marketReferenceRate + quote.clearingSpreadBps / 10000 : undefined;
   const selectInstrument=(value:string)=>{
     const next=value==='none'?undefined:getCapitalMarketsInstrument(value as CapitalMarketsInstrument);
     const tenor=Number(state.capitalMarketsTenorMonths);
-    onChange(updateActionFormFields(state,{capitalMarketsInstrument:value as ActionFormState['capitalMarketsInstrument'],capitalMarketsTargetAmount:value==='none'?'':state.capitalMarketsTargetAmount,capitalMarketsTenorMonths:next?.permittedTenorMonths&&!next.permittedTenorMonths.includes(tenor)?String(next.defaultTenorMonths??next.permittedTenorMonths[0]):state.capitalMarketsTenorMonths}));
+    onChange({...state,capitalMarketsInstrument:value as ActionFormState['capitalMarketsInstrument'],capitalMarketsTargetAmount:value==='none'?'':state.capitalMarketsTargetAmount,capitalMarketsTenorMonths:next?.permittedTenorMonths&&!next.permittedTenorMonths.includes(tenor)?String(next.defaultTenorMonths??next.permittedTenorMonths[0]):state.capitalMarketsTenorMonths});
   };
-  const validOrder=definition&&((parseMoneyInput(state.capitalMarketsTargetAmount).value??0)>0)&&!Object.entries(errors??{}).some(([key,value])=>key.startsWith('capitalMarkets')&&value);
-  const latestTransaction=buildLatestCapitalMarketsReceipt(bankState,allowedInstruments);
+  const validOrder=Boolean(definition&&((parseMoneyInput(state.capitalMarketsTargetAmount).value??0)>0)&&!Object.entries(errors??{}).some(([key,value])=>key.startsWith('capitalMarkets')&&value));
+  const transactionAlreadyQueued=queuedTransactions.some(transaction=>transaction.kind==='capitalMarkets');
+  const latestTransaction=bankState?.capitalMarkets?.transactions.filter(t=>allowedInstruments.includes(t.instrument)).at(-1);
+  const newShares=quote?.issuePrice&&quote.issuePrice>0?quote.grossProceeds/quote.issuePrice:0;
+  const dilution=bankState&&newShares>0?newShares/(bankState.equityMarket.sharesOutstanding+newShares):0;
   return <section className="policy-disclosure capital-markets-ticket" aria-label="Capital markets">
-    <div className="policy-section-title"><h3>{title}</h3><span className="order-status">{definition?(validOrder?'Queued for next close':'Draft · enter valid terms'):'No transaction queued'}</span></div>
-    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is already queued in {otherArea}.</strong><div className="muted">Complete or cancel it there first.</div></div>}
+    <div className="policy-section-title"><h3>{title}</h3><span className="order-status">{definition?(validOrder?'Draft · not queued':'Draft · enter valid terms'):transactionAlreadyQueued?'Queued for next close':'No transaction drafted'}</span></div>
+    {queuedElsewhere&&<div className="alert info"><strong>{getCapitalMarketsInstrument(queuedInstrument as CapitalMarketsInstrument).label} is drafted in {otherArea}.</strong><div className="muted">Switch areas to queue or discard this draft.</div></div>}{transactionAlreadyQueued&&!definition&&<p className="order-status">Remove the queued order above before adding another capital-markets transaction.</p>}
     <div className="policy-fields policy-fields-primary">
-      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere} onChange={e=>selectInstrument(e.target.value)}><option value="none">No transaction queued</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select></label>
-      <MoneyField field="capitalMarketsTargetAmount" label="Target size (£)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
+      <label className="field"><strong>Instrument</strong><select value={instrument} disabled={disabled||queuedElsewhere||transactionAlreadyQueued} onChange={e=>selectInstrument(e.target.value)}><option value="none">Select an instrument</option>{CAPITAL_MARKETS_INSTRUMENT_ORDER.filter(key=>allowedInstruments.includes(key)).map(key => { const item=getCapitalMarketsInstrument(key); return <option key={key} value={key}>{item.label}</option>; })}</select></label>
+      <MoneyField field="capitalMarketsTargetAmount" label="Target size (£)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsTargetAmount} placeholder="e.g. 150m"/>
       {isDiscountPriced
-        ? <PercentageField field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxDiscount}/>
-        : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
-      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select></label>}
+        ? <PercentageField field="capitalMarketsMaxDiscount" label="Maximum acceptable discount" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsMaxDiscount}/>
+        : <Field field="capitalMarketsMaxSpreadBps" label="Maximum acceptable spread (bp)" hint="" state={state} update={update} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} error={errors?.capitalMarketsMaxSpreadBps} placeholder="e.g. 750"/>}
+      {tenors.length>0&&<label className="field"><strong>Tenor</strong><select value={state.capitalMarketsTenorMonths} disabled={disabled||queuedElsewhere||transactionAlreadyQueued||!definition} onChange={e=>update('capitalMarketsTenorMonths',e.target.value)}>{tenors.map(tenor=><option key={tenor} value={tenor}>{tenorLabel(tenor)}</option>)}</select></label>}
     </div>
     {definition&&quote&&<div className={`capital-markets-book ${quote.status.startsWith('failed')?'warning':'info'}`}>
-      <div className="forecast-heading"><strong>Indicative book · {definition.label}</strong><span>{quote.statusLabel}</span></div>
-      <dl className="deal-flow"><div><dt>Requested</dt><dd>{quote.targetAmount}</dd></div><div><dt>Expected fill</dt><dd>{quote.executedAmount}</dd></div><div><dt>Net proceeds</dt><dd>{quote.netProceeds}</dd></div></dl>
-      <div className="book-coverage"><span>Investor demand {quote.demandAmount}</span><strong>{quote.coverageRatio}× coverage</strong><progress aria-label="Investor demand coverage" max="2" value={Math.min(2,Number(quote.coverageRatio))}/></div>
+      <div className="forecast-heading"><strong>Indicative book · {definition.label}</strong><span>{quote.status==='filled'?'Full fill projected':quote.status==='partial'?'Partial fill projected':'Execution would fail'}</span></div>
+      <dl className="deal-flow"><div><dt>Requested</dt><dd>{moneyMillions(quote.targetAmount)}</dd></div><div><dt>Expected fill</dt><dd>{moneyMillions(quote.executedAmount)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(quote.netProceeds)}</dd></div></dl>
+      <div className="book-coverage"><span>Investor demand {moneyMillions(quote.demandAmount)}</span><strong>{quote.coverageRatio.toFixed(2)}× coverage</strong><progress aria-label="Investor demand coverage" max="2" value={Math.min(2,quote.coverageRatio)}/></div>
       <dl className="deal-details">
-        {isDiscountPriced?<><div><dt>Clearing discount</dt><dd>{quote.clearingDiscount}</dd></div><div><dt>Expected issue price</dt><dd>{quote.issuePrice}</dd></div>{bankState&&<div><dt>Ownership dilution</dt><dd>{quote.ownershipDilution}</dd></div>}</>:<><div><dt>Clearing spread</dt><dd>{quote.clearingSpreadBps}</dd></div>{quote.allInYield!==undefined&&<><div><dt>Expected all-in yield</dt><dd>{quote.allInYield}</dd></div><div><dt>Annual coupon cost</dt><dd>{quote.annualCouponCost}</dd></div></>}</>}
-        <div><dt>Fees</dt><dd>{quote.fees}</dd></div>
-        {quote.equityPostIssueRoe!==undefined&&<div><dt>Post-raise ROE proxy</dt><dd>{quote.equityPostIssueRoe}</dd></div>}
-        {quote.equityPostIssueDps!==undefined&&<div><dt>Expected dividend/share</dt><dd>{quote.equityPostIssueDps}</dd></div>}
-        {quote.equityExpectedReturn!==undefined&&<div><dt>Expected total return proxy</dt><dd>{quote.equityExpectedReturn}</dd></div>}
-        {quote.equityCostOfEquity!==undefined&&<div><dt>Cost of equity</dt><dd>{quote.equityCostOfEquity}</dd></div>}
-        {quote.equityReturnDemandFactor!==undefined&&<div><dt>Investor demand factor</dt><dd>{quote.equityReturnDemandFactor}</dd></div>}
+        {isDiscountPriced?<><div><dt>Clearing discount</dt><dd>{formatPct(quote.clearingDiscount??0)}</dd></div><div><dt>Expected issue price</dt><dd>£{(quote.issuePrice??0).toFixed(3)}</dd></div>{bankState&&<div><dt>Ownership dilution</dt><dd>{formatPct(dilution)}</dd></div>}</>:<><div><dt>Clearing spread</dt><dd>{(quote.clearingSpreadBps??0).toFixed(0)}bp</dd></div>{allInYield!==undefined&&<><div><dt>Expected all-in yield</dt><dd>{formatPct(allInYield)}</dd></div><div><dt>Annual coupon cost</dt><dd>{moneyMillions(quote.executedAmount*allInYield)}</dd></div></>}</>}
+        <div><dt>Fees</dt><dd>{moneyMillions(quote.fees)}</dd></div>
+        {quote.equityPostIssueRoe!==undefined&&<div><dt>Post-raise ROE proxy</dt><dd>{formatPct(quote.equityPostIssueRoe)}</dd></div>}
+        {quote.equityPostIssueDps!==undefined&&<div><dt>Expected dividend/share</dt><dd>{(quote.equityPostIssueDps*100).toFixed(2)}p</dd></div>}
+        {quote.equityExpectedReturn!==undefined&&<div><dt>Expected total return proxy</dt><dd>{formatPct(quote.equityExpectedReturn)}</dd></div>}
+        {quote.equityCostOfEquity!==undefined&&<div><dt>Cost of equity</dt><dd>{formatPct(quote.equityCostOfEquity)}</dd></div>}
+        {quote.equityReturnDemandFactor!==undefined&&<div><dt>Investor demand factor</dt><dd>{Math.round(quote.equityReturnDemandFactor*100)}%</dd></div>}
       </dl>
       {quote.equityPostIssueRoe!==undefined&&<small>ROE estimate assumes proceeds earn the cash reserve rate.</small>}
-      {quote.recentIssuanceNotice&&<small>Recent issuance reduces capacity and worsens terms.</small>}
+      {quote.recentIssuanceRatio>0&&<small>Recent issuance reduces capacity and worsens terms.</small>}
     </div>}
-    {latestTransaction&&<details className="transaction-receipt"><summary>Last execution · {latestTransaction.label} · {latestTransaction.statusLabel}</summary><dl className="deal-details"><div><dt>Date</dt><dd>{latestTransaction.date}</dd></div><div><dt>Executed</dt><dd>{latestTransaction.executedAmount}</dd></div><div><dt>Net proceeds</dt><dd>{latestTransaction.netProceeds}</dd></div><div><dt>Fees</dt><dd>{latestTransaction.fees}</dd></div></dl></details>}
-    {definition&&planImpactText&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">{planImpactText}</div></div>}
-    {definition&&<button className="button ghost" disabled={disabled} onClick={()=>onChange(cancelActionFormTransaction(state,'capitalMarkets'))}>Cancel {definition.label} transaction</button>}
+    {latestTransaction&&<details className="transaction-receipt"><summary>Last execution · {getCapitalMarketsInstrument(latestTransaction.instrument).label} · {latestTransaction.status==='filled'?'Executed':latestTransaction.status==='partial'?'Partially filled':'Failed'}</summary><dl className="deal-details"><div><dt>Date</dt><dd>{latestTransaction.date}</dd></div><div><dt>Executed</dt><dd>{moneyMillions(latestTransaction.executedAmount)}</dd></div><div><dt>Net proceeds</dt><dd>{moneyMillions(latestTransaction.netProceeds)}</dd></div><div><dt>Fees</dt><dd>{moneyMillions(latestTransaction.fees)}</dd></div></dl></details>}
+    {definition&&planImpact&&<div className="capital-markets-plan-impact"><strong>Three-Year Plan impact</strong><div className="muted">If queued, one-month preview: CET1 {formatPct(planImpact.cet1Before)} → {formatPct(planImpact.cet1After)} · EPS {(planImpact.epsBefore*100).toFixed(1)}p → {(planImpact.epsAfter*100).toFixed(1)}p.</div></div>}
+    {definition&&<><button type="button" className="button primary" disabled={disabled||!validOrder||transactionAlreadyQueued||queuedElsewhere} onClick={onQueueTransaction}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>onChange({...state,capitalMarketsInstrument:'none',capitalMarketsTargetAmount:''})}>Discard draft</button></>}
 
   </section>;
 };
 
-export default function ActionsPanel({department,bankState,state,onChange,disabled,errors,hasValidationErrors,giltQuotedYield,capitalMarketsQuote,capitalMarketsPlanImpactText,maxGiltSaleAmount,maxBoeFundingAmount}:Props) {
-  const update=(key:keyof ActionFormState,value:string)=>onChange(updateActionFormFields(state,{[key]:value}));
-  const localFields=FORM_FIELDS_BY_DEPARTMENT[department];
+export default function ActionsPanel({department,bankState,state,onChange,disabled,errors,hasValidationErrors,giltQuotedYield,capitalMarketsQuote,capitalMarketsPlanImpact,maxGiltSaleAmount,maxBoeFundingAmount,queuedTransactions=[],onQueueTransaction=()=>{},onCancelQueuedTransaction=()=>{}}:Props) {
+  const update=(key:keyof ActionFormState,value:string)=>onChange({...state,[key]:value});
+  const localFields=DEPARTMENT_FIELDS[department];
   const firstError = Object.entries(errors ?? {}).find(([field,message]) => !!message&&localFields.includes(field as keyof ActionFormState)) as [keyof ActionFormState,string] | undefined;
   const hasLocalValidationErrors=Boolean(firstError);
-  const localInstruments=department==='Capital'||department==='Treasury'?capitalMarketsInstrumentsForArea(department):[];
-  const localCapitalQueued=localInstruments.includes(state.capitalMarketsInstrument as CapitalMarketsInstrument);
-  const setGiltDirection=(value:ActionFormState['giltTradeDirection'])=>onChange(value==='none'?cancelActionFormTransaction(state,'gilt'):updateActionFormFields(state,{giltTradeDirection:value}));
-  const setBoeFacility=(value:ActionFormState['boeFacility'])=>onChange(value==='none'?cancelActionFormTransaction(state,'boeFunding'):updateActionFormFields(state,{boeFacility:value}));
-  const setHedgeDirection=(value:ActionFormState['hedgeDirection'])=>onChange(value==='none'?cancelActionFormTransaction(state,'hedge'):updateActionFormFields(state,{hedgeDirection:value}));
+  const treasuryCapitalInstruments:CapitalMarketsInstrument[]=['senior'];
+  const capitalInstruments:CapitalMarketsInstrument[]=['cet1','at1','tier2'];
+  const localCapitalQueued=department==='Capital'?capitalInstruments.includes(state.capitalMarketsInstrument as CapitalMarketsInstrument):treasuryCapitalInstruments.includes(state.capitalMarketsInstrument as CapitalMarketsInstrument);
+  const setGiltDirection=(value:ActionFormState['giltTradeDirection'])=>onChange({...state,giltTradeDirection:value,giltTradeAmount:value==='none'?'':state.giltTradeAmount});
+  const setBoeFacility=(value:ActionFormState['boeFacility'])=>onChange({...state,boeFacility:value,boeFundingAmount:value==='none'?'':state.boeFundingAmount});
+  const setHedgeDirection=(value:ActionFormState['hedgeDirection'])=>onChange({...state,hedgeDirection:value,hedgeNotional:value==='none'?'':state.hedgeNotional,hedgeFixedRate:value==='none'?'':state.hedgeFixedRate});
+  const transactionAlreadyQueued=(kind:TransactionKind)=>queuedTransactions.some(transaction=>transaction.kind===kind);
 
   return <div className="stack department-policy-panel">
     <div className="policy-section-title"><h3>{department==='Treasury'?'Treasury actions':'Standing policy'}</h3></div>
+    {queuedTransactions.length>0&&<section className="alert info queued-transaction-summary" aria-label="Queued transactions for next close" role="status"><strong>{queuedTransactions.length===1?'Transaction':'Transactions'} queued for next close</strong><p>They will execute once when you roll the game forward one month.</p><ul>{queuedTransactions.map(transaction=><li key={transaction.id}><span>{transaction.label}</span><button type="button" className="button ghost" onClick={()=>onCancelQueuedTransaction(transaction.id)}>Remove</button></li>)}</ul></section>}
     {hasLocalValidationErrors && <div role="alert" className="alert danger">Fix this management area's invalid input before advancing time.{firstError && <> <strong>{FIELD_LABELS[firstError[0]] ?? firstError[0]}:</strong> {firstError[1]}</>}</div>}
 
     {department==='Customers'&&<div className="decision-product-grid" aria-label="Deposit product policies">
@@ -182,7 +237,7 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
         <header><h4>{title}</h4></header>
         <PercentageField field={field} label={label} hint="" state={state} update={update} disabled={disabled} error={errors?.[field]}/>
         <RateComparison offer={state[field]} market={market}/>
-        {field==='termDepositRate'&&<label className="field"><strong>Term</strong><select value={state.termDepositTenorMonths} disabled={disabled} onChange={e=>update('termDepositTenorMonths',e.target.value)}>{choicesForFormField('termDepositTenorMonths').map(months=><option key={months} value={months}>{Number(months)/12} year{Number(months)===12?'':'s'}</option>)}</select><small>Market comparison uses the 1-year benchmark.</small></label>}
+        {field==='termDepositRate'&&<label className="field"><strong>Term</strong><select value={state.termDepositTenorMonths} disabled={disabled} onChange={e=>update('termDepositTenorMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="36">3 years</option></select><small>Market comparison uses the 1-year benchmark.</small></label>}
       </section>)}
     </div>}
 
@@ -197,8 +252,8 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
         <RateComparison offer={state[field]} market={market}/>
         <RatioField field={selectivity} label="New lending selectivity" state={state} update={update} disabled={disabled} error={errors?.[selectivity]}/>
         {field==='mortgageRate'&&<div className="mortgage-structure-controls">
-          <label className="field"><strong>Maximum LTV</strong><select value={state.mortgageMaxLtv} disabled={disabled} onChange={e=>update('mortgageMaxLtv',e.target.value)}>{choicesForFormField('mortgageMaxLtv').map(ratio=><option key={ratio} value={Number(ratio).toFixed(2)}>{Math.round(Number(ratio)*100)}%</option>)}</select></label>
-          <label className="field"><strong>Initial fixed period</strong><select value={state.mortgageFixedPeriodMonths} disabled={disabled} onChange={e=>update('mortgageFixedPeriodMonths',e.target.value)}>{choicesForFormField('mortgageFixedPeriodMonths').map(months=><option key={months} value={months}>{Number(months)/12} years</option>)}</select></label>
+          <label className="field"><strong>Maximum LTV</strong><select value={state.mortgageMaxLtv} disabled={disabled} onChange={e=>update('mortgageMaxLtv',e.target.value)}><option value="0.60">60%</option><option value="0.75">75%</option><option value="0.85">85%</option><option value="0.90">90%</option><option value="0.95">95%</option></select></label>
+          <label className="field"><strong>Initial fixed period</strong><select value={state.mortgageFixedPeriodMonths} disabled={disabled} onChange={e=>update('mortgageFixedPeriodMonths',e.target.value)}><option value="24">2 years</option><option value="36">3 years</option><option value="60">5 years</option></select></label>
         </div>}
       </section>)}
 
@@ -211,19 +266,20 @@ export default function ActionsPanel({department,bankState,state,onChange,disabl
 
     </>}
 
-    {department==='Capital'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpactText={capitalMarketsPlanImpactText} bankState={bankState} allowedInstruments={localInstruments} title="Raise capital" otherArea="Treasury & Funding"/>}
-    {department==='Treasury'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpactText={capitalMarketsPlanImpactText} bankState={bankState} allowedInstruments={localInstruments} title="Wholesale funding markets" otherArea="Finance & Capital"/>}
+    {department==='Capital'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={capitalInstruments} title="Raise capital" otherArea="Treasury & Funding" queuedTransactions={queuedTransactions} onQueueTransaction={()=>onQueueTransaction('capitalMarkets')}/>}
+    {department==='Treasury'&&<CapitalMarketsTicket state={state} onChange={onChange} disabled={disabled} errors={errors} quote={localCapitalQueued?capitalMarketsQuote:undefined} planImpact={capitalMarketsPlanImpact} bankState={bankState} allowedInstruments={treasuryCapitalInstruments} title="Wholesale funding markets" otherArea="Finance & Capital" queuedTransactions={queuedTransactions} onQueueTransaction={()=>onQueueTransaction('capitalMarkets')}/>}
 
     {department==='Treasury'&&<>
       <div className="policy-fields policy-fields-primary">
-        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">No gilt trade queued</option>{choicesForFormField('giltTradeDirection').map(direction=><option key={direction} value={direction}>{direction==='buy'?'Buy gilts':'Sell gilts'}</option>)}</select></label>
-        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="" state={state} update={update} disabled={disabled||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
-        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}>{choicesForFormField('giltDurationYears').map(years=><option key={years} value={years}>{years} years</option>)}</select><small>{state.giltTradeDirection==='sell'?'Proportional sale across maturities.':giltQuotedYield!==undefined?`Yield: ${formatPct(giltQuotedYield)}`:''}</small></label>
+        <label className="field"><strong>Gilt transaction</strong><select value={state.giltTradeDirection} disabled={disabled||transactionAlreadyQueued('giltTrade')} onChange={e=>setGiltDirection(e.target.value as ActionFormState['giltTradeDirection'])}><option value="none">Select a gilt trade</option><option value="buy">Buy gilts</option><option value="sell">Sell gilts</option></select></label>
+        <MoneyField field="giltTradeAmount" label="Gilt trade amount (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('giltTrade')||state.giltTradeDirection==='none'} error={errors?.giltTradeAmount} placeholder="e.g. 250m" maxAmount={state.giltTradeDirection==='sell'?maxGiltSaleAmount:undefined}/>
+        <label className="field"><strong>Maturity</strong><select value={state.giltDurationYears} disabled={disabled||transactionAlreadyQueued('giltTrade')||state.giltTradeDirection==='none'||state.giltTradeDirection==='sell'} onChange={e=>update('giltDurationYears',e.target.value)}><option value="2">2 years</option><option value="5">5 years</option><option value="10">10 years</option></select><small>{state.giltTradeDirection==='sell'?'Proportional sale across maturities.':giltQuotedYield!==undefined?`Yield: ${formatPct(giltQuotedYield)}`:''}</small></label>
       </div>
-      {state.giltTradeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setGiltDirection('none')}>Cancel gilt transaction</button>}
+      {state.giltTradeDirection!=='none'&&<p className="order-status">Draft · not queued</p>}
+      {state.giltTradeDirection!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('giltTrade')||(parseMoneyInput(state.giltTradeAmount).value??0)<=0||!!errors?.giltTradeAmount} onClick={()=>onQueueTransaction('giltTrade')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setGiltDirection('none')}>Discard draft</button></>}{transactionAlreadyQueued('giltTrade')&&<p className="order-status">A gilt transaction is already queued for the next close.</p>}
 
-      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">No drawing queued</option>{choicesForFormField('boeFacility').map(facility=><option key={facility} value={facility}>{facility==='STR'?'STR · 1 week / Level A collateral':'ILTR · 6 months'}</option>)}</select></label><MoneyField field="boeFundingAmount" label="BoE drawing (£)" hint="" state={state} update={update} disabled={disabled||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Cancel Bank of England drawing</button>}</details>
-      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">No swap queued</option>{choicesForFormField('hedgeDirection').map(direction=><option key={direction} value={direction}>{direction==='payFixedReceiveFloat'?'Pay fixed, receive floating':'Receive fixed, pay floating'}</option>)}</select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="" state={state} update={update} disabled={disabled||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}>{choicesForFormField('hedgeMaturityMonths').map(months=><option key={months} value={months}>{Number(months)/12} years</option>)}</select></label></div>{state.hedgeDirection!=='none'&&<button className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Cancel swap transaction</button>}</details>
+      <details className="department-advanced policy-disclosure"><summary>Central-bank funding</summary><div className="policy-fields"><label className="field"><strong>Bank of England facility</strong><select value={state.boeFacility} disabled={disabled||transactionAlreadyQueued('boeFunding')} onChange={e=>setBoeFacility(e.target.value as ActionFormState['boeFacility'])}><option value="none">Select a facility</option><option value="STR">STR · 1 week / Level A collateral</option><option value="ILTR">ILTR · 6 months</option></select></label><MoneyField field="boeFundingAmount" label="BoE drawing (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('boeFunding')||state.boeFacility==='none'} error={errors?.boeFundingAmount} placeholder="e.g. 250m" maxAmount={state.boeFacility==='none'?undefined:maxBoeFundingAmount}/></div>{state.boeFacility!=='none'&&<p className="order-status">Draft · not queued</p>}{state.boeFacility!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('boeFunding')||(parseMoneyInput(state.boeFundingAmount).value??0)<=0||!!errors?.boeFundingAmount} onClick={()=>onQueueTransaction('boeFunding')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setBoeFacility('none')}>Discard draft</button></>}{transactionAlreadyQueued('boeFunding')&&<p className="order-status">A Bank of England drawing is already queued for the next close.</p>}</details>
+      <details className="department-advanced policy-disclosure"><summary>Interest-rate hedging</summary><label className="field"><strong>Swap direction</strong><select value={state.hedgeDirection} disabled={disabled||transactionAlreadyQueued('hedge')} onChange={e=>setHedgeDirection(e.target.value as ActionFormState['hedgeDirection'])}><option value="none">Select a swap direction</option><option value="payFixedReceiveFloat">Pay fixed, receive floating</option><option value="receiveFixedPayFloat">Receive fixed, pay floating</option></select></label><div className="policy-fields"><MoneyField field="hedgeNotional" label="Swap notional (£)" hint="" state={state} update={update} disabled={disabled||transactionAlreadyQueued('hedge')||state.hedgeDirection==='none'} error={errors?.hedgeNotional}/><label className="field"><strong>Swap term</strong><select value={state.hedgeMaturityMonths} disabled={disabled||transactionAlreadyQueued('hedge')||state.hedgeDirection==='none'} onChange={e=>update('hedgeMaturityMonths',e.target.value)}><option value="12">1 year</option><option value="24">2 years</option><option value="60">5 years</option></select></label></div>{state.hedgeDirection!=='none'&&<p className="order-status">Draft · not queued</p>}{state.hedgeDirection!=='none'&&<><button type="button" className="button primary" disabled={disabled||transactionAlreadyQueued('hedge')||(parseMoneyInput(state.hedgeNotional).value??0)<=0||!!errors?.hedgeNotional||!!errors?.hedgeFixedRate} onClick={()=>onQueueTransaction('hedge')}>Queue transaction</button><button type="button" className="button ghost" disabled={disabled} onClick={()=>setHedgeDirection('none')}>Discard draft</button></>}{transactionAlreadyQueued('hedge')&&<p className="order-status">A hedge is already queued for the next close.</p>}</details>
     </>}
 
 
