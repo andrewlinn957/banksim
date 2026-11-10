@@ -44,7 +44,7 @@ All commands below ran in the repository on 10 November 2026 unless noted.
 | `npm run audit:verify -- docs/evaluation/examples/mock-one-month.bundle.json.gz` | Passed: bundle integrity verified, 40 transcript records, two state checkpoints, two replayed steps and no divergence. |
 | `git diff --check` | Passed. |
 | Focused rendered GUI/report and HTTP parity suites | Passed, including action choice parity, capital report rendering, Three-Year Plan states, queue lifecycle, report query availability and seeded GUI/API state matching. |
-| `npm run test:browser` | Could not run: all 18 cases failed before assertions because Playwright's configured `chromium_headless_shell-1243` binary is absent. This is an environment setup failure, not a passing browser check. |
+| `npm run test:browser` | Could not run: all 18 cases failed before assertions because Playwright's configured `chromium_headless_shell-1243` binary is absent. Installing it with `npx playwright install chromium` also failed: the CDN repeatedly returned an invalid empty/corrupt archive. This is an environment setup failure, not a passing browser check. |
 | Docker image/Compose checks | Not run: Docker executable unavailable. |
 | VPS/reverse-proxy/backup-restore checks | Not run: no VPS access or deployment configuration was provided. |
 | Real model-provider smoke test | Not run: provider credentials and an inference budget were not supplied. The mock-provider path is verified. |
@@ -65,4 +65,4 @@ No benchmark-wide reward has been added. Existing scenario scoring remains versi
 
 ## Next concrete task
 
-Install the pinned Playwright browser and run the browser suite, then perform the container/Compose checks on a Docker-capable machine. After those local checks, collect the owner's VPS and provider details to schedule explicitly authorized external smoke checks. Until then, treat Phase G as locally reviewed with deployment and external-provider gates open, not as production-ready.
+Run the browser suite in an environment that can download the pinned Playwright browser, then perform the container/Compose checks on a Docker-capable machine. After those local checks, collect the owner's VPS and provider details to schedule explicitly authorized external smoke checks. Until then, treat Phase G as locally reviewed with deployment and external-provider gates open, not as production-ready.
