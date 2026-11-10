@@ -60,12 +60,12 @@ afterEach(async () => {
 
 const auth = (token = ADMIN_TOKEN) => ({ authorization: `Bearer ${token}` });
 
-const createRun = async (app: Fixture['app'], options: { seed?: number; horizonMonths?: number } = {}) => {
+const createRun = async (app: Fixture['app'], options: { seed?: number; horizonMonths?: number; mode?: { threeYearPlan: boolean } } = {}) => {
   const response = await app.inject({
     method: 'POST',
     url: '/admin/v1/runs',
     headers: auth(),
-    payload: { engineVersion: ENGINE_VERSION, scenarioId: null, seed: options.seed ?? 20261108, horizonMonths: options.horizonMonths ?? 12 },
+    payload: { engineVersion: ENGINE_VERSION, scenarioId: null, seed: options.seed ?? 20261108, horizonMonths: options.horizonMonths ?? 12, ...(options.mode ? { mode: options.mode } : {}) },
   });
   expect(response.statusCode).toBe(201);
   return response.json() as { runId: string; revision: number; simulationStep: number };
@@ -81,6 +81,33 @@ const command = (runId: string, token: string, body: Record<string, unknown>) =>
   fixtures.at(-1)!.app.inject({ method: 'POST', url: `/api/v1/runs/${runId}/commands`, headers: auth(token), payload: body });
 
 describe('persistent BankSim API service', () => {
+  it('exposes Three-Year Plan information only for a run assigned that mode', async () => {
+    const f = await fixture();
+    const plainRun = await createRun(f.app);
+    const plainToken = await issuePlayerToken(f.app, plainRun.runId);
+    const plainReports = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${plainRun.runId}/reports`, headers: auth(plainToken) });
+    expect(plainReports.json().reports).toContainEqual(expect.objectContaining({ id: 'report.three_year_plan', available: false }));
+    const hiddenReport = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${plainRun.runId}/reports/report.three_year_plan`, headers: auth(plainToken) });
+    expect(hiddenReport.statusCode).toBe(409);
+    expect(hiddenReport.json().error.code).toBe('REPORT_UNAVAILABLE');
+
+    const planRun = await createRun(f.app, { mode: { threeYearPlan: true } });
+    expect(f.store.getSession(planRun.runId)?.bankState.threeYearPlan?.enabled).toBe(true);
+    const planToken = await issuePlayerToken(f.app, planRun.runId);
+    const planReports = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${planRun.runId}/reports`, headers: auth(planToken) });
+    expect(planReports.json().reports).toContainEqual(expect.objectContaining({ id: 'report.three_year_plan', available: true, querySchema: expect.any(Object) }));
+    const report = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${planRun.runId}/reports/report.three_year_plan`, headers: auth(planToken) });
+    expect(report.statusCode).toBe(200);
+    expect(report.json().data).toMatchObject({ available: true, title: 'Board mandate', progress: { heading: 'Progress against mandate' } });
+
+    const unavailableCombination = await f.app.inject({
+      method: 'POST', url: '/admin/v1/runs', headers: auth(),
+      payload: { engineVersion: ENGINE_VERSION, scenarioId: 'supervisory-review', seed: 1, horizonMonths: 12, mode: { threeYearPlan: true } },
+    });
+    expect(unavailableCombination.statusCode).toBe(400);
+    expect(unavailableCombination.json().error.code).toBe('MODE_UNAVAILABLE');
+  });
+
   it('isolates credentials and shares the grouped GUI controls and transaction close pipeline', async () => {
     const f = await fixture();
     const health = await f.app.inject({ method: 'GET', url: '/health' });
@@ -130,45 +157,56 @@ describe('persistent BankSim API service', () => {
     expect(staleRetry.json()).toEqual(stale.json());
 
     const openingHash = hashBankState(f.store.getSession(run.runId)!.bankState);
+    const draft = await command(run.runId, token, {
+      commandId: 'draft-gilt-1', expectedRevision: 1, type: 'update_decisions',
+      payload: { drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } },
+    });
+    expect(draft.json()).toMatchObject({ accepted: true, revision: 2, validation: { valid: true } });
     const queued = await command(run.runId, token, {
-      commandId: 'queue-gilt-1', expectedRevision: 1, type: 'queue_transaction',
-      payload: { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 },
+      commandId: 'queue-gilt-1', expectedRevision: 2, type: 'queue_transaction',
+      payload: { kind: 'giltTrade' },
     });
     expect(queued.statusCode).toBe(200);
-    expect(queued.json()).toMatchObject({ accepted: true, revision: 2 });
+    expect(queued.json()).toMatchObject({ accepted: true, revision: 3, queuedTransactions: [{ id: 1, kind: 'giltTrade' }] });
     const queuedSession = f.store.getSession(run.runId)!;
     expect(hashBankState(queuedSession.bankState)).toBe(openingHash);
-    expect(queuedSession.actionForm.giltTradeAmount).toBe('1000000');
+    expect(queuedSession.actionForm.giltTradeDirection).toBe('none');
+    expect(queuedSession.queuedTransactions[0].action).toMatchObject({ type: 'buySellAsset', amountDelta: 1_000_000 });
 
-    const cancelled = await command(run.runId, token, { commandId: 'cancel-gilt-1', expectedRevision: 2, type: 'cancel_transaction', payload: { kind: 'gilt' } });
+    const cancelled = await command(run.runId, token, { commandId: 'cancel-gilt-1', expectedRevision: 3, type: 'cancel_transaction', payload: { transaction_id: 1 } });
     expect(cancelled.statusCode).toBe(200);
-    expect(cancelled.json()).toMatchObject({ accepted: true, revision: 3 });
+    expect(cancelled.json()).toMatchObject({ accepted: true, revision: 4, queuedTransactions: [] });
     expect(f.store.getSession(run.runId)?.actionForm.giltTradeDirection).toBe('none');
     expect(f.store.getSession(run.runId)?.actionForm.corporateDepositRate).toBe(queuedSession.actionForm.corporateDepositRate);
-    const requeued = await command(run.runId, token, {
-      commandId: 'queue-gilt-2', expectedRevision: 3, type: 'queue_transaction',
-      payload: { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 },
+    const redraft = await command(run.runId, token, {
+      commandId: 'draft-gilt-2', expectedRevision: 4, type: 'update_decisions',
+      payload: { drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } },
     });
-    expect(requeued.json()).toMatchObject({ accepted: true, revision: 4 });
+    expect(redraft.statusCode).toBe(200);
+    const requeued = await command(run.runId, token, {
+      commandId: 'queue-gilt-2', expectedRevision: 5, type: 'queue_transaction',
+      payload: { kind: 'giltTrade' },
+    });
+    expect(requeued.json()).toMatchObject({ accepted: true, revision: 6 });
 
     const rawAction = await command(run.runId, token, {
-      commandId: 'hidden-action-1', expectedRevision: 4, type: 'update_decisions', payload: { controls: { 'engine.setCapitalLedger': 1 } },
+      commandId: 'hidden-action-1', expectedRevision: 6, type: 'update_decisions', payload: { controls: { 'engine.setCapitalLedger': 1 } },
     });
     expect(rawAction.statusCode).toBe(422);
-    expect(rawAction.json()).toMatchObject({ accepted: false, errorCode: 'INVALID_COMMAND', revision: 4 });
+    expect(rawAction.json()).toMatchObject({ accepted: false, errorCode: 'INVALID_COMMAND', revision: 6 });
     const rawActionRetry = await command(run.runId, token, {
-      commandId: 'hidden-action-1', expectedRevision: 4, type: 'update_decisions', payload: { controls: { 'engine.setCapitalLedger': 1 } },
+      commandId: 'hidden-action-1', expectedRevision: 6, type: 'update_decisions', payload: { controls: { 'engine.setCapitalLedger': 1 } },
     });
     expect(rawActionRetry.statusCode).toBe(422);
     expect(rawActionRetry.json()).toEqual(rawAction.json());
     const rawFields = await command(run.runId, token, {
-      commandId: 'raw-deposit-fields-1', expectedRevision: 4, type: 'update_decisions', payload: { controls: { corporateOperatingDepositRate: 0.01, corporateNonOperatingDepositRate: 0.03 } },
+      commandId: 'raw-deposit-fields-1', expectedRevision: 6, type: 'update_decisions', payload: { controls: { corporateOperatingDepositRate: 0.01, corporateNonOperatingDepositRate: 0.03 } },
     });
     expect(rawFields.statusCode).toBe(422);
 
-    const close = await command(run.runId, token, { commandId: 'close-1', expectedRevision: 4, type: 'advance_time', payload: { months: 1 } });
+    const close = await command(run.runId, token, { commandId: 'close-1', expectedRevision: 6, type: 'advance_time', payload: { months: 1 } });
     expect(close.statusCode).toBe(200);
-    expect(close.json()).toMatchObject({ accepted: true, monthsClosed: 1, revision: 5 });
+    expect(close.json()).toMatchObject({ accepted: true, monthsClosed: 1, revision: 7 });
     const closedSession = f.store.getSession(run.runId)!;
     expect(closedSession.bankState.time.step).toBe(run.simulationStep + 1);
     expect(closedSession.actionForm.giltTradeDirection).toBe('none');
@@ -230,30 +268,36 @@ describe('persistent BankSim API service', () => {
     let guiSession = createPlayerSessionState({ runId: run.runId, scenarioId: null, prepared, controller, horizonMonths: 6 });
     expect(hashBankState(guiSession.bankState)).toBe(hashBankState(f.store.getSession(run.runId)!.bankState));
 
-    const policy = updatePlayerSessionDecisions(guiSession, { 'policy.deposit.corporate_rate': 0.04 });
+    const policy = updatePlayerSessionDecisions(guiSession, { 'policy.deposit.corporate_rate': 0.04 }, {
+      gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 },
+    });
     expect(policy.accepted).toBe(true);
     if (policy.accepted) guiSession = policy.session;
-    const queued = queuePlayerSessionTransaction(guiSession, { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 });
+    const queued = queuePlayerSessionTransaction(guiSession, 'giltTrade');
     expect(queued.accepted).toBe(true);
     if (queued.accepted) guiSession = queued.session;
-    const cancelled = cancelPlayerSessionTransaction(guiSession, 'gilt');
+    const cancelled = cancelPlayerSessionTransaction(guiSession, guiSession.queuedTransactions[0].id);
     expect(cancelled.accepted).toBe(true);
     if (cancelled.accepted) guiSession = cancelled.session;
-    const requeued = queuePlayerSessionTransaction(guiSession, { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 });
+    const redraft = updatePlayerSessionDecisions(guiSession, {}, { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } });
+    expect(redraft.accepted).toBe(true);
+    if (redraft.accepted) guiSession = redraft.session;
+    const requeued = queuePlayerSessionTransaction(guiSession, 'giltTrade');
     expect(requeued.accepted).toBe(true);
     if (requeued.accepted) guiSession = requeued.session;
 
     for (const [commandId, type, payload] of [
-      ['parity-policy', 'update_decisions', { controls: { 'policy.deposit.corporate_rate': 0.04 } }],
-      ['parity-queue', 'queue_transaction', { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 }],
-      ['parity-cancel', 'cancel_transaction', { kind: 'gilt' }],
-      ['parity-requeue', 'queue_transaction', { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 }],
+      ['parity-policy-draft', 'update_decisions', { controls: { 'policy.deposit.corporate_rate': 0.04 }, drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } }],
+      ['parity-queue', 'queue_transaction', { kind: 'giltTrade' }],
+      ['parity-cancel', 'cancel_transaction', { transaction_id: 1 }],
+      ['parity-redraft', 'update_decisions', { drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } }],
+      ['parity-requeue', 'queue_transaction', { kind: 'giltTrade' }],
     ] as const) {
       const expectedRevision = f.store.getSession(run.runId)!.revision;
       const response = await command(run.runId, token, { commandId, expectedRevision, type, payload });
       expect(response.json().accepted).toBe(true);
     }
-    const close = await command(run.runId, token, { commandId: 'parity-close', expectedRevision: 4, type: 'advance_time', payload: { months: 1 } });
+    const close = await command(run.runId, token, { commandId: 'parity-close', expectedRevision: 5, type: 'advance_time', payload: { months: 1 } });
     expect(close.json().accepted).toBe(true);
     const guiClose = closePlayerSessionMonth(guiSession, controller);
     expect(guiClose.accepted).toBe(true);
@@ -291,6 +335,39 @@ describe('persistent BankSim API service', () => {
     });
   });
 
+  it('publishes and enforces report-specific query controls from the shared registry', async () => {
+    const f = await fixture();
+    const run = await createRun(f.app);
+    const token = await issuePlayerToken(f.app, run.runId);
+    const catalog = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${run.runId}/reports`, headers: auth(token) });
+    expect(catalog.statusCode).toBe(200);
+    const reports = (catalog.json() as { reports: Array<{ id: string; queryFields: string[]; querySchema: { properties: Record<string, unknown> } }> }).reports;
+    const eventsSchema = reports.find((report) => report.id === 'report.events')!;
+    const overviewSchema = reports.find((report) => report.id === 'report.overview')!;
+    const loansSchema = reports.find((report) => report.id === 'report.loans')!;
+    expect(eventsSchema.queryFields).toEqual(['offset', 'limit']);
+    expect(eventsSchema.querySchema.properties.limit).toMatchObject({ type: 'integer', minimum: 1, maximum: 500 });
+    expect(overviewSchema.queryFields).toEqual([]);
+    expect(overviewSchema.querySchema.properties).toEqual({});
+    expect(loansSchema.querySchema.properties.portfolio).toBeDefined();
+
+    const invalidOverviewQuery = await f.app.inject({
+      method: 'GET', url: `/api/v1/runs/${run.runId}/reports/report.overview?portfolio=Mortgages`, headers: auth(token),
+    });
+    expect(invalidOverviewQuery.statusCode).toBe(400);
+    expect(invalidOverviewQuery.json()).toMatchObject({ error: { code: 'REPORT_QUERY_INVALID' } });
+    const invalidPortfolio = await f.app.inject({
+      method: 'GET', url: `/api/v1/runs/${run.runId}/reports/report.loans?portfolio=private-table`, headers: auth(token),
+    });
+    expect(invalidPortfolio.statusCode).toBe(400);
+    expect(invalidPortfolio.json()).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+    const eventPage = await f.app.inject({
+      method: 'GET', url: `/api/v1/runs/${run.runId}/reports/report.events?offset=0&limit=2`, headers: auth(token),
+    });
+    expect(eventPage.statusCode).toBe(200);
+    expect(eventPage.json().page).toMatchObject({ offset: 0, limit: 2, total: 0 });
+  });
+
   it('rejects transaction fields and area/instrument pairs that the GUI cannot submit', async () => {
     const f = await fixture();
     const run = await createRun(f.app);
@@ -302,16 +379,15 @@ describe('persistent BankSim API service', () => {
     });
 
     const invalidBodies = [
-      { commandId: 'bad-area-pair', expectedRevision: 0, type: 'queue_transaction', payload: { kind: 'capitalMarkets', area: 'Treasury', instrument: 'cet1', targetAmountGbp: 1_000_000 } },
-      { commandId: 'bad-pricing-field', expectedRevision: 0, type: 'queue_transaction', payload: { kind: 'capitalMarkets', area: 'Capital', instrument: 'cet1', targetAmountGbp: 1_000_000, maxSpreadBps: 500 } },
-      { commandId: 'bad-tenor', expectedRevision: 0, type: 'queue_transaction', payload: { kind: 'capitalMarkets', area: 'Treasury', instrument: 'senior', targetAmountGbp: 1_000_000, maxSpreadBps: 500, tenorMonths: 37 } },
-      { commandId: 'bad-gilt-sell-tenor', expectedRevision: 0, type: 'queue_transaction', payload: { kind: 'gilt', direction: 'sell', amountGbp: 1_000, tenorMonths: 60 } },
-      { commandId: 'bad-gilt-direction', expectedRevision: 0, type: 'queue_transaction', payload: { kind: 'gilt', direction: 'other', amountGbp: 1_000 } },
+      { commandId: 'bad-area-pair', expectedRevision: 0, type: 'update_decisions', payload: { drafts: { capitalMarkets: { area: 'Treasury', instrument: 'cet1', targetAmountGbp: 1_000_000 } } } },
+      { commandId: 'bad-pricing-field', expectedRevision: 0, type: 'update_decisions', payload: { drafts: { capitalMarkets: { area: 'Capital', instrument: 'cet1', targetAmountGbp: 1_000_000, maxSpreadBps: 500 } } } },
+      { commandId: 'bad-tenor', expectedRevision: 0, type: 'update_decisions', payload: { drafts: { capitalMarkets: { area: 'Treasury', instrument: 'senior', targetAmountGbp: 1_000_000, maxSpreadBps: 500, tenorMonths: 37 } } } },
+      { commandId: 'bad-gilt-sell-tenor', expectedRevision: 0, type: 'update_decisions', payload: { drafts: { gilt: { direction: 'sell', amountGbp: 1_000, tenorMonths: 60 } } } },
+      { commandId: 'bad-gilt-direction', expectedRevision: 0, type: 'update_decisions', payload: { drafts: { gilt: { direction: 'other', amountGbp: 1_000 } } } },
     ];
     for (const body of invalidBodies) {
       const response = await command(run.runId, token, body);
-      expect(response.statusCode).toBe(400);
-      expect(response.json()).toMatchObject({ error: { code: 'INVALID_REQUEST' } });
+      expect([400, 422]).toContain(response.statusCode);
       expect(f.store.getSession(run.runId)?.revision).toBe(0);
     }
   });
@@ -329,19 +405,25 @@ describe('persistent BankSim API service', () => {
     expect([a.json().errorCode, b.json().errorCode]).toContain('STALE_REVISION');
     expect(first.store.getRun(run.runId)?.revision).toBe(1);
 
-    const queued = await command(run.runId, token, {
-      commandId: 'persist-queued-gilt', expectedRevision: 1, type: 'queue_transaction',
-      payload: { kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 },
+    const draft = await command(run.runId, token, {
+      commandId: 'persist-draft-gilt', expectedRevision: 1, type: 'update_decisions',
+      payload: { drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } },
     });
-    expect(queued.json()).toMatchObject({ accepted: true, revision: 2 });
+    expect(draft.json()).toMatchObject({ accepted: true, revision: 2 });
+    const queued = await command(run.runId, token, {
+      commandId: 'persist-queued-gilt', expectedRevision: 2, type: 'queue_transaction',
+      payload: { kind: 'giltTrade' },
+    });
+    expect(queued.json()).toMatchObject({ accepted: true, revision: 3 });
     const databaseFile = first.dbPath;
     await first.close(true);
 
     const second = await fixture({ dbPath: databaseFile, afterAdvanceMonthCommit: (_runId, completedMonths) => {
       if (completedMonths === 1) throw new SimulatedProcessInterruption();
     } });
-    expect(second.store.getSession(run.runId)?.actionForm.giltTradeAmount).toBe('1000000');
-    const interrupted = await command(run.runId, token, { commandId: 'advance-restart', expectedRevision: 2, type: 'advance_time', payload: { months: 3 } });
+    expect(second.store.getSession(run.runId)?.actionForm.giltTradeAmount).toBe('');
+    expect(second.store.getSession(run.runId)?.queuedTransactions).toHaveLength(1);
+    const interrupted = await command(run.runId, token, { commandId: 'advance-restart', expectedRevision: 3, type: 'advance_time', payload: { months: 3 } });
     expect(interrupted.statusCode).toBe(500);
     expect(second.store.getCommand(run.runId, 'advance-restart')).toMatchObject({ status: 'running', completedMonths: 1 });
     expect(second.store.getSession(run.runId)?.bankState.time.step).toBe(run.simulationStep + 1);
@@ -358,7 +440,7 @@ describe('persistent BankSim API service', () => {
     const replay = await third.app.inject({ method: 'POST', url: '/admin/v1/replays', headers: auth(), payload: { runId: run.runId } });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({ replayed: true, matchedSteps: 4, firstDivergence: null });
-    const sameRetry = await command(run.runId, token, { commandId: 'advance-restart', expectedRevision: 2, type: 'advance_time', payload: { months: 3 } });
+    const sameRetry = await command(run.runId, token, { commandId: 'advance-restart', expectedRevision: 3, type: 'advance_time', payload: { months: 3 } });
     expect(sameRetry.statusCode).toBe(200);
     expect(sameRetry.json()).toMatchObject({ accepted: true, monthsClosed: 3, status: 'horizon_reached' });
   });

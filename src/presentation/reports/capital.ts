@@ -2,6 +2,8 @@ import type { BankState } from '../../domain/bankState';
 import type { SimulationConfig } from '../../domain/config';
 import { eligibleCet1, ownFundsRequirements } from '../../engine/prudential';
 import { eligibleTier2OwnFunds } from '../../products/regulatory';
+import { formatCurrency, formatPct } from '../../utils/formatters';
+import { buildCapitalBuffersPresentation, buildPillar2AAssessmentPresentation } from './capitalAssessments';
 
 type RequirementSegment = {
   label: string;
@@ -14,6 +16,11 @@ export type RequirementBar = {
   requirement: number;
   segments: RequirementSegment[];
 };
+
+const formatPercentagePoints = (value: number) =>
+  Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${(value * 100).toFixed(2)}pp` : 'N/A';
+
+const formatSignedMoney = (value: number) => `${value >= 0 ? '+' : '−'}${formatCurrency(Math.abs(value))}`;
 
 export function capitalDashboardData(state: BankState, config: SimulationConfig) {
   const rwa = state.risk.riskMetrics.rwa;
@@ -100,6 +107,106 @@ export function capitalDashboardData(state: BankState, config: SimulationConfig)
     },
   ];
 
+  const internalTarget = metrics.internalCet1TargetRatio;
+  const positionLevels = [
+    { name: 'Total capital requirement', ratio: cards[2].requirement, tone: 'total' },
+    { name: 'Tier 1 requirement', ratio: cards[1].requirement, tone: 'tier1' },
+    ...(Number.isFinite(internalTarget) ? [{ name: 'Internal CET1 target', ratio: internalTarget, tone: 'target' as const }] : []),
+    { name: 'CET1 requirement', ratio: cards[0].requirement, tone: 'cet1req' },
+  ];
+  const groupedPositionLevels: { ratio: number; names: string[]; tone: string }[] = [];
+  positionLevels
+    .sort((a, b) => b.ratio - a.ratio)
+    .forEach((level) => {
+      const existing = groupedPositionLevels.find((group) => Math.abs(group.ratio - level.ratio) < 1e-10);
+      if (existing) existing.names.push(level.name);
+      else groupedPositionLevels.push({ ratio: level.ratio, names: [level.name], tone: level.tone });
+    });
+  const cardScaleRaw = Math.max(
+    0.2,
+    (metrics.praBufferTarget ?? cards[0].requirement) * 1.1,
+    Number.isFinite(internalTarget) ? internalTarget * 1.1 : 0,
+    ...cards.map((card) => Number.isFinite(card.actual) ? Math.max(card.actual, card.requirement) * 1.1 : card.requirement * 1.1),
+  );
+  const cardScale = Math.ceil(cardScaleRaw / 0.05) * 0.05;
+  const resources = [
+    { name: 'CET1', amount: cet1, tone: 'cet1' },
+    { name: 'AT1', amount: at1, tone: 'at1' },
+    { name: 'Tier 2', amount: tier2, tone: 'tier2' },
+  ];
+  let resourceCumulative = 0;
+  const positionedResources = resources.map((resource) => {
+    const start = resourceCumulative;
+    resourceCumulative += rwa > 0 ? resource.amount / rwa : 0;
+    return { ...resource, start, end: resourceCumulative };
+  });
+  const positionMaxRaw = Math.max(
+    0.2,
+    ...positionedResources.flatMap((part) => [part.start, part.end]).map((value) => value * 1.12),
+    ...positionLevels.map((level) => level.ratio * 1.12),
+  );
+  const positionMax = Math.ceil(positionMaxRaw / 0.05) * 0.05;
+  const positionMinRaw = Math.min(0, ...positionedResources.flatMap((part) => [part.start, part.end]));
+  const positionMin = positionMinRaw < 0 ? Math.floor(positionMinRaw / 0.05) * 0.05 : 0;
+  const positionRange = Math.max(0.05, positionMax - positionMin);
+  const display = {
+    internalTarget: Number.isFinite(internalTarget) ? formatPct(internalTarget) : null,
+    cards: cards.map((card) => {
+      const gap = card.actual - card.requirement;
+      const status = !Number.isFinite(card.actual)
+        ? 'Unavailable'
+        : card.actual < card.minimum
+          ? 'Below minimum'
+          : gap < -1e-10
+            ? 'Buffer shortfall'
+            : 'Meets requirement';
+      return {
+        name: card.name,
+        status,
+        actual: formatPct(card.actual),
+        amount: formatCurrency(card.amount),
+        requirement: formatPct(card.requirement),
+        requiredAmount: formatCurrency(card.requiredAmount),
+        gap: formatPercentagePoints(gap),
+        gapAmount: formatSignedMoney(card.amount - card.requiredAmount),
+        ariaLabel: `${card.name}: actual ${formatPct(card.actual)}, requirement ${formatPct(card.requirement)}, headroom ${formatPercentagePoints(gap)}`,
+        axisLabels: [0, 1, 2, 3, 4].map((index) => formatPct(cardScale * index / 4, 0)),
+      };
+    }),
+    capitalPosition: {
+      totalCapitalRatio: formatPct(cards[2].actual),
+      totalCapitalAmount: formatCurrency(cards[2].amount),
+      rwa: formatCurrency(rwa),
+      axisTitle: '% of RWA',
+      axisTickLabels: Array.from({ length: 5 }, (_, index) => formatPct(positionMin + positionRange * index / 4, 0)),
+      resources: positionedResources.map((resource) => ({
+        name: resource.name,
+        ratio: rwa > 0 ? formatPct(resource.amount / rwa) : 'N/A',
+        amount: formatCurrency(resource.amount),
+      })),
+      levels: groupedPositionLevels.map((level) => ({
+        names: level.names,
+        ratio: formatPct(level.ratio),
+        amount: formatCurrency(level.ratio * rwa),
+      })),
+      resourceLegend: positionedResources.map((resource) =>
+        `${resource.name} ${formatCurrency(resource.amount)} (${rwa > 0 ? formatPct(resource.amount / rwa) : 'N/A'})`,
+      ),
+    },
+    requirementComposition: requirementBars.map((bar) => ({
+      name: bar.name,
+      requirement: formatPct(bar.requirement),
+      amount: formatCurrency(bar.requirement * rwa),
+      segments: bar.segments.map((segment) => ({
+        label: segment.label,
+        ratio: formatPct(segment.ratio),
+        amount: formatCurrency(segment.ratio * rwa),
+        title: `${segment.label}: ${formatPct(segment.ratio)} · ${formatCurrency(segment.ratio * rwa)}`,
+      })),
+    })),
+    payoutCap: formatPct(metrics.maxPayoutRatio),
+  };
+
   return {
     rwa,
     cet1,
@@ -113,5 +220,14 @@ export function capitalDashboardData(state: BankState, config: SimulationConfig)
     osiiBuffer,
     requirementBars,
     cards,
+    positionLevels,
+    groupedPositionLevels,
+    positionedResources,
+    cardScale,
+    positionMin,
+    positionRange,
+    display,
+    pillar2AAssessment: buildPillar2AAssessmentPresentation(state, config),
+    capitalBuffers: buildCapitalBuffersPresentation(state, config),
   };
 }

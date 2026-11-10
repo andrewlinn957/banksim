@@ -1,58 +1,68 @@
-# BankSim API evaluation implementation status
+# BankSim evaluation implementation status
 
-Last updated: 9 November 2026
+Updated: 10 November 2026
+Branch: `feature/evaluation-functionality`
+Audit baseline: `main` revision `2e51380cd11e0f95a4d5143d42dfcb08cbca6729`
+Evaluation merge: local revision `74cf7872d8f39f63549026f8a6a675df9388d51f`; GitHub branch contains the same tree at merge checkpoint `cf54a316f336bc655eb69debaabe2ef8821cad46`.
 
-## Baseline and branch
+## Phase status
 
-- Repository: `andrewlinn957/banksim`
-- Audited source revision: `f42df91d2416a5fa499554d1e771f6c86b3206a3` (`Model CET1 issuance using investor returns`)
-- Working branch: `feature/api-evaluation-v1`
-- Pre-existing uncommitted capital-markets/funding work was present in the checkout. It is being preserved outside the evaluation commits, including the owner's edits in `src/engine/simulation.ts`, `src/components/DepartmentOffice.tsx`, related capital/funding files, and `test-results/`.
-- No repository-local `AGENTS.md` was found. The supplied BankSim implementation brief is the task specification.
-
-## Phase gates
-
-| Phase | State | Evidence / limitations |
+| Phase | Status | Evidence and remaining limits |
 |---|---|---|
-| A — Audit and contracts | Complete | `gui-parity.md`, `gui-parity.json` and `api-design.md` record the source audit, all registered controls and reports, current player semantics, data classes, boundaries and known gaps. Existing Pages scenarios are confirmed public browser-bundled data. |
-| B — Shared player/session layer | Complete | React and API share form/control parsing, action construction, corporate deposit grouping, transaction drafts/cancellation, Treasury dynamic limits, month close, scenario triggers, safe previews, quotes, reports, help and the player export. Representative rendered React checks ran in Vitest. Browser Playwright could not launch because the configured Chromium executable is absent. |
-| C — Deterministic lifecycle | Complete for the pinned Node release | Seeded opening factory applies `banksim-seed-v1` before cohort generation; explicit session codecs, deterministic event identity, canonical hashes and checkpoint continuation/replay are implemented. Preview and action-count tests verify isolated exogenous draws. Cross-runtime bit-identical results are not promised. |
-| D — Durable API service | Complete for a single-process/single-VPS version 1 | Fastify/TypeBox routes and OpenAPI, hashed scoped bearer tokens, SQLite migrations/WAL/checkpoints/audit, per-run serialization, expected revisions, idempotency, recovery of interrupted month advances, build pinning, replay and separate player/admin exports are implemented. The player overview exposes run-assigned client budgets; commit `5851788` added that contract. Integration tests and TCP smoke checks passed. Commit `8a3223b` narrows runtime transaction schemas to the shared GUI area, instrument, pricing and tenor choices and rejects extra ticket fields. The admin bundle explicitly marks client transcripts as not yet joined. |
-| E — Standalone model client | Complete | `evaluation-client/` builds and packs independently, contains no engine/server sources, has a player-only tool loop whose live schemas follow current GUI controls, OpenAI-compatible Chat Completions adapter, deterministic mock, exact prompt hashing, resumable transcripts, CLI/batch commands and VS Code examples. The scripted clean-directory checks cover assigned budget caps and recovery after a committed command response is lost. |
-| F — Joined exports and operator workflow | Implemented; container checks pending | `server/auditBundle.ts` adds versioned hashes and offline replay verification; `scripts/collect-audit.ts` joins the owner export with exact local client records; `scripts/verify-audit.ts` detects altered decisions/checkpoints. The compressed one-month mock bundle is checked in as an example. Dockerfile, Compose, environment template and operator/backup/rollback guide are prepared. Focused audit/API tests and the clean-directory audit/replay smoke passed. Docker is unavailable in this workspace, so image build and Compose validation remain unverified. |
-| G — Final parity and end-to-end review | Not started | Phase D checks are substantive but do not satisfy the final controlled-evaluation gate. Full inventory review and later client/export/deployment evidence remain required. |
+| A — Audit and contracts | Complete | [GUI parity inventory](./gui-parity.md), machine-readable [control and report inventory](./gui-parity.json), API schemas and data-boundary notes. The inventory includes the Three-Year Plan report added in Phase G. |
+| B — Shared player/session layer | Complete | The GUI and HTTP API use shared controls, validation, drafts, transaction queues, close behaviour, report builders, help, previews and the player export. API routes do not call `engine.step` directly. |
+| C — Deterministic lifecycle | Implemented and locally verified | Seeded opening creation, persisted session/RNG state, logical event IDs, canonical replay hashes and checkpoint continuation are covered by application and server tests. Determinism is promised only for the pinned supported runtime/build. |
+| D — Durable API service | Implemented and locally verified | Versioned player/admin routes, scoped hashed bearer credentials, SQLite persistence, run serialization, command idempotency/revision checks, resume and replay verification have HTTP tests. Single-process service operation remains the supported deployment shape. |
+| E — Standalone evaluation client | Complete for the controlled client | The client builds separately from engine/server code, has an OpenAI-compatible tool adapter and deterministic mock, bounded execution, prompt/tool logging, resume reconciliation and VS Code task examples. A clean-directory smoke run succeeded without a BankSim checkout or admin credential. |
+| F — Exports and operator workflow | Implemented; fresh container install not verified | Joined server/client audit bundles, integrity verification, replay, sample bundle, operator docs, container and Compose artifacts are present. Docker is unavailable in this environment, so image build and fresh Compose installation remain unverified. |
+| G — Final parity and end-to-end review | Substantive local review complete; external checks remain | Queue semantics, shared control choices, report query schemas, capital display parity and mode-gated Three-Year Plan parity were reviewed and tested. The full browser suite could not launch because the configured Playwright Chromium executable is absent. VPS deployment and a real-provider inference run were not performed. See unresolved limits below. |
 
-## Phase D implementation
+## Work completed in the Phase G review
 
-- `server/app.ts` serves `/health`, generated `/openapi.json`, scoped player routes, authenticated admin run/credential/stop/export/replay routes and player command polling.
-- `server/store.ts` persists runs, credentials, commands, month checkpoints and append-only audit records in SQLite. Each committed month records its full encoded session and canonical BankState hash. Failed/interrupted advances preserve partial progress.
-- `src/contracts/playerApi.ts` contains runtime TypeBox request schemas. The command contract accepts registered standing-control IDs and explicit transaction/risk/pause/time operations; raw actions and state patches are rejected. Contract version `banksim-player-tools-v2` narrows capital-market area/instrument/pricing/tenor combinations and separates gilt buys from proportional sells.
-- Player reads and previews use shared presentation builders and the player export. The API does not return private config, seed/RNG state, full preview states, other-run data or the admin bundle.
-- Active runs are pinned to engine version, server build digest and dependency-lock hash. A process refuses to start over active runs pinned to another release. Replay checks each recorded monthly close against the canonical hash.
-- `.nvmrc` and package engines pin Node `24.22.x`. `npm run server:build` produces the production server bundle. The server defaults to loopback and requires a configured admin token.
-- `docs/evaluation/gui-parity.json` now matches the shared control/report registries. It records the selectivity slider step separately from the number input's accepted intermediate values. Treasury ticket limits are shared and retain the GUI's current `baseConfig` behaviour.
+- Merged current `main` into the evaluation branch and reviewed the incoming gameplay/UI changes against the evaluation API.
+- Made transaction drafts distinct from submitted queue items in the shared session layer. Queueing validates and clears a GUI-shaped draft; only submitted queue entries execute at close; cancellation removes the queued entry; close and persistence follow the GUI lifecycle.
+- Reused the GUI's control groupings and action-choice registries in the agent controls and model tool descriptions. The corporate deposit control still changes both corporate deposit classes together. Hidden raw engine actions and fields remain unavailable.
+- Made report query fields report-specific in the shared report registry and generated their API schemas from that registry.
+- Added the Boardroom's Three-Year Plan display as a mode-gated player report using the same display builder as the rendered React panel.
+- Moved capital dashboard display formatting into a shared builder used by React and the API, preserving GUI-visible precision, labels, hover text and annotations while excluding internal chart geometry values.
+- Updated parity, API and client documentation, and regenerated the one-month mock-provider bundle using the current session codec and protocol versions.
 
-## Checks performed
+## Verification performed
 
-- `npm run typecheck` — passed (browser app and server TypeScript).
-- `npm run test:fast` — passed, 139 files / 436 tests.
-- `npx vitest run server/app.test.ts src/application/playerParityInventory.test.ts` — passed, 2 files / 8 tests, including exhaustive available-report hidden-marker checks and selectivity slider/typed-value parity.
-- `npm run build` — passed. Vite reports the existing large main-chunk warning; the main JS bundle is about 846 kB minified.
-- `npm run server:build` — passed; server bundle about 768 kB before external runtime dependencies.
-- Production TCP smoke against the bundled server — passed: health, OpenAPI, admin run creation and credential issuance, one-month player close to horizon, same-ID retry returning the original result, and player-token denial on an admin route.
-- `server/app.test.ts` exercises run/token isolation, hidden marker handling, grouped corporate rates, raw-action and invalid transaction-shape rejection, draft/cancel/close parity, preview non-mutation, matching GUI/API opening and close hashes, concurrent stale revisions, duplicate results, crash recovery after a committed month, hash replay, and engine-version/build refusal.
-- The earlier `npm run test:browser` attempt could not start because Playwright Chromium is not installed at the configured cache path. Component-level rendered tests ran; full browser automation remains unverified.
-- `npm run client:typecheck`, `npm run test:client` (4 focused contract/provider/config tests), and `npm run client:build` — passed.
-- `npm run test:client:smoke` — passed. It rebuilds the server/client, packs and installs the client in a clean temporary directory, creates a one-month API run, confirms a local budget above the assigned cap is rejected, and finishes through the installed CLI with the mock provider. Result: `horizon_reached` at step 1, 2 model turns, 5 tool calls, 40 transcript events, no gaps and a saved player export. A second run drops a command response after the server commits it; resume reconciles the same ID and reaches the horizon. The admin export contains that command exactly once.
-- The clean package contains 24 files and no engine, server, private scenario, seed, source or trace paths. Credentials were checked absent from the transcript; the model tool list contains no administrator operations.
-- `npx vitest run server/auditBundle.test.ts server/app.test.ts` — passed, 2 files / 10 tests. Joined export verification checked hashes, client transcript bytes, missing/malformed transcript marking, a corrupted decision and replay divergence.
-- `npm run test:client:smoke` — passed with audit collection and replay added. The joined bundle contained 40 client events and replay matched the opening plus one monthly checkpoint.
-- `npm run audit:verify -- docs/evaluation/examples/mock-one-month.bundle.json.gz` — passed, 40 transcript records, two matched steps, no integrity issues.
+All commands below ran in the repository on 10 November 2026 unless noted.
 
-## Known limitations and next concrete task
+| Command/check | Result |
+|---|---|
+| `npm run typecheck` | Passed: browser and server TypeScript checks. |
+| `npm run test:fast` | Passed: 143 test files, 470 tests. |
+| `npm run test:regression` | Passed: 3 files, 8 regression tests. |
+| `npm run build` | Passed. Vite reports the existing large main-chunk warning; generated JS is approximately 858 kB. |
+| `npm run server:build` | Passed. |
+| `npm run client:typecheck` | Passed. |
+| `npm run test:client` | Passed: 6 tests. |
+| `npm run test:client:smoke` | Passed from a clean directory: mock run reached its one-month horizon; exported player data and joined bundle; recovered a committed command after simulated lost response; replay matched opening and close checkpoints; configured budget cap was enforced. |
+| `npm run audit:verify -- docs/evaluation/examples/mock-one-month.bundle.json.gz` | Passed: bundle integrity verified, 40 transcript records, two state checkpoints, two replayed steps and no divergence. |
+| `git diff --check` | Passed. |
+| Focused rendered GUI/report and HTTP parity suites | Passed, including action choice parity, capital report rendering, Three-Year Plan states, queue lifecycle, report query availability and seeded GUI/API state matching. |
+| `npm run test:browser` | Could not run: all 18 cases failed before assertions because Playwright's configured `chromium_headless_shell-1243` binary is absent. This is an environment setup failure, not a passing browser check. |
+| Docker image/Compose checks | Not run: Docker executable unavailable. |
+| VPS/reverse-proxy/backup-restore checks | Not run: no VPS access or deployment configuration was provided. |
+| Real model-provider smoke test | Not run: provider credentials and an inference budget were not supplied. The mock-provider path is verified. |
 
-This is not ready for model evaluation until Phase G and the remaining deployment checks are complete. The current Pages build imports the public scenario catalogue, so it cannot support a scenario whose definition must remain private. The server export retains its `not-collected-by-server` marker; the owner collection command creates a separate joined bundle with local client records and explicit gaps. Docker image/Compose validation remains pending because Docker is unavailable in this workspace. There has been no VPS, HTTPS reverse-proxy, backup/restore or production installation check. A real model-provider smoke run remains unverified because no provider credentials or inference budget were authorized. The score definition is currently the existing versioned scenario-goal score; configurable benchmark scoring is not implemented.
+The Vite bundle-size warning is recorded for follow-up; it did not fail the build. The accepted application has not been deployed or merged to `main`.
 
-The API currently serves a single immutable engine release per process and requires active runs to complete or be stopped before an upgrade. Old-build replay requires retaining that old build. The provider's client-reported transcript and model metadata will be provenance from the harness, not proof against a malicious client. The service's in-process run locks assume one server process owns the SQLite database; multi-process worker coordination is outside this V1.
+## Remaining limitations and next work
 
-Next: finish Phase F review by running the prepared image and Compose checks on a host with Docker, then commit that phase. Proceed to Phase G for the final parity, determinism and isolation review. Keep production deployment unperformed until Andrew instructs it.
+1. **External installation checks:** build and start the container with Docker, perform a fresh Compose install and restore drill, and verify HTTPS, private admin access, persistent volume permissions, log rotation and recovery on the owner's VPS. Required owner inputs are the VPS's existing reverse-proxy/network details, domain or private access route, and the chosen secret-delivery method. No production change is authorized by this implementation work.
+2. **Browser automation:** install the Playwright browser version pinned by the repository and rerun `npm run test:browser`. Rendered component parity tests pass, but the configured full browser suite has not executed in this environment.
+3. **Provider verification:** confirm the owner's selected provider endpoint/model supports the adapter's tool-call fields, then run a budget-authorized real-provider smoke test. Provider-specific behavior remains unverified.
+4. **Scenario privacy:** the current GitHub Pages application imports the public scenario catalogue. The current catalogue is therefore public browser data; private future scenario definitions require moving them to server-only configuration before they are treated as confidential.
+5. **Presentation coverage:** API reports expose all GUI-visible loan portfolio rows, while GUI table sorting/filtering remains a presentation interaction without corresponding query operations. Browser-local Past games also has a broader local-browser history view; the remote API intentionally returns only the assigned run's player-accessible history. These limits are described in [the parity inventory](./gui-parity.md).
+6. **Ongoing parity process:** the registry coverage test verifies registered controls and reports; it cannot discover a future React screen that has not been registered. New gameplay or information surfaces must receive a parity inventory row and a shared-builder/GUI consumption review.
+7. **Evidence boundary:** the server records API interactions and authoritative state. Model identity, prompts, transcript, usage and latency submitted by the local harness are provenance from that client, not cryptographic proof against a malicious harness. The system records available data and transcript gaps without inventing missing material.
+
+No benchmark-wide reward has been added. Existing scenario scoring remains versioned as `banksim-scenario-score-v1`; the owner's benchmark objectives remain a separate decision.
+
+## Next concrete task
+
+Install the pinned Playwright browser and run the browser suite, then perform the container/Compose checks on a Docker-capable machine. After those local checks, collect the owner's VPS and provider details to schedule explicitly authorized external smoke checks. Until then, treat Phase G as locally reviewed with deployment and external-provider gates open, not as production-ready.

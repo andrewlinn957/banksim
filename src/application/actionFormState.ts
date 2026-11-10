@@ -67,3 +67,20 @@ export const clearOneOffTransactions = (state: ActionFormState): ActionFormState
   hedgeDirection: 'none',
   hedgeNotional: '',
 });
+
+/** Clear just the ticket submitted to the GUI queue, preserving other drafts and standing policy. */
+export const clearTransactionDraft = (
+  state: ActionFormState,
+  kind: 'capitalMarkets' | 'giltTrade' | 'boeFunding' | 'hedge',
+): ActionFormState => {
+  switch (kind) {
+    case 'capitalMarkets':
+      return { ...state, capitalMarketsInstrument: 'none', capitalMarketsTargetAmount: '' };
+    case 'giltTrade':
+      return { ...state, giltTradeDirection: 'none', giltTradeAmount: '' };
+    case 'boeFunding':
+      return { ...state, boeFacility: 'none', boeFundingAmount: '' };
+    case 'hedge':
+      return { ...state, hedgeDirection: 'none', hedgeNotional: '', hedgeFixedRate: '' };
+  }
+};

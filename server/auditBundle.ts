@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { cloneBankState } from '../src/engine/clone';
 import { decodePlayerSessionState } from '../src/application/sessionCodec';
 import { SimulationController } from '../src/application/simulationController';
 import { hashBankState, hashJson } from './store';
+import { auditSequenceIssues, verifyRecordedReplay, type ReplayAuditRecord } from './replayVerifier';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -212,6 +212,14 @@ const verifyServerIntegrity = (server: ServerAuditExport, issues: string[]) => {
   addIntegrityIssue(issues, 'commands', integrity.commandsHash, hashJsonSafe(server.commands));
   addIntegrityIssue(issues, 'server audit', integrity.serverAuditHash, hashJsonSafe(server.serverAudit));
   if (integrity.checkpointCount !== server.checkpoints.length) issues.push('Checkpoint count mismatch');
+  if (server.serverAudit.some((record) => !isRecord(record) || !Number.isInteger(record.sequence) || typeof record.kind !== 'string' || !('payload' in record))) {
+    issues.push('Server audit contains a malformed record');
+  }
+  issues.push(...auditSequenceIssues(server.serverAudit.filter(isRecord).map((record) => ({
+    ...(typeof record.sequence === 'number' ? { sequence: record.sequence } : {}),
+    kind: typeof record.kind === 'string' ? record.kind : 'unknown',
+    payload: record.payload,
+  }))));
 
   const opening = decodeSession(server.openingSessionCodec, 'Opening', issues);
   const current = decodeSession(server.currentSessionCodec, 'Current', issues);
@@ -241,41 +249,20 @@ const verifyReplay = (
   const opening = decoded.opening;
   const current = decoded.current;
   if (!opening || !current) return empty;
-  const expectedByStep = new Map(server.checkpoints.map((checkpoint) => [checkpoint.step, checkpoint.stateHash]));
-  const controller = new SimulationController(opening.config);
-  let state = cloneBankState(opening.openingState);
-  let matchedSteps = 0;
-  let firstDivergence: AuditBundleVerification['replay']['firstDivergence'] = null;
-  const openingHash = hashBankState(state);
-  const expectedOpening = expectedByStep.get(state.time.step) ?? null;
-  if (openingHash !== expectedOpening) firstDivergence = { step: state.time.step, expected: expectedOpening, actual: openingHash, reason: 'opening checkpoint mismatch' };
-  else matchedSteps += 1;
-
-  const monthlyAudit = server.serverAudit.filter((record): record is JsonRecord => isRecord(record) && record.kind === 'month_closed' && isRecord(record.payload));
-  for (const [index, entry] of current.timeline.entries()) {
-    if (firstDivergence) break;
-    const auditPayload = isRecord(monthlyAudit[index]?.payload) ? monthlyAudit[index]!.payload as JsonRecord : undefined;
-    if (auditPayload && hashJsonSafe(auditPayload.acceptedActions) !== hashJsonSafe(entry.actions)) {
-      firstDivergence = { step: entry.step, expected: hashJsonSafe(auditPayload.acceptedActions), actual: hashJsonSafe(entry.actions), reason: 'recorded accepted actions differ from monthly audit' };
-      break;
-    }
-    if (!auditPayload) {
-      firstDivergence = { step: entry.step, expected: 'monthly audit record', actual: 'missing', reason: 'monthly close has no matching server audit record' };
-      break;
-    }
-    state = cloneBankState(controller.step(state, entry.actions, entry.shocks, current.runId).nextState);
-    const actual = hashBankState(state);
-    const expected = expectedByStep.get(entry.step) ?? null;
-    if (actual !== expected) firstDivergence = { step: entry.step, expected, actual, reason: 'replayed BankState differs from monthly checkpoint' };
-    else matchedSteps += 1;
-  }
-  if (!firstDivergence && current.timeline.length !== server.checkpoints.length - 1) {
-    firstDivergence = { step: state.time.step, expected: null, actual: hashBankState(state), reason: 'timeline and checkpoint counts differ' };
-  }
-  if (!firstDivergence && hashBankState(state) !== hashBankState(current.bankState)) {
-    firstDivergence = { step: current.bankState.time.step, expected: hashBankState(current.bankState), actual: hashBankState(state), reason: 'replayed final state differs from current session' };
-  }
-  return { replayed: firstDivergence === null, matchedSteps, firstDivergence, finalStateHash: hashBankState(state) };
+  const auditRecords: ReplayAuditRecord[] = server.serverAudit.filter(isRecord).map((record) => ({
+    ...(typeof record.sequence === 'number' ? { sequence: record.sequence } : {}),
+    kind: typeof record.kind === 'string' ? record.kind : 'unknown',
+    payload: record.payload,
+  }));
+  return verifyRecordedReplay({
+    runId: current.runId,
+    openingState: opening.openingState,
+    finalState: current.bankState,
+    timeline: current.timeline,
+    checkpoints: server.checkpoints.map(({ step, stateHash }) => ({ step, stateHash })),
+    serverAudit: auditRecords,
+    controller: new SimulationController(opening.config),
+  });
 };
 
 export const verifyJoinedAuditBundle = (bundle: JoinedAuditBundle): AuditBundleVerification => {

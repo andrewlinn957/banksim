@@ -37,7 +37,7 @@ const finiteNumber = (value: unknown, fallback = 0) => typeof value === 'number'
 interface BootstrapData {
   overview: RecordValue;
   controls: RecordValue;
-  reports: Array<{ id: string; title: string; available: boolean }>;
+  reports: Array<{ id: string; title: string; available: boolean; queryFields?: string[]; querySchema?: JsonObject }>;
   scenarioBriefing: unknown | null;
 }
 
@@ -151,6 +151,18 @@ export class EvaluationRunner {
     if (Number.isSafeInteger(step)) this.state.simulationStep = step as number;
     if (typeof data.status === 'string') this.state.serverStatus = data.status;
     if (typeof data.monthsRemaining === 'number' || data.monthsRemaining === null) this.state.monthsRemaining = data.monthsRemaining;
+    if (typeof data.controlContractVersion === 'string') {
+      if (this.state.toolContractVersion && this.state.toolContractVersion !== data.controlContractVersion) {
+        throw new Error(`Player tool contract changed during this attempt (${this.state.toolContractVersion} to ${data.controlContractVersion}).`);
+      }
+      this.state.toolContractVersion = data.controlContractVersion;
+    }
+    if (typeof data.reportContractVersion === 'string') {
+      if (this.state.reportContractVersion && this.state.reportContractVersion !== data.reportContractVersion) {
+        throw new Error(`Player report contract changed during this attempt (${this.state.reportContractVersion} to ${data.reportContractVersion}).`);
+      }
+      this.state.reportContractVersion = data.reportContractVersion;
+    }
     this.state.lastOverview = data;
   }
 
@@ -205,6 +217,8 @@ export class EvaluationRunner {
     appendTranscript(this.files, 'client_run_started', {
       runId, clientVersion: CLIENT_VERSION, adapter: this.provider.adapter,
       model: this.loaded.config.provider.model,
+      toolContractVersion: this.state.toolContractVersion ?? null,
+      reportContractVersion: this.state.reportContractVersion ?? null,
       prompt: { text: this.loaded.promptText, bytesBase64: this.loaded.promptBytesBase64, sha256: this.loaded.promptSha256 },
       systemInstructionVersion: SYSTEM_INSTRUCTION_VERSION,
       openingBriefing,
@@ -399,7 +413,9 @@ export class EvaluationRunner {
     this.state.latestControls = controls;
     const reportsResult = await this.read('/reports');
     const reportData = this.requireRead(reportsResult, 'Reports refresh');
-    const reports = Array.isArray(reportData.reports) ? reportData.reports as Array<{ id: string; title: string; available: boolean }> : [];
+    const reports = Array.isArray(reportData.reports)
+      ? reportData.reports as BootstrapData['reports']
+      : [];
     this.state.reportCatalog = reports;
     this.tools = buildPlayerTools(controls as never, { reports });
     saveRunState(this.files, this.state);
@@ -513,9 +529,14 @@ export class EvaluationRunner {
         return this.executeReadTool(toolCallId, name, '/preview', { department });
       }
       case 'get_player_export': return this.executeReadTool(toolCallId, name, '/export');
-      case 'update_decisions': return this.executeMutationTool(call, turn, 'update_decisions', { controls: asRecord(args.controls) });
+      case 'update_decisions': {
+        const payload: RecordValue = {};
+        if (args.controls !== undefined) payload.controls = asRecord(args.controls);
+        if (args.drafts !== undefined) payload.drafts = asRecord(args.drafts);
+        return this.executeMutationTool(call, turn, 'update_decisions', payload);
+      }
       case 'queue_transaction': return this.executeMutationTool(call, turn, 'queue_transaction', args);
-      case 'cancel_transaction': return this.executeMutationTool(call, turn, 'cancel_transaction', { kind: args.kind });
+      case 'cancel_transaction': return this.executeMutationTool(call, turn, 'cancel_transaction', { transaction_id: args.transaction_id });
       case 'set_risk_appetite': return this.executeMutationTool(call, turn, 'set_risk_appetite', { targets: args.targets });
       case 'set_safety_pause': return this.executeMutationTool(call, turn, 'set_safety_pause', { enabled: args.enabled });
       case 'advance_time': return this.executeMutationTool(call, turn, 'advance_time', { months: args.months });

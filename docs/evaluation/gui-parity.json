@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 3,
-  "repositoryRevision": "f42df91d2416a5fa499554d1e771f6c86b3206a3",
-  "auditDate": "2026-11-08",
+  "schemaVersion": 4,
+  "repositoryRevision": "74cf7872d8f39f63549026f8a6a675df9388d51f",
+  "auditDate": "2026-11-10",
   "actions": [
     {
       "id": "policy.deposit.retail_current",
@@ -442,6 +442,7 @@
       },
       "persistent": false,
       "operation": [
+        "update_decisions",
         "queue_transaction",
         "cancel_transaction"
       ],
@@ -454,9 +455,10 @@
         "src/application/playerSession.ts"
       ],
       "label": "Capital markets transaction",
-      "description": "At most one capital or debt issue ticket may be drafted for the next close.",
+      "description": "At most one capital or debt issue ticket may be drafted for the next close. Editing fields leaves a draft only; queue_transaction submits the ticket for the next close.",
       "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
-      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "lifecycle": "Edit a GUI-shaped draft; explicit queue submission validates and clears the draft form; the queued item executes at a valid monthly close; cancellation removes a queued item and does not restore the cleared draft; close clears one-off drafts and queue items."
     },
     {
       "id": "transaction.gilt",
@@ -482,6 +484,7 @@
       },
       "persistent": false,
       "operation": [
+        "update_decisions",
         "queue_transaction",
         "cancel_transaction"
       ],
@@ -494,9 +497,10 @@
         "src/application/playerSession.ts"
       ],
       "label": "Gilt transaction",
-      "description": "Buy gilts at one selected tenor, or sell proportionally across maturities.",
+      "description": "Buy gilts at one selected tenor, or sell proportionally across maturities. Editing fields leaves a draft only; queue_transaction submits the ticket for the next close.",
       "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
-      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "lifecycle": "Edit a GUI-shaped draft; explicit queue submission validates and clears the draft form; the queued item executes at a valid monthly close; cancellation removes a queued item and does not restore the cleared draft; close clears one-off drafts and queue items."
     },
     {
       "id": "transaction.boe_funding",
@@ -516,6 +520,7 @@
       },
       "persistent": false,
       "operation": [
+        "update_decisions",
         "queue_transaction",
         "cancel_transaction"
       ],
@@ -528,9 +533,10 @@
         "src/application/playerSession.ts"
       ],
       "label": "Bank of England funding",
-      "description": "Draw STR or ILTR funding subject to current collateral and funding capacity.",
+      "description": "Draw STR or ILTR funding subject to current collateral and funding capacity. Editing fields leaves a draft only; queue_transaction submits the ticket for the next close.",
       "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
-      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "lifecycle": "Edit a GUI-shaped draft; explicit queue submission validates and clears the draft form; the queued item executes at a valid monthly close; cancellation removes a queued item and does not restore the cleared draft; close clears one-off drafts and queue items."
     },
     {
       "id": "transaction.hedge",
@@ -557,6 +563,7 @@
       "minimum": 0,
       "persistent": false,
       "operation": [
+        "update_decisions",
         "queue_transaction",
         "cancel_transaction"
       ],
@@ -569,9 +576,10 @@
         "src/application/playerSession.ts"
       ],
       "label": "Interest-rate swap",
-      "description": "Enter a swap with a current-market fixed rate and a GUI-permitted maturity.",
+      "description": "Enter a swap with a current-market fixed rate and a GUI-permitted maturity. Editing fields leaves a draft only; queue_transaction submits the ticket for the next close.",
       "defaultSource": "Transaction drafts initialize to none/empty in the opening action form; dynamic quotes and Treasury limits are returned by shared reports and GET /controls.",
-      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close."
+      "validationBehaviour": "TypeBox request validation and shared control/parser validation; rejected commands return structured issues without a session revision or economic close.",
+      "lifecycle": "Edit a GUI-shaped draft; explicit queue submission validates and clears the draft form; the queued item executes at a valid monthly close; cancellation removes a queued item and does not restore the cleared draft; close clears one-off drafts and queue items."
     },
     {
       "id": "time.advance",
@@ -752,9 +760,12 @@
       "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
       "source": [
         "src/presentation/reports/capital.ts",
-        "src/presentation/reports/regulatory.ts"
+        "src/presentation/reports/capitalAssessments.ts",
+        "src/components/CapitalDashboard.tsx",
+        "src/components/Pillar2APanel.tsx",
+        "src/components/CapitalBuffersPanel.tsx"
       ],
-      "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
+      "precision": "Curated rendered display projection from CapitalDashboard, Pillar2APanel and CapitalBuffersPanel; labels, values, chart ticks, requirement segments and hover titles use the GUI display precision. Internal numeric chart/layout helpers are excluded from the player API.",
       "status": "shared-builder-and-player-api"
     },
     {
@@ -815,12 +826,12 @@
         "src/presentation/reports/capitalHistory.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
         "unit",
         "selected",
         "years"
-      ],
-      "status": "shared-builder-and-player-api"
+      ]
     },
     {
       "id": "report.performance",
@@ -832,10 +843,10 @@
         "src/presentation/reports/performance.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
         "periodMonths"
-      ],
-      "status": "shared-builder-and-player-api"
+      ]
     },
     {
       "id": "report.accounts",
@@ -871,11 +882,11 @@
         "src/presentation/reports/loans.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
-        "portfolio"
-      ],
       "note": "All displayed cohort/product details are returned; GUI sorting/filtering changes visible row selection only.",
-      "status": "shared-builder-and-player-api"
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
+        "portfolio"
+      ]
     },
     {
       "id": "report.credit_losses",
@@ -912,11 +923,11 @@
         "src/application/playerSession.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
         "offset",
         "limit"
-      ],
-      "status": "shared-builder-and-player-api"
+      ]
     },
     {
       "id": "report.reconciliations",
@@ -945,6 +956,21 @@
       "status": "shared-builder-and-player-api"
     },
     {
+      "id": "report.three_year_plan",
+      "title": "Three-Year Plan mandate",
+      "gui": "Boardroom / Three-Year Plan",
+      "availability": "three-year-plan",
+      "operation": "GET /api/v1/runs/{runId}/reports/{reportId}",
+      "source": [
+        "src/presentation/reports/threeYearPlan.ts",
+        "src/components/ThreeYearPlanPanel.tsx",
+        "src/engine/threeYearPlan.ts",
+        "src/engine/threeYearPlanMetrics.ts"
+      ],
+      "precision": "Shared formatted values for Board Confidence, score, milestone, review, drivers, current/final progress and FY1–FY3 targets; only available when three-year-plan mode is assigned.",
+      "status": "shared-builder-and-player-api"
+    },
+    {
       "id": "report.help",
       "title": "Help",
       "gui": "Help",
@@ -966,11 +992,11 @@
         "src/presentation/playerPreviews.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
-        "department"
-      ],
       "note": "Returns only fields displayed by the GUI next-close preview.",
-      "status": "shared-builder-and-player-api"
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
+        "department"
+      ]
     },
     {
       "id": "report.player_export",
@@ -994,11 +1020,11 @@
         "src/ui/useRunSession.ts"
       ],
       "precision": "Use the shared presentation builder; preserve GUI labels, units, history and displayed precision.",
-      "query": [
+      "status": "shared-builder-and-player-api",
+      "queryFields": [
         "offset",
         "limit"
-      ],
-      "status": "shared-builder-and-player-api"
+      ]
     },
     {
       "id": "report.quote",
@@ -1056,14 +1082,15 @@
     "treasuryLimits": "src/presentation/treasuryLimits.ts"
   },
   "knownUnresolved": [
-    "The engine-free evaluation client/provider adapter, joined client transcript collection, replay/batch CLI and operator/container workflow are not implemented yet.",
     "The current Pages GUI bundles src/config/scenarios.ts. Treat the current scenario catalogue as public; no server-only private-scenario loader is implemented.",
-    "Loan report sorting and cohort filter state are presentation interactions; the API returns the full report categories and supports portfolio selection, not separate sort/filter parameters.",
-    "The API Past games report is scoped to the assigned run and returns its decision timeline and summary snapshots. The browser may also list other attempts saved in that browser profile.",
-    "Live VPS installation, HTTPS reverse-proxy configuration, backup/restore and production hardening have not been performed.",
-    "Registry parity tests detect missing registered reports/controls, but cannot automatically discover future unregistered UI screens; new player surfaces require a parity review."
+    "Loan and account table sorting/filtering changes visible row selection only; the API returns complete report categories and does not expose separate sort/filter parameters.",
+    "The API Past games report is scoped to the assigned run. The browser may also list other attempts saved in that browser profile.",
+    "Docker image and Compose validation remain unperformed because Docker is unavailable in this workspace.",
+    "VPS installation, HTTPS reverse-proxy configuration, backup restoration and production checks have not been performed.",
+    "A real model-provider smoke run is unverified because no provider credentials or inference budget were authorized.",
+    "Registry checks cover registered controls and reports but cannot discover future unregistered UI surfaces; new player features still require parity review."
   ],
-  "inventoryUpdatedAt": "2026-11-08",
+  "inventoryUpdatedAt": "2026-11-10",
   "specialOperations": [
     {
       "id": "overview",

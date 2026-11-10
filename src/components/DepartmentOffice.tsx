@@ -1,20 +1,24 @@
 import { BankState } from '../domain/bankState';
 import { baseConfig } from '../config/baseConfig';
 import { Department, departmentSummary } from '../game/departments';
-import ActionsPanel, { ActionFormState } from './ActionsPanel';
+import ActionsPanel from './ActionsPanel';
+import type { ActionFormState } from '../application/playerControls';
 import { periodHistory } from '../game/management';
 import { nelsonSiegelYield } from '../engine/ukMarketModel';
 import type { RegulatoryMetric } from './RegMetricsPanel';
 import { buildDepartmentPreview } from '../presentation/playerPreviews';
-import type { PlayerCapitalMarketsQuote } from '../presentation/quotes';
+import type { CapitalMarketsPlanImpact, PlayerCapitalMarketsQuote } from '../presentation/quotes';
 import { buildTreasuryTransactionLimits } from '../presentation/treasuryLimits';
+import type { QueuedPlayerTransactionSummary, PlayerTransactionKind } from '../application/playerTransactions';
 
 interface Props {
  department:Department; state:BankState; history:BankState[]; form:ActionFormState;
  errors:Partial<Record<keyof ActionFormState,string>>; hasErrors:boolean;
  onChange:(form:ActionFormState)=>void;
  onReport:(tab:string,metric?:RegulatoryMetric,origin?:Department)=>void; onHelp:(id:string)=>void; estimate:BankState|null;
- capitalMarketsQuote?:PlayerCapitalMarketsQuote; capitalMarketsPlanImpactText?:string;
+ capitalMarketsQuote?:PlayerCapitalMarketsQuote; capitalMarketsPlanImpact?:CapitalMarketsPlanImpact;
+ queuedTransactions?:QueuedPlayerTransactionSummary[];
+ onQueueTransaction?:(kind:PlayerTransactionKind)=>void; onCancelQueuedTransaction?:(id:number)=>void;
 }
 
 const labels:Record<Department,string>={Customers:'Deposits',Lending:'Lending',Capital:'Finance & Capital',Treasury:'Treasury & Funding'};
@@ -26,7 +30,7 @@ const helpLinks:Record<Department,[string,string]>={
  Capital:['tier2-and-equity','How capital instruments differ'],
 };
 
-export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpactText}:Props) {
+export default function DepartmentOffice({department,state,history,form,errors,hasErrors,onChange,onReport,onHelp,estimate,capitalMarketsQuote,capitalMarketsPlanImpact,queuedTransactions,onQueueTransaction,onCancelQueuedTransaction}:Props) {
  const summary=departmentSummary(department,state,history);
  const period=periodHistory(history,3).at(-1);
  const selectedGiltMaturity = Math.max(.25, Number(form.giltDurationYears) || 5);
@@ -38,7 +42,7 @@ export default function DepartmentOffice({department,state,history,form,errors,h
   <p className="office-status">{summary.status}<small>{period?`${period.label} · ${period.months}/3 months closed`:'Opening position · no months closed'}</small></p>
   <dl className="department-metrics">{summary.metrics.map(m=><div key={m.label}><dt>{m.label}</dt><dd>{m.value}</dd></div>)}</dl>
 
-  <ActionsPanel department={department} bankState={state} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpactText={previewProjection?.capitalMarketsPlanImpactText ?? capitalMarketsPlanImpactText} maxGiltSaleAmount={treasuryLimits.maxGiltSaleAmount} maxBoeFundingAmount={treasuryLimits.maxBoeFundingAmount}/>
+  <ActionsPanel department={department} bankState={state} state={form} onChange={onChange} disabled={state.status.hasFailed} errors={errors} hasValidationErrors={hasErrors} giltQuotedYield={giltQuotedYield} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} maxGiltSaleAmount={treasuryLimits.maxGiltSaleAmount} maxBoeFundingAmount={treasuryLimits.maxBoeFundingAmount} queuedTransactions={queuedTransactions} onQueueTransaction={onQueueTransaction} onCancelQueuedTransaction={onCancelQueuedTransaction}/>
   {previewProjection&&<section className={`decision-forecast ${previewProjection.projectedBreach?'warning':'info'}`} aria-label="Next monthly close preview">
     <div className="forecast-heading"><strong>Next close</strong><span>{previewProjection.projectedBreach?'Projected breach':'No breach projected'}</span></div>
     <dl>{previewProjection.ratios.map((ratio)=><div key={ratio.label}><dt>{ratio.label}</dt><dd>{ratio.before} → <strong>{ratio.after}</strong></dd></div>)}</dl>

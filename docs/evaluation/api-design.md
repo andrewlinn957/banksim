@@ -1,6 +1,6 @@
 # BankSim evaluation API
 
-This document records the implemented Phase D service and the next work needed for a controlled evaluation. The source audit is based on repository revision `f42df91d2416a5fa499554d1e771f6c86b3206a3`; the service is built from the current feature branch. GUI controls and reports are inventoried in [`gui-parity.md`](./gui-parity.md) and [`gui-parity.json`](./gui-parity.json).
+This document describes the current V1 service. GUI controls and reports are inventoried in [`gui-parity.md`](./gui-parity.md) and [`gui-parity.json`](./gui-parity.json); the status document records the exact source baseline and tested implementation revision.
 
 ## Trust boundaries and shared application code
 
@@ -40,8 +40,8 @@ OpenAPI is generated from route schemas and is served at `GET /openapi.json`.
 | `POST /admin/v1/replays` | Admin | Replay the saved accepted timeline with the current matching build and report first hash divergence |
 | `GET /api/v1/runs/:runId/overview` | Player read | Concise overview, status/revision/horizon and the administrator-assigned model/tool-call budgets |
 | `GET /api/v1/runs/:runId/controls` | Player read | Control schemas, current draft values, shared capital-market instrument/pricing/tenor catalogue, Treasury limits, risk targets, pause and time-boundary information |
-| `GET /api/v1/runs/:runId/reports` | Player read | Discover report IDs and availability |
-| `GET /api/v1/runs/:runId/reports/:reportId` | Player read | Shared curated report; bounded history/portfolio queries |
+| `GET /api/v1/runs/:runId/reports` | Player read | Discover report IDs, availability and each report's supported query fields/schema |
+| `GET /api/v1/runs/:runId/reports/:reportId` | Player read | Shared curated report; accepts only that report's bounded query fields |
 | `GET /api/v1/runs/:runId/help/:topicId` | Player read | Shared help topic |
 | `POST /api/v1/runs/:runId/preview` | Player read | GUI-equivalent preview without changing authoritative state or RNG |
 | `POST /api/v1/runs/:runId/commands` | Player write | Validated, revision-checked and idempotent mutation |
@@ -50,9 +50,11 @@ OpenAPI is generated from route schemas and is served at `GET /openapi.json`.
 
 Player operations require the corresponding scope on every endpoint. Player tokens fail on admin routes. Player report and export paths return curated data; they never return full configuration, seed/RNG state, hidden scenario schedules or another run's data.
 
+Report data comes from shared GUI presentation builders. In particular, `report.regulatory.capital` returns the rendered capital cards, position labels, axis labels, composition strings and hover titles at GUI precision; it does not return internal numeric chart/layout helpers. `report.three_year_plan` is available only when that mode was assigned at run creation and returns the same mandate targets, progress, Board Confidence and formal review feedback rendered in the Boardroom.
+
 ## Player command contract
 
-Every mutation includes a unique `commandId` and `expectedRevision`. `update_decisions` accepts only stable standing-policy IDs from the registry. Rates are annual ratios, e.g. `0.024` for 2.4%. Transactions are typed drafts and only execute at a monthly close.
+Every mutation includes a unique `commandId` and `expectedRevision`. `update_decisions` accepts stable standing-policy IDs from the registry under `controls`, and partial GUI-shaped ticket edits under `drafts`. Rates are annual ratios, e.g. `0.024` for 2.4%. Editing a transaction draft does not submit it. `queue_transaction` submits the current draft for one transaction kind and clears the form; only the queued item executes at a monthly close. Cancellation removes the queued item and does not restore the cleared draft.
 
 ```json
 {
@@ -70,14 +72,14 @@ Every mutation includes a unique `commandId` and `expectedRevision`. `update_dec
 
 Supported `type` values and payloads:
 
-- `update_decisions`: `{ "controls": { "<standing-control-id>": number|string } }`.
-- `queue_transaction`: one of the TypeBox transaction variants for `capitalMarkets`, `gilt`, `boeFunding` or `hedge`.
-- `cancel_transaction`: `{ "kind": "capitalMarkets" | "gilt" | "boeFunding" | "hedge" }`.
+- `update_decisions`: `{ "controls": { "<standing-control-id>": number|string } }`, optionally or instead with `drafts`, containing partial GUI-shaped fields grouped as `capitalMarkets`, `gilt`, `boeFunding` or `hedge`.
+- `queue_transaction`: `{ "kind": "capitalMarkets" | "giltTrade" | "boeFunding" | "hedge" }`; submits the validated current draft for that kind and clears that draft form.
+- `cancel_transaction`: `{ "transaction_id": integer }`; removes the currently queued item with that ID. The prior draft is not restored.
 - `set_risk_appetite`: `{ "targets": { "cet1", "leverage", "lcr", "nsfr", "irrbbEveLimit" } | null }`; null restores automatic targets.
 - `set_safety_pause`: `{ "enabled": boolean }`.
 - `advance_time`: `{ "months": integer }`, bounded by the configured per-command maximum and run horizon.
 
-The full request schemas and control descriptions are returned through `/openapi.json` and `/controls`. The client derives capital-market tools from the shared GUI area/instrument catalogue and omits pricing fields or tenors that the selected GUI ticket does not expose. It separates gilt buys from proportional sells, applies current Treasury sale/facility caps, omits cancellation when there is no visible draft, and offers only currently available reports. The API rejects extra properties, raw engine actions, grouped-field bypasses, unknown controls and GUI-unavailable instrument/tenor choices. Shared application validation enforces dynamic limits and GUI semantics. Invalid commands do not advance simulation time. The tool contract version is `banksim-player-tools-v2`.
+The full request schemas and control descriptions are returned through `/openapi.json` and `/controls`. `/reports` returns a runtime query schema for each report; only that report's registered fields are accepted. The client derives capital-market tools from the shared GUI area/instrument catalogue and omits pricing fields or tenors that the selected GUI ticket does not expose. It separates gilt buys from proportional sells, applies current Treasury sale/facility caps, omits cancellation when there is no queued item and offers only currently available reports. The API rejects extra properties, raw engine actions, grouped-field bypasses, unknown controls and GUI-unavailable instrument/tenor choices. Shared application validation enforces dynamic limits and GUI semantics. Invalid commands do not advance simulation time. Tool and report contract versions are `banksim-player-tools-v2` and `banksim-player-reports-v2`.
 
 Successful command responses identify request and command, accepted/rejected result, revision, simulation step, status, stop reason and remaining horizon; successful mutations include a player overview. The overview exposes the run's assigned max model-turn and tool-call budgets so the client can reject a local cap above the owner-set limit. Validation issues are player-safe. A stale revision returns HTTP 409. Invalid semantic values return a structured rejection. Matching command ID/body retries return the originally persisted response and status; changed-body reuse returns `COMMAND_ID_REUSE`.
 
@@ -99,9 +101,10 @@ The version 2 server export includes a manifest, full opening/current session ob
 
 Current server run statuses include active, bank failure, horizon reached, owner stopped and server error. The client separately records provider failure, interruption and local resource-budget exhaustion in its outcome summary. Incomplete server commands/checkpoints remain stored. Run creation uses the current public scenario catalogue only. The Dockerfile, Compose package, environment template and operator/backup/rollback guide are prepared, but Docker is unavailable here, so the image and Compose configuration have not been validated. No VPS, HTTPS proxy, backup restoration or production installation check has been performed.
 
-## Next phases
+## Current completion state
 
-- Phase D is implemented and its HTTP integration suite covers scoped authentication, hidden marker checks, GUI/API session parity, preview isolation, queue/cancel/close, duplicate and stale commands, concurrency, restart recovery, replay hashes and build pinning.
-- Phase E is implemented in [`client.md`](./client.md) and `evaluation-client/`: engine-free package, player-only schemas, OpenAI-compatible adapter, deterministic mock, prompt/effective-input capture, bounded tool loop, resume/reconciliation, batch command and VS Code examples. The installed package completed a one-month mock run against the local API from a clean directory. The player overview includes the budgets assigned at run creation, and the client rejects a local cap above them.
-- Phase F implementation and a compressed sample mock bundle are in the working tree. Focused tests, clean-directory collection/replay smoke and sample verification passed. Container build/Compose validation remains pending because Docker is unavailable.
-- Phase G will complete the evidence matrix and remaining substantive parity, determinism and isolation review. A live provider smoke run remains conditional on authorised credentials and budget.
+Phases A–F are implemented. Phase G has added shared queue/draft behavior, report-specific query schemas, rendered capital dashboard/report parity, and a shared Three-Year Plan Boardroom/API report. Its substantive regression and final packaging checks are recorded in [`implementation-status.md`](./implementation-status.md).
+
+The local service, client, joined export, and deterministic replay have been exercised with the mock provider. The current GUI scenario catalogue remains public because Pages bundles it. The loan table's sorting/filtering affects visible row selection only; the API returns the complete report categories and supports portfolio selection. The API's Past games view is scoped to the assigned run while browser storage can show other local attempts. Registry tests check registered controls/reports but cannot discover an unregistered future UI surface automatically.
+
+Docker image/Compose validation, VPS installation, HTTPS reverse-proxy configuration, backup restoration, and production checks remain unperformed in this workspace. A real-provider smoke run is unverified because no provider credentials or inference budget were authorized. The score function remains the existing versioned scenario scoring; no new overall benchmark reward has been introduced.

@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { Static } from 'typebox';
+import { Compile } from 'typebox/compile';
+import { Value } from 'typebox/value';
 import { baseConfig } from '../src/config/baseConfig';
 import { scenarios } from '../src/config/scenarios';
 import { createDefaultThreeYearPlan } from '../src/config/threeYearPlan';
@@ -22,7 +24,8 @@ import {
   type PlayerSessionState,
 } from '../src/application/playerSession';
 import { cancelPlayerSessionTransaction, queuePlayerSessionTransaction, updatePlayerSessionDecisions } from '../src/application/playerSessionCommands';
-import { buildPendingActionLabels, capitalMarketsInstrumentsForArea, PLAYER_CONTROL_REGISTRY, parseActionFormInputs, riskAppetiteFloorsFor, type ActionFormField } from '../src/application/playerControls';
+import { buildDraftTransactionLabels, capitalMarketsInstrumentsForArea, PLAYER_CONTROL_REGISTRY, parseActionFormInputs, riskAppetiteFloorsFor, type ActionFormField } from '../src/application/playerControls';
+import { summarizeQueuedPlayerTransactions } from '../src/application/playerTransactions';
 import { getCapitalMarketsInstrument } from '../src/capitalMarkets/catalogue';
 import { buildPlayerNextClosePreview } from '../src/application/playerPreview';
 import { buildPlayerReport, findPlayerHelpTopic, playerReportAvailability } from '../src/application/playerReports';
@@ -33,6 +36,7 @@ import { PLAYER_REPORT_REGISTRY } from '../src/presentation/reportRegistry';
 import { SimulationController } from '../src/application/simulationController';
 import { canonicalJson, EvaluationStore, hashBankState, hashJson, type RunManifest, type StoredCommand } from './store';
 import { createServerAuditIntegrity, type ServerAuditExport } from './auditBundle';
+import { verifyRecordedReplay } from './replayVerifier';
 import {
   AdminCreateRunBody,
   ApiErrorResponse,
@@ -44,6 +48,7 @@ import {
   PlayerCommandBody,
   PlayerPreviewBody,
   PlayerReportQuery,
+  playerReportQuerySchemaFor,
   ReplayBody,
   RunIdParams,
   StopRunBody,
@@ -52,7 +57,7 @@ import {
 export const DEFAULT_MAX_ADVANCE_MONTHS = 12;
 export const DEFAULT_MAX_HORIZON_MONTHS = 120;
 export const TOOL_CONTRACT_VERSION = 'banksim-player-tools-v2';
-export const REPORT_CONTRACT_VERSION = 'banksim-player-reports-v1';
+export const REPORT_CONTRACT_VERSION = 'banksim-player-reports-v2';
 
 type CommandBody = Static<typeof PlayerCommandBody>;
 type AuthRecord = { credentialId: string; runId: string; scopes: string[] };
@@ -147,6 +152,13 @@ const controlDefinitions = (session: PlayerSessionState, maxAdvanceMonths: numbe
       available: session.status === 'active' && !session.bankState.status.hasFailed,
     })),
     currentValues: controlValues(session),
+    capitalMarketsDraftArea: session.capitalMarketsDraftArea ?? null,
+    draftTransactions: buildDraftTransactionLabels(session.actionForm),
+    queuedTransactions: summarizeQueuedPlayerTransactions(session.queuedTransactions),
+    validation: (() => {
+      const parsed = parseActionFormInputs(session.actionForm, { capitalMarketsArea: session.capitalMarketsDraftArea ?? undefined });
+      return { valid: !parsed.hasErrors, errors: parsed.errors };
+    })(),
     transactionOptions: {
       capitalMarketsByArea: Object.fromEntries((['Capital', 'Treasury'] as const).map((area) => [
         area,
@@ -222,6 +234,12 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   if (!options.adminToken || options.adminToken.length < 32) throw new Error('BANKSIM_ADMIN_TOKEN must be at least 32 characters');
   const maxAdvanceMonths = options.maxAdvanceMonths ?? DEFAULT_MAX_ADVANCE_MONTHS;
   const maxHorizonMonths = options.maxHorizonMonths ?? DEFAULT_MAX_HORIZON_MONTHS;
+  const maxPageSize = 500;
+  const reportQuerySchemas = new Map(PLAYER_REPORT_REGISTRY.map((report) => [
+    report.id,
+    playerReportQuerySchemaFor(report.queryFields ?? [], maxPageSize),
+  ]));
+  const reportQueryValidators = new Map([...reportQuerySchemas].map(([reportId, schema]) => [reportId, Compile(schema)]));
   const bodyLimitBytes = options.bodyLimitBytes ?? 1_000_000;
   const requestRateLimitMax = options.requestRateLimitMax ?? 120;
   if (!Number.isInteger(maxAdvanceMonths) || maxAdvanceMonths < 1 || maxAdvanceMonths > 12) throw new Error('maxAdvanceMonths must be an integer from 1 to 12');
@@ -232,8 +250,8 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   const buildDigest = options.buildDigest ?? process.env.BANKSIM_BUILD_DIGEST ?? buildInfo.buildDigest;
   const dependencyLockHash = options.dependencyLockHash ?? process.env.BANKSIM_LOCKFILE_HASH ?? buildInfo.lockfileHash;
   const scenarioVersion = options.scenarioVersion ?? process.env.BANKSIM_SCENARIO_VERSION ?? 'public-catalogue-v1';
-  if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash)) {
-    throw new Error('The database contains active runs pinned to another engine release or build digest; stop or finish them before starting this build');
+  if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash, process.version)) {
+    throw new Error('The database contains active runs pinned to another engine release, build digest, dependency lock, or Node runtime; stop or finish them before starting this build');
   }
   const adminTokenHash = hashToken(options.adminToken);
   const authByRequest = new WeakMap<object, AuthRecord>();
@@ -289,7 +307,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   const checkBuild = (runId: string) => {
     const run = options.store.getRun(runId);
     if (!run) throw new ApiProblem(404, 'RUN_NOT_FOUND', 'Run not found');
-    if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash) {
+    if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash || run.manifest.nodeVersion !== process.version) {
       throw new ApiProblem(409, 'INCOMPATIBLE_ENGINE', 'This run is pinned to a different engine release');
     }
     return run;
@@ -308,7 +326,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       const body = request.body as Static<typeof AdminCreateRunBody>;
       if (body.engineVersion !== options.engineVersion) return sendProblem(reply, request.id, 409, 'ENGINE_VERSION_MISMATCH', 'Requested engine release is not served by this process');
       if (body.horizonMonths > maxHorizonMonths) return sendProblem(reply, request.id, 400, 'HORIZON_LIMIT', `Maximum configured horizon is ${maxHorizonMonths} months`);
-      if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash)) return sendProblem(reply, request.id, 409, 'ACTIVE_RUNS_PINNED', 'Complete or terminate active runs before changing the served engine release');
+      if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash, process.version)) return sendProblem(reply, request.id, 409, 'ACTIVE_RUNS_PINNED', 'Complete or terminate active runs before changing the served engine release');
       if (body.scenarioId !== null && !scenarios.some((scenario) => scenario.id === body.scenarioId)) return sendProblem(reply, request.id, 400, 'UNKNOWN_SCENARIO', 'Selected scenario is not available to the GUI');
       const threeYearPlan = body.mode?.threeYearPlan ?? false;
       if (threeYearPlan && body.scenarioId !== null) return sendProblem(reply, request.id, 400, 'MODE_UNAVAILABLE', 'Three-year plan mode can only be selected for a sandbox opening');
@@ -379,6 +397,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
 
     adminApi.get('/runs/:runId/export', { schema: { tags: ['admin'], params: RunIdParams, security: routeSecurity, response: { 401: ApiErrorResponse } } }, async (request, reply) => {
       const runId = getAdminId(request);
+      return withRunLock(runId, () => {
       const run = options.store.getRun(runId);
       if (!run) return sendProblem(reply, request.id, 404, 'RUN_NOT_FOUND', 'Run not found');
       const checkpoints = options.store.listCheckpoints(runId).map((row) => ({
@@ -420,36 +439,33 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
         finalStateHash: hashBankState(finalSession.bankState),
       });
       return { ...payload, integrity } satisfies ServerAuditExport;
+      });
     });
 
     adminApi.post('/replays', { schema: { tags: ['admin'], body: ReplayBody, security: routeSecurity, response: { 401: ApiErrorResponse } } }, async (request, reply) => {
       const { runId } = request.body as Static<typeof ReplayBody>;
-      const run = options.store.getRun(runId);
-      if (!run) return sendProblem(reply, request.id, 404, 'RUN_NOT_FOUND', 'Run not found');
-      if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash) {
-        return sendProblem(reply, request.id, 409, 'INCOMPATIBLE_ENGINE', 'Replay requires the recorded engine release');
-      }
-      const session = decodePlayerSessionState(run.sessionJson);
-      const checkpoints = options.store.listCheckpoints(runId);
-      const expectedByStep = new Map(checkpoints.map((row) => [Number(row.step), String(row.state_hash)]));
-      const controller = new SimulationController(session.config);
-      let state = session.openingState;
-      let firstDivergence: { step: number; expected: string | null; actual: string } | null = null;
-      let matchedSteps = 0;
-      const openingHash = hashBankState(state);
-      if (expectedByStep.get(state.time.step) !== openingHash) firstDivergence = { step: state.time.step, expected: expectedByStep.get(state.time.step) ?? null, actual: openingHash };
-      else matchedSteps += 1;
-      for (const entry of session.timeline) {
-        if (firstDivergence) break;
-        state = cloneBankState(controller.step(state, entry.actions, entry.shocks, runId).nextState);
-        const actual = hashBankState(state);
-        const expected = expectedByStep.get(entry.step) ?? null;
-        if (actual !== expected) firstDivergence = { step: entry.step, expected, actual };
-        else matchedSteps += 1;
-      }
-      const result = { requestId: request.id, runId, replayed: firstDivergence === null, matchedSteps, firstDivergence, finalStateHash: hashBankState(state) };
-      options.store.recordAudit(runId, 'admin_replay', result);
-      return result;
+      return withRunLock(runId, () => {
+        const run = options.store.getRun(runId);
+        if (!run) return sendProblem(reply, request.id, 404, 'RUN_NOT_FOUND', 'Run not found');
+        if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash || run.manifest.nodeVersion !== process.version) {
+          return sendProblem(reply, request.id, 409, 'INCOMPATIBLE_ENGINE', 'Replay requires the recorded engine release and Node runtime');
+        }
+        const session = decodePlayerSessionState(run.sessionJson);
+        const checkpoints = options.store.listCheckpoints(runId).map((row) => ({ step: Number(row.step), stateHash: String(row.state_hash) }));
+        const serverAudit = options.store.listAuditRecords(runId);
+        const replay = verifyRecordedReplay({
+          runId,
+          openingState: session.openingState,
+          finalState: session.bankState,
+          timeline: session.timeline,
+          checkpoints,
+          serverAudit,
+          controller: new SimulationController(session.config),
+        });
+        const result = { requestId: request.id, runId, ...replay };
+        options.store.recordAudit(runId, 'admin_replay', result);
+        return result;
+      });
     });
   }, { prefix: '/admin/v1' });
 
@@ -462,7 +478,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       if (!auth || auth.runId !== runId) return sendAuth(reply, request, 403, 'PLAYER_SCOPE_DENIED', 'Credential is not authorised for this run');
       const run = options.store.getRun(runId);
       if (!run) return sendAuth(reply, request, 404, 'RUN_NOT_FOUND', 'Run not found');
-      if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash) {
+      if (run.engineVersion !== options.engineVersion || run.manifest.buildDigest !== buildDigest || run.manifest.dependencyLockHash !== dependencyLockHash || run.manifest.nodeVersion !== process.version) {
         return sendAuth(reply, request, 409, 'INCOMPATIBLE_ENGINE', 'This run is pinned to a different engine release');
       }
       authByRequest.set(request, auth);
@@ -477,7 +493,11 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       return { run, session: decodePlayerSessionState(run.sessionJson) };
     };
     const recordRead = (runId: string, request: FastifyRequest, response: unknown) => {
-      options.store.appendReadAudit(runId, { requestId: request.id, method: request.method, route: request.routeOptions.url, params: request.params, query: request.query }, response);
+      options.store.appendReadAudit(runId, {
+        requestId: request.id, method: request.method, route: request.routeOptions.url,
+        params: request.params, query: request.query,
+        ...(request.method !== 'GET' ? { body: request.body } : {}),
+      }, response);
     };
 
     playerApi.get('/runs/:runId/overview', { schema: { tags: ['player'], params: RunIdParams, security: routeSecurity } }, async (request) => {
@@ -487,6 +507,8 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       const data = {
         requestId: request.id, runId,
         ...playerOverview(session, new SimulationController(session.config)),
+        controlContractVersion: TOOL_CONTRACT_VERSION,
+        reportContractVersion: REPORT_CONTRACT_VERSION,
         evaluationLimits: run.manifest.evaluationLimits,
       };
       recordRead(runId, request, data);
@@ -497,7 +519,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       requireScope(request, 'player:read');
       const runId = getPlayerId(request);
       const { session } = loadSession(runId);
-      const data = { requestId: request.id, runId, ...sessionStatus(session), ...controlDefinitions(session, maxAdvanceMonths, 500) };
+      const data = { requestId: request.id, runId, ...sessionStatus(session), controlContractVersion: TOOL_CONTRACT_VERSION, ...controlDefinitions(session, maxAdvanceMonths, 500) };
       recordRead(runId, request, data);
       return data;
     });
@@ -506,7 +528,14 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       requireScope(request, 'player:read');
       const runId = getPlayerId(request);
       const { session } = loadSession(runId);
-      const data = { requestId: request.id, runId, reports: playerReportAvailability(session) };
+      const data = {
+        requestId: request.id,
+        runId,
+        reports: playerReportAvailability(session).map((report) => ({
+          ...report,
+          querySchema: reportQuerySchemas.get(report.id),
+        })),
+      };
       recordRead(runId, request, data);
       return data;
     });
@@ -517,9 +546,19 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       const { session } = loadSession(runId);
       const definition = PLAYER_REPORT_REGISTRY.find((report) => report.id === reportId);
       if (!definition) return sendProblem(reply, request.id, 404, 'REPORT_NOT_FOUND', 'Report not found');
+      const querySchema = reportQuerySchemas.get(reportId)!;
+      const queryValidator = reportQueryValidators.get(reportId)!;
+      const normalizedQuery = Value.Convert(querySchema, request.query);
+      if (!queryValidator.Check(normalizedQuery)) {
+        const issues = [...queryValidator.Errors(normalizedQuery)].map((issue) => ({
+          field: issue.instancePath || 'query',
+          message: 'Choose query fields and values listed for this report.',
+        }));
+        return sendProblem(reply, request.id, 400, 'REPORT_QUERY_INVALID', 'Query does not match this report\'s GUI controls', issues);
+      }
       const available = playerReportAvailability(session).find((report) => report.id === reportId)?.available ?? false;
       if (!available) return sendProblem(reply, request.id, 409, 'REPORT_UNAVAILABLE', 'Report is not currently available');
-      const report = buildPlayerReport(session, new SimulationController(session.config), reportId, request.query as Static<typeof PlayerReportQuery>);
+      const report = buildPlayerReport(session, new SimulationController(session.config), reportId, normalizedQuery as Static<typeof PlayerReportQuery>);
       if (!report) return sendProblem(reply, request.id, 404, 'REPORT_NOT_FOUND', 'Report not found');
       const data = { requestId: request.id, runId, revision: session.revision, simulationStep: session.bankState.time.step, ...report };
       recordRead(runId, request, data);
@@ -543,7 +582,14 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       const { session } = loadSession(runId);
       const body = request.body as Static<typeof PlayerPreviewBody>;
       const result = buildPlayerNextClosePreview(session, new SimulationController(session.config), body.department ?? 'Customers');
-      if (result.accepted === false) return sendProblem(reply, request.id, 422, 'INVALID_DRAFT', 'Current decisions cannot be previewed', result.issues);
+      if (result.accepted === false) {
+        const rejected = {
+          requestId: request.id,
+          error: { code: 'INVALID_DRAFT', message: 'Current decisions cannot be previewed', issues: result.issues },
+        };
+        recordRead(runId, request, rejected);
+        return reply.code(422).send(rejected);
+      }
       const data = { requestId: request.id, runId, revision: session.revision, simulationStep: session.bankState.time.step, ...result };
       recordRead(runId, request, data);
       return data;
@@ -702,18 +748,28 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
         let details: Record<string, unknown> = {};
         switch (body.type) {
           case 'update_decisions': {
-            const result = updatePlayerSessionDecisions(session, body.payload.controls);
-            if (result.accepted === true) next = result.session; else issues = result.issues;
+            const result = updatePlayerSessionDecisions(session, body.payload.controls ?? {}, body.payload.drafts ?? {});
+            if (result.accepted === true) {
+              next = result.session;
+              const parsed = parseActionFormInputs(next.actionForm, { capitalMarketsArea: next.capitalMarketsDraftArea ?? undefined });
+              details = { validation: { valid: !parsed.hasErrors, errors: parsed.errors }, draftTransactions: buildDraftTransactionLabels(next.actionForm) };
+            } else issues = result.issues;
             break;
           }
           case 'queue_transaction': {
-            const result = queuePlayerSessionTransaction(session, body.payload);
-            if (result.accepted === true) next = result.session; else issues = result.issues;
+            const result = queuePlayerSessionTransaction(session, body.payload.kind);
+            if (result.accepted === true) {
+              next = result.session;
+              details = { queuedTransactions: summarizeQueuedPlayerTransactions(next.queuedTransactions) };
+            } else issues = result.issues;
             break;
           }
           case 'cancel_transaction': {
-            const result = cancelPlayerSessionTransaction(session, body.payload.kind);
-            if (result.accepted === true) next = result.session; else issues = result.issues;
+            const result = cancelPlayerSessionTransaction(session, body.payload.transaction_id);
+            if (result.accepted === true) {
+              next = result.session;
+              details = { queuedTransactions: summarizeQueuedPlayerTransactions(next.queuedTransactions) };
+            } else issues = result.issues;
             break;
           }
           case 'set_risk_appetite': {

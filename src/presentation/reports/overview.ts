@@ -41,6 +41,7 @@ export const buildBoardroomOverviewData = (
   pendingActions: string[] = [],
   attribution?: StepAttribution | null,
   config?: SimulationConfig,
+  draftTransactions: string[] = [],
 ) => {
   const recorded = history.length ? history : [state];
   const quarter = periodHistory(recorded, 3).at(-1);
@@ -133,6 +134,7 @@ export const buildBoardroomOverviewData = (
     trends,
     latest,
     pendingActions: [...pendingActions],
+    draftTransactions: [...draftTransactions],
     transaction,
   };
 };

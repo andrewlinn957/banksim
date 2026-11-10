@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { prepareScenarioSession } from './scenarioSession';
 import { SimulationController } from './simulationController';
 import { closePlayerSessionMonth, createPlayerSessionState, updatePlayerSessionRiskAppetite, updatePlayerSessionSafetyPause } from './playerSession';
+import { queuePlayerSessionTransaction } from './playerSessionCommands';
 
 const makeSession = () => {
   const prepared = prepareScenarioSession(null);
@@ -11,24 +12,42 @@ const makeSession = () => {
 };
 
 describe('shared player session month close', () => {
-  it('settles one-off drafts once, preserves policies, and records the exact accepted decision', () => {
+  it('settles only queued transactions, preserves policies, and clears drafts at close', () => {
     const { session, controller } = makeSession();
-    session.actionForm = {
+    const withDraft = {
+      ...session,
+      actionForm: {
       ...session.actionForm,
       retailCurrentAccountRate: '2.25%',
       capitalMarketsInstrument: 'cet1',
       capitalMarketsTargetAmount: '100m',
+      },
+      capitalMarketsDraftArea: 'Capital' as const,
     };
+    const closeWithOnlyDraft = closePlayerSessionMonth(withDraft, controller);
+    expect(closeWithOnlyDraft.accepted).toBe(true);
+    if (closeWithOnlyDraft.accepted) {
+      expect(closeWithOnlyDraft.actions.some((action) => action.type === 'launchCapitalMarketsTransaction')).toBe(false);
+      expect(closeWithOnlyDraft.session.actionForm.capitalMarketsInstrument).toBe('none');
+    }
 
-    const result = closePlayerSessionMonth(session, controller);
+    const queued = queuePlayerSessionTransaction(withDraft, 'capitalMarkets');
+    expect(queued.accepted).toBe(true);
+    if (!queued.accepted) return;
+    expect(queued.session.actionForm.capitalMarketsInstrument).toBe('none');
+    expect(queued.session.queuedTransactions).toHaveLength(1);
+
+    const result = closePlayerSessionMonth(queued.session, controller);
     expect(result.accepted).toBe(true);
     if (result.accepted !== true) return;
 
     expect(result.session.bankState.time.step).toBe(session.bankState.time.step + 1);
-    expect(result.session.revision).toBe(session.revision + 1);
+    expect(result.session.revision).toBe(queued.session.revision + 1);
     expect(result.session.actionForm.retailCurrentAccountRate).toBe('2.25%');
     expect(result.session.actionForm.capitalMarketsInstrument).toBe('none');
     expect(result.session.actionForm.capitalMarketsTargetAmount).toBe('');
+    expect(result.actions.some((action) => action.type === 'launchCapitalMarketsTransaction')).toBe(true);
+    expect(result.session.queuedTransactions).toEqual([]);
     expect(result.session.timeline).toHaveLength(1);
     expect(result.session.timeline[0].actions).toEqual(result.actions);
     expect(result.session.snapshots).toHaveLength(2);

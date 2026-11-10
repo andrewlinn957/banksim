@@ -9,7 +9,7 @@ import { PLAYER_REPORT_REGISTRY } from '../presentation/reportRegistry';
 
 const inventory = JSON.parse(readFileSync(new URL('../../docs/evaluation/gui-parity.json', import.meta.url), 'utf8')) as {
   actions: Array<{ id: string; category: string; operation?: string[]; availability: string; defaultSource: string; validationBehaviour: string }>;
-  reports: Array<{ id: string; operation: string; availability: string; status: string }>;
+  reports: Array<{ id: string; operation: string; availability: string; status: string; queryFields?: string[] }>;
 };
 
 describe('documented GUI/API parity inventory', () => {
@@ -26,10 +26,11 @@ describe('documented GUI/API parity inventory', () => {
       expect(action.defaultSource, `${action.id} default source`).toBeTruthy();
       expect(action.validationBehaviour, `${action.id} validation`).toBeTruthy();
     }
-    for (const report of inventory.reports) {
+    for (const [index, report] of inventory.reports.entries()) {
       expect(report.operation, `${report.id} operation`).toContain('/api/v1/runs/{runId}');
       expect(report.availability, `${report.id} availability`).toBeTruthy();
       expect(report.status, `${report.id} status`).toBe('shared-builder-and-player-api');
+      expect(report.queryFields ?? [], `${report.id} query schema`).toEqual(PLAYER_REPORT_REGISTRY[index].queryFields ?? []);
     }
   });
 

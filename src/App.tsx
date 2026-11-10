@@ -17,9 +17,9 @@ import {
 import RiskDashboard from './components/RiskDashboard';
 import type { ActionFormState, StepPreview } from './application/playerControls';
 import type { CapitalMarketsPlanImpact } from './presentation/quotes';
-import { buildPendingActionLabels, parseActionFormInputs } from './application/playerControls';
+import { buildDraftTransactionLabels, parseActionFormInputs } from './application/playerControls';
 import { calculatePlayerNextCloseForecast } from './application/playerPreview';
-import { createActionFormState } from './application/actionFormState';
+import { clearOneOffTransactions, createActionFormState } from './application/actionFormState';
 import { useSimulationClock } from './ui/useSimulationClock';
 import { prepareScenarioSession } from './application/scenarioSession';
 import { useRunSession } from './ui/useRunSession';
@@ -54,6 +54,8 @@ import { capitalReconciliation } from './engine/capitalReconciliation';
 import { creditStageDiagnostics } from './engine/creditStageDiagnostics';
 import { buildPlayerRunExtract } from './application/playerExport';
 import { closePlayerSessionMonth, type PlayerSessionState } from './application/playerSession';
+import { cancelPlayerSessionTransaction, queuePlayerSessionTransaction } from './application/playerSessionCommands';
+import { summarizeQueuedPlayerTransactions, type QueuedPlayerTransaction, type PlayerTransactionKind } from './application/playerTransactions';
 import { monthsForPlayerAdvance } from './application/playerTime';
 import { SEED_SCHEME_VERSION } from './engine/seedScheme';
 
@@ -71,6 +73,9 @@ const App = () => {
   const [stateHistory, setStateHistory] = useState<BankState[]>([initialState]);
   const [eventLog, setEventLog] = useState<SimulationEvent[]>([]);
   const [actionForm, setActionForm] = useState<ActionFormState>(() => createActionFormState(initialState, baseConfig));
+  const [queuedTransactions, setQueuedTransactions] = useState<QueuedPlayerTransaction[]>([]);
+  const [nextTransactionId, setNextTransactionId] = useState(1);
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [capitalMarketsDraftArea, setCapitalMarketsDraftArea] = useState<'Capital' | 'Treasury' | null>(null);
   const parsedActionForm = useMemo(() => parseActionFormInputs(actionForm), [actionForm]);
   const clockTickRef = useRef<() => void>(() => {});
@@ -101,16 +106,45 @@ const App = () => {
   const [activeDepartment, setActiveDepartment] = useState<Department>('Customers');
   const [runPeriod, setRunPeriod] = useState<'month' | 'quarter' | 'year' | 'auto'>('quarter');
   const navigationDepartment: Department | null = activeTab==='Boardroom' ? (isActionsOpen ? activeDepartment : null) : ['Loans','Credit Losses'].includes(activeTab) ? 'Lending' : ['Performance','Accounts','Share Price','Costs'].includes(activeTab) ? 'Capital' : activeTab==='Regulatory' ? reportOriginDepartment : null;
-  const pendingActions = buildPendingActionLabels(actionForm, pendingRiskAppetite);
+  const transactionSummaries = summarizeQueuedPlayerTransactions(queuedTransactions);
+  const pendingActions = [
+    ...transactionSummaries.map((transaction) => transaction.label),
+    pendingRiskAppetite !== undefined ? 'Update internal risk appetite' : null,
+  ].filter((item): item is string => item !== null);
+  const draftTransactions = buildDraftTransactionLabels(actionForm);
   const runSession = useRunSession(controller, initialState);
   const { savedRuns, currentTimeline, currentSnapshots } = runSession;
+  const currentPlayerSession = (): PlayerSessionState => ({
+    runId: browserRunId,
+    revision: sessionRevision,
+    seed: baseConfig.global.initialPortfolioSeed ?? 123456789,
+    seedSchemeVersion: SEED_SCHEME_VERSION,
+    scenarioId: activeScenarioId,
+    config: simConfig,
+    openingState: stateHistory[0],
+    bankState,
+    stateHistory,
+    eventLog,
+    lastAttribution,
+    actionForm,
+    capitalMarketsDraftArea,
+    queuedTransactions,
+    nextTransactionId,
+    pendingRiskAppetite,
+    timeline: currentTimeline,
+    snapshots: currentSnapshots,
+    safetyPause,
+    safetyPauseDisableArmed: false,
+    status: bankState.status.hasFailed ? 'bank_failure' : 'active',
+  });
   const threeYearPlanEnabled = Boolean(bankState.threeYearPlan?.enabled);
   const canToggleThreeYearPlan = activeScenarioId === null && bankState.time.step === stateHistory[0].time.step;
   const setThreeYearPlanMode = (enabled: boolean) => {
     if (!canToggleThreeYearPlan) return;
     const nextConfig: SimulationConfig = { ...simConfig, featureFlags: { ...(simConfig.featureFlags ?? {}), threeYearPlan: enabled } };
     const nextState: BankState = { ...bankState, threeYearPlan: enabled ? createDefaultThreeYearPlan(bankState) : undefined };
-    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setBrowserRunId(createBrowserRunId()); runSession.reset(nextState);
+    setSimConfig(nextConfig); setBankState(nextState); setStateHistory([nextState]); setBrowserRunId(createBrowserRunId());
+    setQueuedTransactions([]); setNextTransactionId(1); setActionForm((current) => clearOneOffTransactions(current)); setSessionRevision(0); runSession.reset(nextState);
   };
 
   const totalEquity = useMemo(
@@ -174,6 +208,7 @@ const App = () => {
     const forecast = calculatePlayerNextCloseForecast({
       actionForm,
       capitalMarketsDraftArea,
+      queuedTransactions,
       pendingRiskAppetite,
       scenarioId: activeScenarioId,
       bankState,
@@ -217,26 +252,7 @@ const App = () => {
   const handleRunNextMonth = (automatic = false) => {
     if (!automatic) clock.stop();
     if (bankState.status.hasFailed) return;
-    const currentSession: PlayerSessionState = {
-      runId: browserRunId,
-      revision: currentTimeline.length,
-      seed: baseConfig.global.initialPortfolioSeed ?? 123456789,
-      seedSchemeVersion: SEED_SCHEME_VERSION,
-      scenarioId: activeScenarioId,
-      config: simConfig,
-      openingState: stateHistory[0],
-      bankState,
-      stateHistory,
-      eventLog,
-      lastAttribution,
-      actionForm,
-      capitalMarketsDraftArea,
-      pendingRiskAppetite,
-      timeline: currentTimeline,
-      snapshots: currentSnapshots,
-      safetyPause,
-      status: bankState.status.hasFailed ? 'bank_failure' : 'active',
-    };
+    const currentSession = currentPlayerSession();
     const close = closePlayerSessionMonth(currentSession, controller);
     if (close.accepted === false) {
       if (close.reason === 'terminal') return;
@@ -259,6 +275,9 @@ const App = () => {
     setPendingRiskAppetite(undefined);
     setActionForm(session.actionForm);
     setCapitalMarketsDraftArea(session.capitalMarketsDraftArea ?? null);
+    setQueuedTransactions(session.queuedTransactions);
+    setNextTransactionId(session.nextTransactionId);
+    setSessionRevision(session.revision);
     setBankState(session.bankState);
     setStateHistory(session.stateHistory);
     setEventLog(session.eventLog);
@@ -266,6 +285,33 @@ const App = () => {
     setHighlightedEventIds([]);
     setSelectedAttributionLine(null);
     runSession.appendStep(session.bankState, actions, shocks);
+  };
+
+  const queueTransaction = (kind: PlayerTransactionKind) => {
+    pauseClock();
+    const result = queuePlayerSessionTransaction(currentPlayerSession(), kind);
+    if (result.accepted === false) {
+      setEventLog((previous) => [...previous, {
+        id: `ui-queue-${Date.now()}`,
+        severity: 'error',
+        message: `Cannot queue transaction: ${result.issues[0]?.message ?? 'Check the transaction draft.'}`,
+        timestamp: Date.now(),
+      }]);
+      return;
+    }
+    setActionForm(result.session.actionForm);
+    setCapitalMarketsDraftArea(result.session.capitalMarketsDraftArea ?? null);
+    setQueuedTransactions(result.session.queuedTransactions);
+    setNextTransactionId(result.session.nextTransactionId);
+    setSessionRevision(result.session.revision);
+  };
+
+  const cancelQueuedTransaction = (id: number) => {
+    pauseClock();
+    const result = cancelPlayerSessionTransaction(currentPlayerSession(), id);
+    if (!result.accepted) return;
+    setQueuedTransactions(result.session.queuedTransactions);
+    setSessionRevision(result.session.revision);
   };
 
   clockTickRef.current = () => handleRunNextMonth(true);
@@ -323,6 +369,9 @@ const App = () => {
     setSimConfig(scenarioConfig);
     setPendingRiskAppetite(undefined);
     setCapitalMarketsDraftArea(null);
+    setQueuedTransactions([]);
+    setNextTransactionId(1);
+    setSessionRevision(0);
     setBankState(scenarioState);
     setStateHistory([scenarioState]);
     setEventLog([]);
@@ -386,9 +435,9 @@ const App = () => {
       <FunctionalReportNavigation activeTab={activeTab} activeDepartment={navigationDepartment} regulatoryMetric={regulatoryMetric} onReport={openReport} onManage={openDepartment}/>
 
 
-      {activeTab === 'Boardroom' && <Boardroom attribution={lastAttribution} pendingActions={pendingActions} state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
-        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();if(next.capitalMarketsInstrument==='none')setCapitalMarketsDraftArea(null);else if(actionForm.capitalMarketsInstrument==='none'&&(activeDepartment==='Capital'||activeDepartment==='Treasury'))setCapitalMarketsDraftArea(activeDepartment);setActionForm(next);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpactText={capitalMarketsPlanImpact?buildCapitalMarketsPlanImpactText(capitalMarketsPlanImpact):undefined}/>
-        {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);}}/></details>}
+      {activeTab === 'Boardroom' && <Boardroom attribution={lastAttribution} pendingActions={pendingActions} draftTransactions={draftTransactions} state={bankState} history={stateHistory} department={isActionsOpen?activeDepartment:null} hasErrors={parsedActionForm.hasErrors} onDepartment={openDepartment} onRisk={()=>openReport('Regulatory')} onClose={()=>setIsActionsOpen(false)} >
+        <DepartmentOffice department={activeDepartment} state={bankState} history={stateHistory} form={actionForm} errors={parsedActionForm.errors} hasErrors={parsedActionForm.hasErrors} onChange={next=>{pauseClock();if(next.capitalMarketsInstrument==='none')setCapitalMarketsDraftArea(null);else if(actionForm.capitalMarketsInstrument==='none'&&(activeDepartment==='Capital'||activeDepartment==='Treasury'))setCapitalMarketsDraftArea(activeDepartment);setActionForm(next);setSessionRevision((revision)=>revision+1);}} onReport={openReport} onHelp={openHelpSection} estimate={preview?.baseline??null} capitalMarketsQuote={capitalMarketsQuote} capitalMarketsPlanImpact={capitalMarketsPlanImpact} queuedTransactions={transactionSummaries} onQueueTransaction={queueTransaction} onCancelQueuedTransaction={cancelQueuedTransaction}/>
+        {activeDepartment==='Capital'&&<details className="department-advanced risk-appetite-disclosure"><summary>Board risk appetite</summary><RiskAppetiteEditor state={bankState} config={simConfig} pending={pendingRiskAppetite} onQueue={t=>{pauseClock();setPendingRiskAppetite(t);setSessionRevision((revision)=>revision+1);}}/></details>}
       </Boardroom>}
       {activeTab === 'Performance' && <PerformanceReport history={stateHistory}/>}
 

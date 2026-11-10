@@ -41,6 +41,20 @@ banksim-eval run ./config.json
 
 The config's `provider.model` is required. The API returns the administrator-assigned model-turn and tool-call budgets in the player overview; local config caps may be lower, but cannot exceed those assigned values. Sampling values and optional provider seed are recorded with each turn. The prompt file is read as UTF-8 without trimming; its exact bytes, base64 and SHA-256 are saved in the local attempt.
 
+## Transaction workflow
+
+The agent can edit the same transaction form fields shown in the GUI. `update_decisions` accepts standing policy changes under `controls` and partial transaction form changes under `drafts`. For example:
+
+```json
+{
+  "drafts": {
+    "gilt": { "direction": "buy", "amountGbp": 1000000, "tenorMonths": 60 }
+  }
+}
+```
+
+Editing a draft does not submit or execute it. `queue_transaction` takes a transaction `kind` such as `giltTrade` and submits the current form draft to the next-close queue. Queueing clears that form draft. A queued item executes only during a valid monthly close. `get_controls` reports current draft values and queued item IDs. `cancel_transaction` removes a queued item by its `transaction_id`; it does not restore the cleared draft, so enter the fields again before resubmitting. The client tool schemas update to match available reports, controls, transaction choices and the current queue. To clear a text amount or price field, send an empty string; choose `none` to clear a transaction selector.
+
 The `mock` adapter uses a deterministic scripted sequence, but still requires an explicit model ID in config. For a local mock run, set `provider.adapter` to `mock`; no model API key is needed. The player token is still required because the mock uses the real player API.
 
 Each attempt is written under `<outputDirectory>/<sanitised-run-id>/`:
@@ -71,7 +85,7 @@ Press `Ctrl+C` to ask the runner to stop at a safe boundary. A command whose HTT
 
 ## Model context policy
 
-`banksim-player-protocol-v1` contains only required tool and protocol instructions. The user's prompt is kept in a separate user message. The client sends the complete accumulated message history and current player tool definitions on each provider turn; it does not summarise or silently truncate context. `resume-gap-note-v1` marks an unmatched server revision and `provider-gap-v1` marks a missing provider response. No scratchpad or hidden reasoning is requested or claimed as captured.
+`banksim-player-protocol-v3` contains only required tool and protocol instructions, including the distinction between editing a form draft, submitting it to the queue, removing a queued item and executing it at a close. The user's prompt is kept in a separate user message. The client sends the complete accumulated message history and current player tool definitions on each provider turn; it does not summarise or silently truncate context. `resume-gap-note-v1` marks an unmatched server revision and `provider-gap-v1` marks a missing provider response. No scratchpad or hidden reasoning is requested or claimed as captured.
 
 ## VS Code
 
@@ -79,6 +93,6 @@ The examples include tasks and launch settings using the same CLI. Set the run c
 
 ## Provider compatibility
 
-`openai-compatible` sends a Chat Completions request to `<baseUrl>/chat/completions`, with `model`, `messages`, `tools`, `tool_choice: "auto"`, and configured `temperature`, `top_p` and `seed` when supplied. It reads the first returned choice, message/tool calls, finish reason, usage, returned model, system fingerprint and service tier when present. Providers differ in support for optional request fields; check the chosen endpoint's documentation. The client does not assume that every compatible endpoint supports every optional field.
+`openai-compatible` sends a Chat Completions request to `<baseUrl>/chat/completions`, with `model`, `messages`, `tools`, `tool_choice: "auto"`, and configured `temperature`, `top_p` and `seed` when supplied. The [OpenAI Chat Completions API reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create) documents these fields. OpenAI currently marks `seed` and the returned `system_fingerprint` as deprecated; the seed is best effort and does not guarantee identical model decisions. Other compatible endpoints may differ, so check the selected provider's documentation.
 
 The transcript records provider-supplied identity and usage as harness provenance. It cannot prove that a client was honest or expose hidden model reasoning.

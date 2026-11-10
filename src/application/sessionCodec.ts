@@ -1,8 +1,11 @@
 import type { BankState } from '../domain/bankState';
 import type { PlayerSessionState } from './playerSession';
+import { isPlayerOneOffTransactionAction, playerTransactionKindForAction } from './playerTransactions';
+import { AssetProductType } from '../domain/enums';
+import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 
 const SESSION_CODEC_ID = 'banksim-player-session';
-export const PLAYER_SESSION_CODEC_VERSION = 1;
+export const PLAYER_SESSION_CODEC_VERSION = 2;
 
 type EncodedNode = ['null']
   | ['undefined']
@@ -191,6 +194,81 @@ const assertSnapshots: (value: unknown) => void = (value) => {
   }
 };
 
+const assertQueuedAction = (action: unknown): void => {
+  if (!isRecord(action) || typeof action.type !== 'string' || !isPlayerOneOffTransactionAction(action as never)) {
+    throw new Error('Invalid queued player transaction action');
+  }
+  const optionalFinite = (key: string) => action[key] === undefined || isFiniteNumber(action[key]);
+  switch (action.type) {
+    case 'buySellAsset':
+      if (action.productType !== AssetProductType.Gilts || !isFiniteNumber(action.amountDelta) || action.amountDelta === 0 ||
+          !optionalFinite('rate') || !optionalFinite('tenorMonths') ||
+          (action.tenorMonths !== undefined && ![24, 60, 120].includes(Number(action.tenorMonths)))) {
+        throw new Error('Invalid queued gilt transaction');
+      }
+      break;
+    case 'launchCapitalMarketsTransaction': {
+      if (!['cet1', 'at1', 'tier2', 'senior'].includes(String(action.instrument)) ||
+          !isFiniteNumber(action.targetAmount) || action.targetAmount <= 0 ||
+          !optionalFinite('maxDiscount') || !optionalFinite('maxSpreadBps') || !optionalFinite('tenorMonths')) {
+        throw new Error('Invalid queued capital-markets transaction');
+      }
+      const definition = getCapitalMarketsInstrument(action.instrument as 'cet1' | 'at1' | 'tier2' | 'senior');
+      if (definition.pricingKind === 'discount') {
+        if (!isFiniteNumber(action.maxDiscount) || action.maxDiscount < 0 || action.maxDiscount > 0.5 || action.maxSpreadBps !== undefined) {
+          throw new Error('Invalid queued equity pricing');
+        }
+      } else if (!isFiniteNumber(action.maxSpreadBps) || action.maxSpreadBps <= 0 || action.maxSpreadBps > 5000 || action.maxDiscount !== undefined) {
+        throw new Error('Invalid queued debt pricing');
+      }
+      if (definition.permittedTenorMonths?.length) {
+        if (!isFiniteNumber(action.tenorMonths) || !definition.permittedTenorMonths.includes(action.tenorMonths)) {
+          throw new Error('Invalid queued capital-markets tenor');
+        }
+      } else if (action.tenorMonths !== undefined) {
+        throw new Error('Unexpected queued capital-markets tenor');
+      }
+      break;
+    }
+    case 'drawBoeFunding':
+      if (!['STR', 'ILTR'].includes(String(action.facility)) || !isFiniteNumber(action.amount) || action.amount <= 0) {
+        throw new Error('Invalid queued central-bank funding transaction');
+      }
+      break;
+    case 'enterHedge':
+      if (!['payFixedReceiveFloat', 'receiveFixedPayFloat'].includes(String(action.direction)) ||
+          !isFiniteNumber(action.notional) || action.notional <= 0 || !isFiniteNumber(action.fixedRate) ||
+          !optionalFinite('maturityMonths') ||
+          (action.maturityMonths !== undefined && ![12, 24, 60].includes(Number(action.maturityMonths)))) {
+        throw new Error('Invalid queued hedge transaction');
+      }
+      break;
+  }
+};
+
+const assertQueuedTransactions: (value: unknown, nextId: unknown) => void = (value, nextId) => {
+  if (!Array.isArray(value) || !Number.isSafeInteger(nextId) || Number(nextId) < 1) {
+    throw new Error('Invalid queued player transactions');
+  }
+  const seenIds = new Set<number>();
+  const seenKinds = new Set<string>();
+  let largestId = 0;
+  for (const entry of value) {
+    if (!isRecord(entry) || !Number.isSafeInteger(entry.id) || Number(entry.id) < 1 || !isRecord(entry.action) ||
+        typeof entry.action.type !== 'string' || !isPlayerOneOffTransactionAction(entry.action as never)) {
+      throw new Error('Invalid queued player transaction');
+    }
+    assertQueuedAction(entry.action);
+    const id = Number(entry.id);
+    const kind = playerTransactionKindForAction(entry.action as never);
+    if (seenIds.has(id) || seenKinds.has(kind)) throw new Error('Duplicate queued transaction ID or kind');
+    seenIds.add(id);
+    seenKinds.add(kind);
+    largestId = Math.max(largestId, id);
+  }
+  if (Number(nextId) <= largestId) throw new Error('Next transaction ID must exceed queued IDs');
+};
+
 const assertBankState: (value: unknown, label: string) => asserts value is BankState = (value, label) => {
   if (!isRecord(value) || !isRecord(value.time) || !(value.time.date instanceof Date) ||
       !Number.isSafeInteger(value.time.step) || !Number.isFinite(value.time.stepLengthMonths) ||
@@ -221,6 +299,7 @@ const assertPlayerSession: (value: unknown) => asserts value is PlayerSessionSta
   }
   assertSimulationConfig(value.config);
   assertActionForm(value.actionForm);
+  assertQueuedTransactions(value.queuedTransactions, value.nextTransactionId);
   assertTimeline(value.timeline);
   assertEventLog(value.eventLog);
   assertSnapshots(value.snapshots);

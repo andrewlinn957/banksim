@@ -4,6 +4,7 @@ import { prepareScenarioSession } from './scenarioSession';
 import { SimulationController } from './simulationController';
 import { closePlayerSessionMonth, createPlayerSessionState, type PlayerSessionState } from './playerSession';
 import { buildActionsFromParsed, parseActionFormInputs } from './playerControls';
+import { queuePlayerSessionTransaction, updatePlayerSessionDecisions } from './playerSessionCommands';
 import { canonicalBankStateHash, canonicalBankStateJson, decodePlayerSessionState, encodePlayerSessionState } from './sessionCodec';
 
 const newSession = (seed: number, runId = 'matched-run') => {
@@ -79,15 +80,20 @@ describe('seeded session determinism', () => {
   it('keeps macro stream advancement independent of player transaction count', () => {
     const noTicket = newSession(13579);
     const withTicket = newSession(13579);
-    withTicket.session.actionForm = {
-      ...withTicket.session.actionForm,
-      giltTradeDirection: 'buy',
-      giltTradeAmount: '100m',
-    };
+    const drafted = updatePlayerSessionDecisions(withTicket.session, {}, {
+      gilt: { direction: 'buy', amountGbp: '100m', tenorMonths: 60 },
+    });
+    expect(drafted.accepted).toBe(true);
+    if (!drafted.accepted) return;
+    const queued = queuePlayerSessionTransaction(drafted.session, 'giltTrade');
+    expect(queued.accepted).toBe(true);
+    if (!queued.accepted) return;
 
     const noTicketClosed = close(noTicket.session, noTicket.controller).bankState.market.macroModel;
-    const withTicketClosed = close(withTicket.session, withTicket.controller).bankState.market.macroModel;
+    const withTicketResult = close(queued.session, withTicket.controller);
+    const withTicketClosed = withTicketResult.bankState.market.macroModel;
     expect(withTicketClosed).toEqual(noTicketClosed);
+    expect(withTicketResult.timeline.at(-1)?.actions.some((action) => action.type === 'buySellAsset')).toBe(true);
   });
 
   it('assigns repeatable event IDs and logical timestamps scoped to a run close', () => {

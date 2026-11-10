@@ -17,16 +17,19 @@ import { buildPerformanceReportData } from '../presentation/reports/performance'
 import { buildReconciliationReportData } from '../presentation/reports/reconciliations';
 import { buildRiskDashboardData } from '../presentation/reports/risk';
 import { buildScenarioProgressReport } from '../presentation/reports/scenario';
+import { buildThreeYearPlanPresentation } from '../presentation/reports/threeYearPlan';
 import { buildSharePriceReportData } from '../presentation/reports/sharePrice';
-import { regulatoryRows } from '../presentation/reports/regulatory';
+import { buildCapitalBuffersPresentation, buildPillar2AAssessmentPresentation } from '../presentation/reports/capitalAssessments';
+import { capitalDashboardData } from '../presentation/reports/capital';
 import { rwaDashboardData } from '../presentation/reports/rwa';
 import { buildLoanPortfolioReportData, EMPTY_LOAN_COHORT_FILTERS, EMPTY_LOAN_SUMMARY_FILTERS, filterLoanCohorts, filterLoanProducts, LOAN_REPORT_PORTFOLIOS, sortLoanCohorts, sortLoanProducts } from '../presentation/reports/loans';
-import { buildPendingActionLabels, parseActionFormInputs } from './playerControls';
+import { buildDraftTransactionLabels, buildPendingActionLabels, parseActionFormInputs } from './playerControls';
 import { buildPlayerRunExtract } from './playerExport';
 import { buildPlayerNextClosePreview } from './playerPreview';
 import type { PlayerSessionState } from './playerSession';
 import type { SimulationController } from './simulationController';
 import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
+import { summarizeQueuedPlayerTransactions } from './playerTransactions';
 
 export interface PlayerReportQuery {
   offset?: number;
@@ -54,7 +57,17 @@ export const buildPlayerReport = (
   const { bankState: state, stateHistory: history, config } = session;
   switch (reportId) {
     case 'report.overview':
-      return { reportId, data: buildBoardroomOverviewData(state, history, buildPendingActionLabels(session.actionForm, session.pendingRiskAppetite), session.lastAttribution, config) };
+      return { reportId, data: buildBoardroomOverviewData(
+        state,
+        history,
+        [
+          ...summarizeQueuedPlayerTransactions(session.queuedTransactions).map((transaction) => transaction.label),
+          session.pendingRiskAppetite !== undefined ? 'Update internal risk appetite' : null,
+        ].filter((item): item is string => item !== null),
+        session.lastAttribution,
+        config,
+        buildDraftTransactionLabels(session.actionForm),
+      ) };
     case 'report.department.customers':
       return { reportId, data: departmentSummary('Customers', state, history) };
     case 'report.department.lending':
@@ -65,8 +78,18 @@ export const buildPlayerReport = (
       return { reportId, data: departmentSummary('Capital', state, history) };
     case 'report.dashboard.risk':
       return { reportId, data: buildRiskDashboardData(state, config, session.lastAttribution) };
-    case 'report.regulatory.capital':
-      return { reportId, data: regulatoryRows(state, config, 'capital') };
+    case 'report.regulatory.capital': {
+      const capitalDashboard = capitalDashboardData(state, config);
+      const pillar2AAssessment = buildPillar2AAssessmentPresentation(state, config);
+      const capitalBuffers = buildCapitalBuffersPresentation(state, config);
+      return { reportId, data: {
+        dashboard: {
+          capitalPosition: capitalDashboard.display,
+          pillar2AAssessment: pillar2AAssessment?.display ?? null,
+          capitalBuffers: capitalBuffers.display,
+        },
+      } };
+    }
     case 'report.regulatory.rwa':
       return { reportId, data: rwaDashboardData(state, config) };
     case 'report.regulatory.leverage':
@@ -138,6 +161,10 @@ export const buildPlayerReport = (
         recommendationTitles: controller.recommend(state).map((recommendation) => recommendation.title),
       }) };
     }
+    case 'report.three_year_plan': {
+      const data = buildThreeYearPlanPresentation(state);
+      return { reportId, data: data ? { available: true, ...data } : { available: false } };
+    }
     case 'report.help':
       return { reportId, data: buildHelpCenterData(state, config) };
     case 'report.preview': {
@@ -167,7 +194,16 @@ export const buildPlayerReport = (
     }
     case 'report.validation': {
       const parsed = parseActionFormInputs(session.actionForm, { capitalMarketsArea: session.capitalMarketsDraftArea ?? undefined });
-      return { reportId, data: { valid: !parsed.hasErrors, errors: parsed.errors, pendingActionLabels: buildPendingActionLabels(session.actionForm, session.pendingRiskAppetite) } };
+      return { reportId, data: {
+        valid: !parsed.hasErrors,
+        errors: parsed.errors,
+        pendingActionLabels: [
+          ...summarizeQueuedPlayerTransactions(session.queuedTransactions).map((transaction) => transaction.label),
+          ...buildPendingActionLabels(session.actionForm, session.pendingRiskAppetite),
+        ],
+        queuedTransactions: summarizeQueuedPlayerTransactions(session.queuedTransactions),
+        draftTransactions: buildDraftTransactionLabels(session.actionForm),
+      } };
     }
     default:
       return undefined;
@@ -179,9 +215,17 @@ export const playerReportAvailability = (session: PlayerSessionState) => PLAYER_
   const available = report.id === 'report.validation' ||
     report.availability === 'always' || report.availability === 'active-run' || report.availability === 'history' ||
     (report.availability === 'scenario' && session.scenarioId !== null) ||
+    (report.availability === 'three-year-plan' && Boolean(session.bankState.threeYearPlan?.enabled)) ||
     (report.id === 'report.quote' && draftValid && session.actionForm.capitalMarketsInstrument !== 'none') ||
     (report.id !== 'report.quote' && report.availability === 'valid-draft' && draftValid);
-  return { id: report.id, title: report.title, guiLocation: report.guiLocation, availability: report.availability, available };
+  return {
+    id: report.id,
+    title: report.title,
+    guiLocation: report.guiLocation,
+    availability: report.availability,
+    queryFields: [...(report.queryFields ?? [])],
+    available,
+  };
 });
 
 export const findPlayerHelpTopic = (session: PlayerSessionState, topicId: string) => getHelpTopic(buildHelpCenterData(session.bankState, session.config), topicId);

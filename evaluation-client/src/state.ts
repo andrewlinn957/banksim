@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { ChatMessage, ClientOutcome, FunctionToolDefinition, ProviderRequest, ProviderResponse, ToolCall } from './types.js';
+import type { ChatMessage, ClientOutcome, FunctionToolDefinition, JsonObject, ProviderRequest, ProviderResponse, ToolCall } from './types.js';
 
 export interface TranscriptGap {
   code: string;
@@ -43,6 +43,8 @@ export interface ClientRunState {
   format: 'banksim-client-run';
   formatVersion: 1;
   clientVersion: string;
+  toolContractVersion?: string;
+  reportContractVersion?: string;
   runId: string;
   startedAt: string;
   updatedAt: string;
@@ -64,7 +66,7 @@ export interface ClientRunState {
   providerModels: string[];
   usageRecords: Array<Record<string, unknown>>;
   latestControls?: Record<string, unknown>;
-  reportCatalog?: Array<{ id: string; title: string; available: boolean }>;
+  reportCatalog?: Array<{ id: string; title: string; available: boolean; queryFields?: string[]; querySchema?: JsonObject }>;
   lastOverview?: Record<string, unknown>;
   pendingProviderRequest?: PendingProviderRequest;
   pendingProviderResponse?: ProviderResponse;
@@ -116,6 +118,8 @@ export const saveRunState = (files: RunFiles, state: ClientRunState): void => {
     format: 'banksim-client-result',
     formatVersion: 1,
     clientVersion: state.clientVersion,
+    toolContractVersion: state.toolContractVersion ?? null,
+    reportContractVersion: state.reportContractVersion ?? null,
     runId: state.runId,
     serverStatus: state.serverStatus,
     simulationStep: state.simulationStep,

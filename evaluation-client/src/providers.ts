@@ -125,10 +125,10 @@ export class DeterministicMockProvider implements ModelProvider {
       : index === 1
         ? {
             role: 'assistant' as const,
-            content: 'I will make one modest policy adjustment, queue a gilt purchase, and advance one month.',
+            content: 'I will make one modest policy adjustment, edit and submit a gilt ticket, then advance one month.',
             tool_calls: [
-              { id: 'mock-policy-1', type: 'function' as const, function: { name: 'update_decisions', arguments: JSON.stringify({ controls: { 'policy.deposit.corporate_rate': 0.025 } }) } },
-              { id: 'mock-gilt-1', type: 'function' as const, function: { name: 'queue_transaction', arguments: JSON.stringify({ kind: 'gilt', direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 }) } },
+              { id: 'mock-policy-1', type: 'function' as const, function: { name: 'update_decisions', arguments: JSON.stringify({ controls: { 'policy.deposit.corporate_rate': 0.025 }, drafts: { gilt: { direction: 'buy', amountGbp: 1_000_000, tenorMonths: 60 } } }) } },
+              { id: 'mock-gilt-1', type: 'function' as const, function: { name: 'queue_transaction', arguments: JSON.stringify({ kind: 'giltTrade' }) } },
               { id: 'mock-advance-1', type: 'function' as const, function: { name: 'advance_time', arguments: JSON.stringify({ months: 1 }) } },
             ],
           }

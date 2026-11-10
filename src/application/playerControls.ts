@@ -6,6 +6,7 @@ import { baseConfig } from '../config/baseConfig';
 import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 import { parseMoneyInput, parseRateInput } from '../utils/parsers';
 import type { CapitalMarketsInstrument } from '../domain/capitalMarkets';
+import type { PlayerOneOffTransactionAction } from './playerTransactions';
 
 /**
  * Values represented by the existing player form. This type lives in the application layer so
@@ -112,14 +113,18 @@ export const capitalMarketsInstrumentsForArea = (area: 'Capital' | 'Treasury'): 
 };
 
 /** Pending transaction and board-policy labels used in the GUI overview and API summary. */
-export const buildPendingActionLabels = (
-  form: ActionFormState,
-  pendingRiskAppetite: PlayerRiskAppetite | null | undefined,
-): string[] => [
+export const buildDraftTransactionLabels = (form: ActionFormState): string[] => [
   form.capitalMarketsInstrument !== 'none' ? `${getCapitalMarketsInstrument(form.capitalMarketsInstrument).label}: ${form.capitalMarketsTargetAmount || 'amount required'}` : null,
   form.giltTradeDirection !== 'none' ? `${form.giltTradeDirection === 'buy' ? 'Buy' : 'Sell'} gilts: ${form.giltTradeAmount || 'amount required'}` : null,
   form.boeFacility !== 'none' ? `${form.boeFacility} drawing: ${form.boeFundingAmount || 'amount required'}` : null,
   form.hedgeDirection !== 'none' ? `${form.hedgeDirection === 'payFixedReceiveFloat' ? 'Pay fixed' : 'Receive fixed'} swap: ${form.hedgeNotional || 'notional required'}` : null,
+].filter((item): item is string => item !== null);
+
+export const buildPendingActionLabels = (
+  form: ActionFormState,
+  pendingRiskAppetite: PlayerRiskAppetite | null | undefined,
+): string[] => [
+  ...buildDraftTransactionLabels(form),
   pendingRiskAppetite !== undefined ? 'Update internal risk appetite' : null,
 ].filter((item): item is string => item !== null);
 
@@ -127,7 +132,32 @@ export const buildPendingActionLabels = (
 export const updateActionFormFields = (
   current: ActionFormState,
   patch: Partial<ActionFormState>
-): ActionFormState => ({ ...current, ...patch });
+): ActionFormState => {
+  const next = { ...current, ...patch };
+
+  // These are the selector side effects of the rendered GUI controls. Keep them
+  // in the shared form update path so the HTTP session and React form behave alike.
+  if (patch.capitalMarketsInstrument !== undefined && patch.capitalMarketsInstrument !== current.capitalMarketsInstrument) {
+    if (patch.capitalMarketsInstrument === 'none') {
+      next.capitalMarketsTargetAmount = '';
+    } else {
+      const definition = getCapitalMarketsInstrument(patch.capitalMarketsInstrument);
+      const permitted = definition.permittedTenorMonths;
+      const requestedTenor = Number(patch.capitalMarketsTenorMonths ?? current.capitalMarketsTenorMonths);
+      if (permitted?.length && !permitted.includes(requestedTenor)) {
+        next.capitalMarketsTenorMonths = String(definition.defaultTenorMonths ?? permitted[0]);
+      }
+    }
+  }
+  if (patch.giltTradeDirection === 'none') next.giltTradeAmount = '';
+  if (patch.boeFacility === 'none') next.boeFundingAmount = '';
+  if (patch.hedgeDirection === 'none') {
+    next.hedgeNotional = '';
+    next.hedgeFixedRate = '';
+  }
+
+  return next;
+};
 
 export type DraftTransactionKind = 'capitalMarkets' | 'gilt' | 'boeFunding' | 'hedge';
 
@@ -353,7 +383,8 @@ export const parseActionFormInputs = (state: ActionFormState, context: PlayerVal
 export const buildActionsFromParsed = (
   parsed: ParsedActionFormInputs,
   formState: ActionFormState,
-  currentState: BankState
+  currentState: BankState,
+  queuedTransactions?: readonly PlayerOneOffTransactionAction[],
 ): PlayerAction[] => {
   const actions: PlayerAction[] = [];
   const values = parsed.values;
@@ -414,7 +445,10 @@ export const buildActionsFromParsed = (
     });
   }
   if (values.mortgageMaxLtv!==undefined && values.mortgageFixedPeriodMonths!==undefined) actions.push({type:'setMortgagePolicy',maxLtv:values.mortgageMaxLtv,fixedPeriodMonths:values.mortgageFixedPeriodMonths});
-  if (formState.giltTradeDirection!=='none' && values.giltTradeAmount!==undefined && values.giltTradeAmount>0) {
+  const queuedGiltTrade = queuedTransactions?.find((action): action is Extract<PlayerOneOffTransactionAction, { type: 'buySellAsset' }> => action.type === 'buySellAsset');
+  if (queuedTransactions !== undefined) {
+    if (queuedGiltTrade) actions.push(queuedGiltTrade);
+  } else if (formState.giltTradeDirection!=='none' && values.giltTradeAmount!==undefined && values.giltTradeAmount>0) {
     actions.push({
       type:'buySellAsset',
       productType:AssetProductType.Gilts,
@@ -422,8 +456,14 @@ export const buildActionsFromParsed = (
       tenorMonths:Math.round(values.giltDurationYears * 12),
     });
   }
-  if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
-  if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
+  const queuedBoeFunding = queuedTransactions?.find((action): action is Extract<PlayerOneOffTransactionAction, { type: 'drawBoeFunding' }> => action.type === 'drawBoeFunding');
+  if (queuedTransactions !== undefined) {
+    if (queuedBoeFunding) actions.push(queuedBoeFunding);
+  } else if (formState.boeFacility!=='none' && values.boeFundingAmount!==undefined && values.boeFundingAmount>0) actions.push({type:'drawBoeFunding',facility:formState.boeFacility,amount:values.boeFundingAmount});
+  const queuedCapitalMarkets = queuedTransactions?.find((action): action is Extract<PlayerOneOffTransactionAction, { type: 'launchCapitalMarketsTransaction' }> => action.type === 'launchCapitalMarketsTransaction');
+  if (queuedTransactions !== undefined) {
+    if (queuedCapitalMarkets) actions.push(queuedCapitalMarkets);
+  } else if (formState.capitalMarketsInstrument !== 'none' && values.capitalMarketsTargetAmount !== undefined && values.capitalMarketsTargetAmount > 0) {
     const definition=getCapitalMarketsInstrument(formState.capitalMarketsInstrument);
     actions.push({
       type: 'launchCapitalMarketsTransaction',
@@ -443,7 +483,10 @@ export const buildActionsFromParsed = (
     dividendPayoutRatio: payoutRatio,
     at1CouponMode: 'auto',
   });
-  if (
+  const queuedHedge = queuedTransactions?.find((action): action is Extract<PlayerOneOffTransactionAction, { type: 'enterHedge' }> => action.type === 'enterHedge');
+  if (queuedTransactions !== undefined) {
+    if (queuedHedge) actions.push(queuedHedge);
+  } else if (
     formState.hedgeDirection !== 'none' &&
     values.hedgeNotional !== undefined &&
     values.hedgeNotional > 0

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type { ReactElement, ReactNode } from 'react';
 import { baseConfig } from '../config/baseConfig';
 import { initialState } from '../config/initialState';
 import { buildPlayerCapitalMarketsQuote } from '../presentation/quotes';
+import { updateActionFormFields } from '../application/playerControls';
 import ActionsPanel, { type ActionFormState } from './ActionsPanel';
 
 const form = (overrides: Partial<ActionFormState> = {}): ActionFormState => ({
@@ -71,6 +73,20 @@ describe('capital-markets transaction ticket', () => {
     expect(markup).toContain('all-in yield');
   });
 
+  it('uses shared form side effects when a rendered GUI selector changes', () => {
+    const state = form({ capitalMarketsTenorMonths: '84', giltTradeDirection: 'buy', giltTradeAmount: '10m' });
+    const markup = renderToStaticMarkup(<ActionsPanel department="Treasury" state={state} onChange={() => {}}/>);
+    expect(markup).toContain('Swap term');
+    expect(markup).toContain('value="senior"');
+
+    const selectedInstrument = updateActionFormFields(state, { capitalMarketsInstrument: 'senior' });
+    expect(selectedInstrument.capitalMarketsInstrument).toBe('senior');
+    expect(selectedInstrument.capitalMarketsTenorMonths).toBe('36');
+    const discardedGilt = updateActionFormFields(state, { giltTradeDirection: 'none' });
+    expect(discardedGilt.giltTradeDirection).toBe('none');
+    expect(discardedGilt.giltTradeAmount).toBe('');
+  });
+
   it('identifies a transaction draft in the other management area', () => {
     const state=form({capitalMarketsInstrument:'senior',capitalMarketsTargetAmount:'100m',capitalMarketsTenorMonths:'84'});
     const markup=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}}/>);
@@ -100,7 +116,7 @@ describe('capital-markets transaction ticket', () => {
     const state=form({capitalMarketsInstrument:'cet1',capitalMarketsTargetAmount:'100m'});
     const quote=buildPlayerCapitalMarketsQuote(initialState,baseConfig,{instrument:'cet1',targetAmount:100e6,maxDiscount:.15});
     const withoutPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote}/>);
-    const withPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote} capitalMarketsPlanImpactText="One-month preview: CET1 13.00% → 14.50% · EPS 8.0p → 7.5p."/>);
+    const withPlan=renderToStaticMarkup(<ActionsPanel department="Capital" state={state} onChange={()=>{}} capitalMarketsQuote={quote} capitalMarketsPlanImpact={{cet1Before:.13,cet1After:.145,epsBefore:.08,epsAfter:.075}}/>);
     expect(withoutPlan).not.toContain('Three-Year Plan impact');
     expect(withPlan).toContain('Three-Year Plan impact');
     expect(withPlan).toContain('13.00% → 14.50%');

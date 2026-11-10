@@ -6,6 +6,7 @@ import type { ActionTimelineEntry, RunSnapshot } from '../domain/runHistory';
 import type { StepAttribution } from '../domain/attribution';
 import type { SimulationEvent } from '../engine/simulation';
 import type { StepExecutionResult } from '../domain/execution';
+import type { QueuedPlayerTransaction } from './playerTransactions';
 import { cloneBankState } from '../engine/clone';
 import { getScenarioStepPayload } from '../config/scenarios';
 import { attentionReason } from '../game/management';
@@ -41,6 +42,8 @@ export interface PlayerSessionState {
   lastAttribution: StepAttribution | null;
   actionForm: ActionFormState;
   capitalMarketsDraftArea?: 'Capital' | 'Treasury' | null;
+  queuedTransactions: QueuedPlayerTransaction[];
+  nextTransactionId: number;
   pendingRiskAppetite?: NonNullable<BankState['behaviour']['riskAppetite']> | null;
   timeline: ActionTimelineEntry[];
   snapshots: RunSnapshot[];
@@ -92,6 +95,8 @@ export const createPlayerSessionState = (args: {
     lastAttribution: null,
     actionForm: { ...args.prepared.actionForm },
     capitalMarketsDraftArea: null,
+    queuedTransactions: [],
+    nextTransactionId: 1,
     timeline: [],
     snapshots: [args.controller.createSnapshot(openingState)],
     safetyPause: args.safetyPause ?? true,
@@ -179,7 +184,12 @@ export const closePlayerSessionMonth = (
     };
   }
 
-  const actions = buildActionsFromParsed(parsed, current.actionForm, current.bankState);
+  const actions = buildActionsFromParsed(
+    parsed,
+    current.actionForm,
+    current.bankState,
+    current.queuedTransactions.map((transaction) => transaction.action),
+  );
   if (current.pendingRiskAppetite !== undefined) {
     actions.push({ type: 'setRiskAppetite', targets: current.pendingRiskAppetite });
   }
@@ -218,6 +228,7 @@ export const closePlayerSessionMonth = (
     lastAttribution: stepped.diagnostics.attribution,
     actionForm: clearOneOffTransactions(current.actionForm),
     capitalMarketsDraftArea: null,
+    queuedTransactions: [],
     pendingRiskAppetite: undefined,
     timeline: nextTimeline,
     snapshots: [...current.snapshots, controller.createSnapshot(nextState)],

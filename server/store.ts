@@ -214,11 +214,12 @@ export class EvaluationStore {
       });
   }
 
-  hasActiveRunsOnOtherBuild(engineVersion: string, buildDigest: string, dependencyLockHash: string): boolean {
+  hasActiveRunsOnOtherBuild(engineVersion: string, buildDigest: string, dependencyLockHash: string, nodeVersion = process.version): boolean {
     const active = this.db.prepare("SELECT engine_version,manifest_json FROM runs WHERE status = 'active'").all() as Array<Record<string, unknown>>;
     return active.some((row) => {
       const manifest = JSON.parse(String(row.manifest_json)) as Partial<RunManifest>;
-      return String(row.engine_version) !== engineVersion || manifest.buildDigest !== buildDigest || manifest.dependencyLockHash !== dependencyLockHash;
+      return String(row.engine_version) !== engineVersion || manifest.buildDigest !== buildDigest ||
+        manifest.dependencyLockHash !== dependencyLockHash || manifest.nodeVersion !== nodeVersion;
     });
   }
 

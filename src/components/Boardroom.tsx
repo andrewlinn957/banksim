@@ -21,6 +21,7 @@ interface Props {
  onClose: () => void;
  children?: ReactNode;
  pendingActions?: string[];
+ draftTransactions?: string[];
  attribution?: StepAttribution | null;
 }
 
@@ -31,8 +32,8 @@ const areas: Array<{department:Department;label:string;artwork:string}> = [
  {department:'Capital',label:'Finance & Capital',artwork:capitalArt},
 ];
 
-export default function Boardroom({state,history,department,hasErrors,onDepartment,onRisk,onClose,children,pendingActions=[],attribution=null}:Props) {
- const report=buildBoardroomOverviewData(state,history,pendingActions,attribution,baseConfig);
+export default function Boardroom({state,history,department,hasErrors,onDepartment,onRisk,onClose,children,pendingActions=[],draftTransactions=[],attribution=null}:Props) {
+ const report=buildBoardroomOverviewData(state,history,pendingActions,attribution,baseConfig,draftTransactions);
  const panel=useRef<HTMLElement|null>(null);
  const departmentButtons=useRef<Partial<Record<Department,HTMLButtonElement>>>({});
  const priorDepartment=useRef<Department|null>(null);
@@ -65,7 +66,7 @@ export default function Boardroom({state,history,department,hasErrors,onDepartme
    </div>
    <div className="home-detail-grid">
     <section className="home-close" aria-label="Latest monthly result"><h2>Latest monthly close</h2>{report.latest?<><p className="home-helper">{report.latest.date} · realised results</p><dl className="home-result-grid">{report.latest.metrics.map((metric)=><div key={metric.label}><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}</dl>{report.latest.drivers.length>0&&<div className="home-drivers"><strong>What moved the bank</strong>{report.latest.drivers.map((driver)=><div key={driver.label}><span>{driver.label}</span><b>{driver.driver}</b><small>{driver.effect}</small></div>)}</div>}<button className="button ghost" onClick={()=>onDepartment('Capital')}>Review performance & accounts →</button></>:<p className="home-helper">No monthly results yet.</p>}</section>
-    <section className="home-transactions" aria-label="Transactions"><h2>Transactions</h2><h3>Next monthly close</h3>{report.pendingActions.length?<ul>{report.pendingActions.map((action,i)=><li key={i}>{action}</li>)}</ul>:<p className="home-helper">No transactions queued.</p>}{report.transaction&&<><h3>Latest capital-market result</h3><p><strong>{report.transaction.instrument}</strong> · {report.transaction.status} · {report.transaction.date}</p><dl className="home-result-grid"><div><dt>Requested</dt><dd>{report.transaction.requested}</dd></div><div><dt>Executed</dt><dd>{report.transaction.executed}</dd></div><div><dt>Fees</dt><dd>{report.transaction.fees}</dd></div><div><dt>Net proceeds</dt><dd>{report.transaction.netProceeds}</dd></div></dl></>}</section>
+    <section className="home-transactions" aria-label="Transactions"><h2>Transactions</h2><h3>Next monthly close</h3>{report.pendingActions.length?<ul>{report.pendingActions.map((action,i)=><li key={i}>{action}</li>)}</ul>:<p className="home-helper">No transactions queued.</p>}{report.draftTransactions.length>0&&<div className="alert warning" role="status"><strong>Drafts are not queued</strong><ul>{report.draftTransactions.map((draft,i)=><li key={i}>{draft}</li>)}</ul><p>They will not run at the next close and will clear when you advance.</p></div>}{report.transaction&&<><h3>Latest capital-market result</h3><p><strong>{report.transaction.instrument}</strong> · {report.transaction.status} · {report.transaction.date}</p><dl className="home-result-grid"><div><dt>Requested</dt><dd>{report.transaction.requested}</dd></div><div><dt>Executed</dt><dd>{report.transaction.executed}</dd></div><div><dt>Fees</dt><dd>{report.transaction.fees}</dd></div><div><dt>Net proceeds</dt><dd>{report.transaction.netProceeds}</dd></div></dl></>}</section>
    </div>
   </section>}
 
