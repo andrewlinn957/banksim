@@ -1,6 +1,6 @@
 # BankSim evaluation operator guide
 
-This guide runs the one VPS evaluation service and the owner-side audit collection tools. It does not perform a production deployment. The current service supports the public scenario catalogue and one server process owning one SQLite database.
+This guide runs the one VPS evaluation service and the owner-side audit collection tools. It does not perform a production deployment. The service supports the public catalogue plus optional server-only private scenarios and one server process owning one SQLite database.
 
 ## Fresh installation
 
@@ -14,7 +14,9 @@ cp banksim.env.example .env
 chmod 600 .env
 ```
 
-Edit `deploy/.env` on the VPS. Set a unique release ID in `BANKSIM_ENGINE_VERSION` and `BANKSIM_IMAGE_TAG`, choose `BANKSIM_PORT`, and replace the admin token with a high-entropy value. Generate the secret with an approved local secret manager or `openssl rand -hex 32`; keep it out of source control, command transcripts and evaluation-client configuration. Keep an encrypted copy in the owner's secret store. The public scenario catalogue version is `public-catalogue-v1`; private scenario loading is not implemented.
+Edit `deploy/.env` on the VPS. Set a unique release ID in `BANKSIM_ENGINE_VERSION` and `BANKSIM_IMAGE_TAG`, choose `BANKSIM_PORT`, and replace the admin token with a high-entropy value. Generate the secret with an approved local secret manager or `openssl rand -hex 32`; keep it out of source control, command transcripts and evaluation-client configuration. Keep an encrypted copy in the owner's secret store. The public catalogue version defaults to `public-catalogue-v1`; when private definitions are mounted, their catalogue hash is recorded in the run manifest.
+
+To use private scenarios, install the owner-controlled JSON file at `deploy/private-scenarios/scenarios.json`, set `BANKSIM_PRIVATE_SCENARIOS_FILE=/private-scenarios/scenarios.json` in `deploy/.env`, and restrict the host file to the owner and service operator. Compose mounts the directory read-only; Git ignores JSON files in that directory. Preserve the source file in the owner's protected configuration and backup system. The file format and validation rules are in [`deploy/private-scenarios/README.md`](../../deploy/private-scenarios/README.md). Use the admin-only `GET /admin/v1/scenarios` route to see IDs and descriptions before creating a run. That route never returns shock parameters.
 
 Start the service:
 
@@ -48,7 +50,7 @@ Run creation is a separate owner operation. Keep the admin token in the owner's 
 }
 ```
 
-Submit the run request and issue a run-scoped credential:
+Submit the run request using a public or private scenario ID and issue a run-scoped credential:
 
 ```sh
 curl --fail --silent --show-error \
@@ -66,7 +68,7 @@ curl --fail --silent --show-error \
 
 The issue response shows the player token once. Store it in the evaluation PC's secret manager under the environment variable configured by `playerTokenEnv` (the example uses `BANKSIM_PLAYER_TOKEN`). The token authorizes only one run and its listed player scopes. Revoke it after the attempt with `DELETE /admin/v1/runs/:runId/credentials/:credentialId`. Never use an admin token as a player token.
 
-The manifest records the engine build digest, dependency lock hash, runtime, public scenario version, seed scheme, start date, horizon, mode, score version and owner-assigned model/tool-call caps. The score is BankSim's existing scenario goal score when the selected scenario defines goals; sandbox runs have no scenario score. The service does not create a new overall benchmark reward. Record any benchmark objective separately from the natural-language prompt.
+The manifest records the engine build digest, dependency lock hash, runtime, scenario catalogue version, hash of the selected scenario definition, seed scheme, start date, horizon, mode, score version and owner-assigned model/tool-call caps. The session retains the selected definition so that a running private scenario remains stable if the mounted file later changes. The player receives only the GUI-equivalent briefing and displayed event-category timeline; full shock parameters remain in the administrator audit data. The score is BankSim's existing scenario goal score when the selected scenario defines goals; sandbox runs have no scenario score. The service does not create a new overall benchmark reward. Record any benchmark objective separately from the natural-language prompt.
 
 ## Run the client and inspect results
 
@@ -131,4 +133,4 @@ Compose rotates container stdout/stderr logs at 20 MB with five files. Export bu
 
 Default API bounds are a 1 MB request body, 120 requests per minute, 12 months per advance, 120 months per run, 500 report rows per page and 120 report rows by default. The administrator also assigns model-turn and tool-call caps. These limits are configuration choices; they are not gameplay rules. The Docker Compose file sets no CPU or memory performance claim. Monitor the selected VPS during representative previews and monthly closes, then set host/container resource limits based on measured use.
 
-This implementation does not include private scenario loading, a dashboard, multi-process SQLite coordination, transcript upload from an untrusted client, a digital signature for audit bundles, or an automated score leaderboard. No real provider call has been run. No VPS install, proxy/TLS, firewall, backup restoration, Docker image build or production deployment has been verified in the owner's environment.
+This implementation does not include a dashboard, multi-process SQLite coordination, transcript upload from an untrusted client, a digital signature for audit bundles, or an automated score leaderboard. No real provider call has been run. No VPS install, proxy/TLS, firewall, backup restoration, Docker image build or production deployment has been verified in the owner's environment.

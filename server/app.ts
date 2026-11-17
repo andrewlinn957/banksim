@@ -10,7 +10,7 @@ import type { Static } from 'typebox';
 import { Compile } from 'typebox/compile';
 import { Value } from 'typebox/value';
 import { baseConfig } from '../src/config/baseConfig';
-import { scenarios } from '../src/config/scenarios';
+import { scenarios, type Scenario } from '../src/config/scenarios';
 import { createDefaultThreeYearPlan } from '../src/config/threeYearPlan';
 import { cloneBankState } from '../src/engine/clone';
 import { canonicalBankStateJson, decodePlayerSessionState, encodePlayerSessionState } from '../src/application/sessionCodec';
@@ -62,6 +62,17 @@ export const REPORT_CONTRACT_VERSION = 'banksim-player-reports-v2';
 type CommandBody = Static<typeof PlayerCommandBody>;
 type AuthRecord = { credentialId: string; runId: string; scopes: string[] };
 
+const AdminScenarioListResponse = Type.Object({
+  scenarioVersion: Type.String(),
+  scenarioCatalogHash: Type.String(),
+  scenarios: Type.Array(Type.Object({
+    id: Type.String(),
+    name: Type.String(),
+    description: Type.String(),
+    source: Type.Union([Type.Literal('public'), Type.Literal('private')]),
+  })),
+});
+
 export interface BankSimServerOptions {
   store: EvaluationStore;
   adminToken: string;
@@ -69,6 +80,8 @@ export interface BankSimServerOptions {
   buildDigest?: string;
   dependencyLockHash?: string;
   scenarioVersion?: string;
+  scenarioDefinitions?: readonly Scenario[];
+  scenarioCatalogHash?: string;
   maxAdvanceMonths?: number;
   maxHorizonMonths?: number;
   bodyLimitBytes?: number;
@@ -204,6 +217,7 @@ const manifestFrom = (session: PlayerSessionState, args: {
   buildDigest: string;
   dependencyLockHash: string;
   scenarioVersion: string;
+  scenarioHash: string;
   mode: { threeYearPlan: boolean };
   evaluationLimits: { maxModelTurns: number; maxToolCalls: number };
 }): RunManifest => ({
@@ -214,6 +228,7 @@ const manifestFrom = (session: PlayerSessionState, args: {
   nodeVersion: process.version,
   scenarioId: session.scenarioId,
   scenarioVersion: args.scenarioVersion,
+  scenarioHash: args.scenarioHash,
   configSnapshot: session.config,
   configHash: hashJson(session.config),
   seed: session.seed,
@@ -234,6 +249,12 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   if (!options.adminToken || options.adminToken.length < 32) throw new Error('BANKSIM_ADMIN_TOKEN must be at least 32 characters');
   const maxAdvanceMonths = options.maxAdvanceMonths ?? DEFAULT_MAX_ADVANCE_MONTHS;
   const maxHorizonMonths = options.maxHorizonMonths ?? DEFAULT_MAX_HORIZON_MONTHS;
+  const scenarioDefinitions = options.scenarioDefinitions ?? scenarios;
+  const scenarioIds = new Set<string>();
+  for (const scenario of scenarioDefinitions) {
+    if (scenarioIds.has(scenario.id)) throw new Error(`Duplicate scenario ID '${scenario.id}' in server registry`);
+    scenarioIds.add(scenario.id);
+  }
   const maxPageSize = 500;
   const reportQuerySchemas = new Map(PLAYER_REPORT_REGISTRY.map((report) => [
     report.id,
@@ -250,6 +271,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   const buildDigest = options.buildDigest ?? process.env.BANKSIM_BUILD_DIGEST ?? buildInfo.buildDigest;
   const dependencyLockHash = options.dependencyLockHash ?? process.env.BANKSIM_LOCKFILE_HASH ?? buildInfo.lockfileHash;
   const scenarioVersion = options.scenarioVersion ?? process.env.BANKSIM_SCENARIO_VERSION ?? 'public-catalogue-v1';
+  const scenarioCatalogHash = options.scenarioCatalogHash ?? hashJson(scenarioDefinitions);
   if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash, process.version)) {
     throw new Error('The database contains active runs pinned to another engine release, build digest, dependency lock, or Node runtime; stop or finish them before starting this build');
   }
@@ -322,12 +344,23 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
       if (!supplied || !tokenEqual(hashToken(supplied), adminTokenHash)) return sendAuth(reply, request, 401, 'ADMIN_AUTH_REQUIRED', 'Administrator authentication required');
     });
 
+    adminApi.get('/scenarios', { schema: { tags: ['admin'], security: routeSecurity, response: { 200: AdminScenarioListResponse, 401: ApiErrorResponse } } }, async () => ({
+      scenarioVersion,
+      scenarioCatalogHash,
+      scenarios: scenarioDefinitions.map((scenario) => ({
+        id: scenario.id,
+        name: scenario.name,
+        description: scenario.description,
+        source: scenarios.some((publicScenario) => publicScenario.id === scenario.id) ? 'public' : 'private',
+      })),
+    }));
+
     adminApi.post('/runs', { schema: { tags: ['admin'], body: AdminCreateRunBody, security: routeSecurity, response: { 201: Type.Unknown(), 400: ApiErrorResponse, 401: ApiErrorResponse, 409: ApiErrorResponse } } }, async (request, reply) => {
       const body = request.body as Static<typeof AdminCreateRunBody>;
       if (body.engineVersion !== options.engineVersion) return sendProblem(reply, request.id, 409, 'ENGINE_VERSION_MISMATCH', 'Requested engine release is not served by this process');
       if (body.horizonMonths > maxHorizonMonths) return sendProblem(reply, request.id, 400, 'HORIZON_LIMIT', `Maximum configured horizon is ${maxHorizonMonths} months`);
       if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash, process.version)) return sendProblem(reply, request.id, 409, 'ACTIVE_RUNS_PINNED', 'Complete or terminate active runs before changing the served engine release');
-      if (body.scenarioId !== null && !scenarios.some((scenario) => scenario.id === body.scenarioId)) return sendProblem(reply, request.id, 400, 'UNKNOWN_SCENARIO', 'Selected scenario is not available to the GUI');
+      if (body.scenarioId !== null && !scenarioDefinitions.some((scenario) => scenario.id === body.scenarioId)) return sendProblem(reply, request.id, 400, 'UNKNOWN_SCENARIO', 'Selected scenario is not available to the administrator');
       const threeYearPlan = body.mode?.threeYearPlan ?? false;
       if (threeYearPlan && body.scenarioId !== null) return sendProblem(reply, request.id, 400, 'MODE_UNAVAILABLE', 'Three-year plan mode can only be selected for a sandbox opening');
       let startDate: Date | undefined;
@@ -335,7 +368,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
         startDate = new Date(body.startDate);
         if (!Number.isFinite(startDate.getTime())) return sendProblem(reply, request.id, 400, 'INVALID_START_DATE', 'Start date must be a valid ISO date');
       }
-      const preparedOriginal = prepareScenarioSession(body.scenarioId, { seed: body.seed, startDate });
+      const preparedOriginal = prepareScenarioSession(body.scenarioId, { seed: body.seed, startDate }, scenarioDefinitions);
       const config = structuredClone(preparedOriginal.config);
       config.featureFlags = { ...(config.featureFlags ?? {}), threeYearPlan };
       const state = cloneBankState(preparedOriginal.state);
@@ -349,7 +382,7 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
         maxModelTurns: body.limits?.maxModelTurns ?? 1000,
         maxToolCalls: body.limits?.maxToolCalls ?? 5000,
       };
-      const manifest = manifestFrom(session, { engineVersion: options.engineVersion, buildDigest, dependencyLockHash, scenarioVersion, mode: { threeYearPlan }, evaluationLimits });
+      const manifest = manifestFrom(session, { engineVersion: options.engineVersion, buildDigest, dependencyLockHash, scenarioVersion, scenarioHash: hashJson(session.scenarioDefinition ?? null), mode: { threeYearPlan }, evaluationLimits });
       options.store.createRun(runId, session, manifest);
       return reply.code(201).send({ requestId: request.id, runId, status: session.status, revision: session.revision, simulationStep: session.bankState.time.step, manifest });
     });

@@ -8,7 +8,7 @@ The React game and HTTP service use shared player control definitions, action pa
 
 The server owns configuration, seed/RNG state, full session checkpoints, credentials and the administrator export. Player routes authenticate a high-entropy bearer token whose hash maps to one run and explicit scopes. A run ID is not a credential. The player contract contains no raw state patch, JavaScript, shell, filesystem, browser, arbitrary network or administrator tool.
 
-The existing Pages app imports `src/config/scenarios.ts`, which is bundled as public browser data. The current catalogue must therefore be treated as public. A server-only private-scenario loader is not implemented.
+The Pages app continues to bundle the public catalogue in `src/config/scenarios.ts`. The server can additionally load owner-mounted private JSON definitions through `BANKSIM_PRIVATE_SCENARIOS_FILE`; those definitions are imported only by `server/main.ts`. The admin-only scenario list returns IDs, names and descriptions. Run creation snapshots the selected definition in the protected session, records its hash in the manifest and uses that snapshot for monthly shocks, previews, reports and replay. Player reports/export use the shared GUI projection and do not return raw future shock parameters. The browser bundle does not import the private loader or mounted data.
 
 ## Runtime, storage and release pinning
 
@@ -31,6 +31,7 @@ OpenAPI is generated from route schemas and is served at `GET /openapi.json`.
 | Method and path | Role | Behaviour |
 |---|---|---|
 | `GET /health` | Public | Minimal readiness status |
+| `GET /admin/v1/scenarios` | Admin | List public/private scenario IDs, names and descriptions; no shock parameters |
 | `POST /admin/v1/runs` | Admin | Create run from scenario, seed, start date, horizon, mode and limits; response includes one run ID and manifest |
 | `GET /admin/v1/runs/:runId` | Admin | Status, revision, provenance and credential metadata |
 | `POST /admin/v1/runs/:runId/credentials` | Admin | Issue a one-run player token; token shown once |
@@ -99,12 +100,12 @@ The admin replay endpoint consumes the saved timeline and checks the bank-state 
 
 The version 2 server export includes a manifest, full opening/current session objects and codecs, checkpoints with session/state hashes, command request/response records and server-side player read/response audit. It is owner-only and excludes raw tokens. `npm run audit:collect` joins it with the local client transcript, state, summary and player export, preserving raw JSONL bytes and marking missing or incomplete client records. `npm run audit:verify` checks hashes and replays recorded decisions without a model, reporting the first divergence. These hashes detect accidental alteration but are not signatures. The client-reported provider identity/transcript is harness provenance, not proof against a malicious client.
 
-Current server run statuses include active, bank failure, horizon reached, owner stopped and server error. The client separately records provider failure, interruption and local resource-budget exhaustion in its outcome summary. Incomplete server commands/checkpoints remain stored. Run creation uses the current public scenario catalogue only. The Dockerfile, Compose package, environment template and operator/backup/rollback guide are prepared, but Docker is unavailable here, so the image and Compose configuration have not been validated. No VPS, HTTPS proxy, backup restoration or production installation check has been performed.
+Current server run statuses include active, bank failure, horizon reached, owner stopped and server error. The client separately records provider failure, interruption and local resource-budget exhaustion in its outcome summary. Incomplete server commands/checkpoints remain stored. Private scenarios are read from a read-only mounted JSON file and pinned per run; startup validation allows config fields present in `baseConfig` and the shipped scenario override examples. Adding a new optional configuration path requires extending the runtime validation shape alongside its engine type. The Dockerfile, Compose package, environment template and operator/backup/rollback guide are prepared, but Docker is unavailable here, so the image and Compose configuration have not been validated. No VPS, HTTPS proxy, backup restoration or production installation check has been performed.
 
 ## Current completion state
 
 Phases A–F are implemented. Phase G has added shared queue/draft behavior, report-specific query schemas, rendered capital dashboard/report parity, and a shared Three-Year Plan Boardroom/API report. Its substantive regression and final packaging checks are recorded in [`implementation-status.md`](./implementation-status.md).
 
-The local service, client, joined export, and deterministic replay have been exercised with the mock provider. The current GUI scenario catalogue remains public because Pages bundles it. The loan table's sorting/filtering affects visible row selection only; the API returns the complete report categories and supports portfolio selection. The API's Past games view is scoped to the assigned run while browser storage can show other local attempts. Registry tests check registered controls/reports but cannot discover an unregistered future UI surface automatically.
+The local service, client, joined export, and deterministic replay have been exercised with the mock provider. The public GUI catalogue remains browser-visible; mounted private definitions are server-only. The loan table's sorting/filtering affects visible row selection only; the API returns the complete report categories and supports portfolio selection. The API's Past games view is scoped to the assigned run while browser storage can show other local attempts. Registry tests check registered controls/reports but cannot discover an unregistered future UI surface automatically.
 
 Docker image/Compose validation, VPS installation, HTTPS reverse-proxy configuration, backup restoration, and production checks remain unperformed in this workspace. A real-provider smoke run is unverified because no provider credentials or inference budget were authorized. The score function remains the existing versioned scenario scoring; no new overall benchmark reward has been introduced.

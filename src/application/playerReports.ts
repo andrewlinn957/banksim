@@ -1,6 +1,6 @@
 import type { Department } from '../game/departments';
 import { departmentSummary } from '../game/departments';
-import { scenarios } from '../config/scenarios';
+import { findScenarioDefinition } from '../config/scenarios';
 import { buildHelpCenterData, getHelpTopic } from '../presentation/help';
 import { buildPlayerCapitalMarketsQuote } from '../presentation/quotes';
 import { PLAYER_REPORT_REGISTRY } from '../presentation/reportRegistry';
@@ -151,7 +151,9 @@ export const buildPlayerReport = (
     case 'report.reconciliations':
       return { reportId, data: buildReconciliationReportData(state) };
     case 'report.scenario': {
-      const scenario = scenarios.find((item) => item.id === session.scenarioId) ?? null;
+      const scenario = session.scenarioDefinition === undefined
+        ? findScenarioDefinition(session.scenarioId)
+        : session.scenarioDefinition;
       return { reportId, data: buildScenarioProgressReport({
         scenario,
         state,

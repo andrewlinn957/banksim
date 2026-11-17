@@ -11,6 +11,7 @@ export interface RunManifest {
   nodeVersion: string;
   scenarioId: string | null;
   scenarioVersion: string;
+  scenarioHash: string;
   configSnapshot: unknown;
   configHash: string;
   seed: number;

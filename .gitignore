@@ -33,3 +33,6 @@ Thumbs.db
 # Evaluation artifacts
 evaluation-client/**/results/
 banksim-evaluation-client-*.tgz
+
+# Private server-side scenario data; keep mounted definitions out of source control.
+deploy/private-scenarios/*.json

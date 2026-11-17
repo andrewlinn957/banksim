@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { encodePlayerSessionState } from '../src/application/sessionCodec';
-import { hashBankState } from './store';
+import { hashBankState, hashJson } from './store';
 import { createBankSimServer, SimulatedProcessInterruption } from './app';
 import { EvaluationStore } from './store';
+import { scenarios, type Scenario } from '../src/config/scenarios';
 import { prepareScenarioSession } from '../src/application/scenarioSession';
 import { createPlayerSessionState, closePlayerSessionMonth } from '../src/application/playerSession';
 import { cancelPlayerSessionTransaction, queuePlayerSessionTransaction, updatePlayerSessionDecisions } from '../src/application/playerSessionCommands';
@@ -24,7 +25,12 @@ interface Fixture {
 
 const fixtures: Fixture[] = [];
 
-const fixture = async (options: { afterAdvanceMonthCommit?: (runId: string, completedMonths: number) => void; dbPath?: string } = {}): Promise<Fixture> => {
+const fixture = async (options: {
+  afterAdvanceMonthCommit?: (runId: string, completedMonths: number) => void;
+  dbPath?: string;
+  scenarioDefinitions?: readonly Scenario[];
+  scenarioCatalogHash?: string;
+} = {}): Promise<Fixture> => {
   const dir = options.dbPath ? dirname(options.dbPath) : mkdtempSync(join(tmpdir(), 'banksim-api-'));
   const dbPath = options.dbPath ?? join(dir, 'evaluation.sqlite3');
   const store = new EvaluationStore(dbPath);
@@ -33,6 +39,8 @@ const fixture = async (options: { afterAdvanceMonthCommit?: (runId: string, comp
     adminToken: ADMIN_TOKEN,
     engineVersion: ENGINE_VERSION,
     logger: false,
+    scenarioDefinitions: options.scenarioDefinitions,
+    scenarioCatalogHash: options.scenarioCatalogHash,
     testHooks: options.afterAdvanceMonthCommit ? { afterAdvanceMonthCommit: options.afterAdvanceMonthCommit } : undefined,
   });
   let closed = false;
@@ -81,6 +89,55 @@ const command = (runId: string, token: string, body: Record<string, unknown>) =>
   fixtures.at(-1)!.app.inject({ method: 'POST', url: `/api/v1/runs/${runId}/commands`, headers: auth(token), payload: body });
 
 describe('persistent BankSim API service', () => {
+  it('loads private scenarios server-side, pins them in sessions and keeps raw definitions out of player responses', async () => {
+    const marker = 876543.210987;
+    const privateScenario: Scenario = {
+      id: 'private-liquidity-review',
+      name: 'Private liquidity review',
+      description: 'Maintain liquidity through a confidential review horizon.',
+      briefing: { openingPressure: 'Funding access is under review.', firstDecision: 'Check liquidity headroom before growth.' },
+      scheduledShocks: [{ stepNumber: 5, shock: { type: 'depositCompetition', retailRateIncrease: marker } }],
+    };
+    const catalogHash = 'private-catalog-hash-for-test';
+    const f = await fixture({
+      scenarioDefinitions: [...scenarios, privateScenario],
+      scenarioCatalogHash: catalogHash,
+    });
+
+    const unauthenticatedList = await f.app.inject({ method: 'GET', url: '/admin/v1/scenarios' });
+    expect(unauthenticatedList.statusCode).toBe(401);
+    const list = await f.app.inject({ method: 'GET', url: '/admin/v1/scenarios', headers: auth() });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().scenarioCatalogHash).toBe(catalogHash);
+    expect(list.json().scenarios).toContainEqual(expect.objectContaining({ id: 'private-liquidity-review', source: 'private' }));
+    expect(list.body).not.toContain(String(marker));
+
+    const created = await f.app.inject({
+      method: 'POST', url: '/admin/v1/runs', headers: auth(),
+      payload: { engineVersion: ENGINE_VERSION, scenarioId: privateScenario.id, seed: 551122, horizonMonths: 12 },
+    });
+    expect(created.statusCode).toBe(201);
+    const run = created.json() as { runId: string; manifest: { scenarioHash: string } };
+    expect(run.manifest.scenarioHash).toBe(hashJson(privateScenario));
+    expect(f.store.getSession(run.runId)?.scenarioDefinition).toEqual(privateScenario);
+    const token = await issuePlayerToken(f.app, run.runId);
+    expect((await f.app.inject({ method: 'GET', url: '/admin/v1/scenarios', headers: auth(token) })).statusCode).toBe(401);
+
+    const scenarioReport = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${run.runId}/reports/report.scenario`, headers: auth(token) });
+    expect(scenarioReport.statusCode).toBe(200);
+    expect(scenarioReport.body).toContain('Deposit repricing');
+    expect(scenarioReport.body).not.toContain(String(marker));
+    const playerExport = await f.app.inject({ method: 'GET', url: `/api/v1/runs/${run.runId}/export`, headers: auth(token) });
+    expect(playerExport.statusCode).toBe(200);
+    expect(playerExport.body).not.toContain(String(marker));
+
+    const adminExport = await f.app.inject({ method: 'GET', url: `/admin/v1/runs/${run.runId}/export`, headers: auth() });
+    expect(adminExport.statusCode).toBe(200);
+    expect(adminExport.json().openingSession.scenarioDefinition.scheduledShocks[0].shock.retailRateIncrease).toBe(marker);
+    const openapi = await f.app.inject({ method: 'GET', url: '/openapi.json' });
+    expect(openapi.json().paths['/admin/v1/scenarios']).toBeDefined();
+  });
+
   it('exposes Three-Year Plan information only for a run assigned that mode', async () => {
     const f = await fixture();
     const plainRun = await createRun(f.app);

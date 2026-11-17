@@ -386,12 +386,19 @@ export const scenarios: Scenario[] = [
   },
 ];
 
+/** Resolve a scenario from the caller's catalogue; the browser defaults to its public catalogue. */
+export const findScenarioDefinition = (
+  scenarioId: string | null | undefined,
+  definitions: readonly Scenario[] = scenarios,
+): Scenario | null => definitions.find((scenario) => scenario.id === scenarioId) ?? null;
+
 // Helpers to use scenarios externally
 export const applyScenarioConfig = (
   base: SimulationConfig,
-  scenarioId: string | null | undefined
+  scenarioId: string | null | undefined,
+  definitions: readonly Scenario[] = scenarios,
 ): SimulationConfig => {
-  const scenario = scenarios.find((s) => s.id === scenarioId);
+  const scenario = findScenarioDefinition(scenarioId, definitions);
   if (!scenario?.configOverrides) return base;
 
   const mergeRecord = <T>(baseValue: T, overrideValue?: DeepPartial<T>): T => {
@@ -421,8 +428,9 @@ export const getScenarioInitialState = (
   scenarioId: string | null | undefined,
   config: SimulationConfig = baseConfig,
   options: { seed?: number; startDate?: Date | string } = {},
+  definitions: readonly Scenario[] = scenarios,
 ): BankState => {
-  const scenario = scenarios.find((s) => s.id === scenarioId);
+  const scenario = findScenarioDefinition(scenarioId, definitions);
   const seed = options.seed ?? config.global.initialPortfolioSeed ?? 123456789;
   const openingState = createSeededInitialState({ seed, config, startDate: options.startDate });
   return applyInitialOverride(scenario?.initialStateOverride, config, openingState, seed);
@@ -483,9 +491,14 @@ export const getScenarioStepPayload = (args: {
   stepNumber: number;
   state?: BankState;
   actions?: PlayerAction[];
+  /** An explicit definition keeps server sessions independent of later catalogue changes. */
+  scenario?: Scenario | null;
+  definitions?: readonly Scenario[];
 }): ScenarioStepPayload => {
   const { scenarioId, stepNumber, state, actions } = args;
-  const scenario = scenarios.find((s) => s.id === scenarioId);
+  const scenario = args.scenario !== undefined
+    ? args.scenario
+    : findScenarioDefinition(scenarioId, args.definitions);
   if (!scenario) return { shocks: [], milestones: [] };
 
   const scheduled = scenario.scheduledShocks.filter((s) => s.stepNumber === stepNumber).map((s) => s.shock);

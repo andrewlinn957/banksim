@@ -1,6 +1,7 @@
 # BankSim evaluation implementation status
 
-Updated: 10 November 2026
+Updated: 17 November 2026
+Phase G follow-up base revision: `0252a63870fb09864649d840ca21aebe3b96842b`
 Branch: `feature/evaluation-functionality`
 Audit baseline: `main` revision `2e51380cd11e0f95a4d5143d42dfcb08cbca6729`
 Evaluation merge: local revision `74cf7872d8f39f63549026f8a6a675df9388d51f`; GitHub branch contains the same tree at merge checkpoint `cf54a316f336bc655eb69debaabe2ef8821cad46`.
@@ -15,7 +16,7 @@ Evaluation merge: local revision `74cf7872d8f39f63549026f8a6a675df9388d51f`; Git
 | D — Durable API service | Implemented and locally verified | Versioned player/admin routes, scoped hashed bearer credentials, SQLite persistence, run serialization, command idempotency/revision checks, resume and replay verification have HTTP tests. Single-process service operation remains the supported deployment shape. |
 | E — Standalone evaluation client | Complete for the controlled client | The client builds separately from engine/server code, has an OpenAI-compatible tool adapter and deterministic mock, bounded execution, prompt/tool logging, resume reconciliation and VS Code task examples. A clean-directory smoke run succeeded without a BankSim checkout or admin credential. |
 | F — Exports and operator workflow | Implemented; fresh container install not verified | Joined server/client audit bundles, integrity verification, replay, sample bundle, operator docs, container and Compose artifacts are present. Docker is unavailable in this environment, so image build and fresh Compose installation remain unverified. |
-| G — Final parity and end-to-end review | Substantive local review complete; external checks remain | Queue semantics, shared control choices, report query schemas, capital display parity and mode-gated Three-Year Plan parity were reviewed and tested. The full browser suite could not launch because the configured Playwright Chromium executable is absent. VPS deployment and a real-provider inference run were not performed. See unresolved limits below. |
+| G — Final parity and end-to-end review | Substantive local review complete; external checks remain | Queue semantics, shared control choices, report query schemas, capital display parity and mode-gated Three-Year Plan parity were reviewed and tested. A follow-up added server-only private scenario loading, per-session scenario snapshots, an admin catalogue route and privacy/restart checks. The full browser suite could not reach assertions in this environment. VPS deployment and a real-provider inference run were not performed. See unresolved limits below. |
 
 ## Work completed in the Phase G review
 
@@ -26,6 +27,9 @@ Evaluation merge: local revision `74cf7872d8f39f63549026f8a6a675df9388d51f`; Git
 - Added the Boardroom's Three-Year Plan display as a mode-gated player report using the same display builder as the rendered React panel.
 - Moved capital dashboard display formatting into a shared builder used by React and the API, preserving GUI-visible precision, labels, hover text and annotations while excluding internal chart geometry values.
 - Updated parity, API and client documentation, and regenerated the one-month mock-provider bundle using the current session codec and protocol versions.
+- Added an optional JSON scenario mount read only by the server. The admin can list public/private scenario IDs and descriptions; run creation pins a scenario-definition hash and stores the full selected definition in the protected session for resume, preview, close and replay.
+- Kept the browser catalogue public and unchanged. Player scenario reports and export use the existing shared projection; an integration test confirms a private shock value appears in admin audit data but not player responses.
+- Added loader validation for IDs, supported override paths, shock types, triggers, product types, currencies, maturity buckets, amounts and encumbrance; a codec/resume test verifies a private scheduled shock produces the same close after restore.
 
 ## Verification performed
 
@@ -34,6 +38,7 @@ All commands below ran in the repository on 10 November 2026 unless noted.
 | Command/check | Result |
 |---|---|
 | `npm run typecheck` | Passed: browser and server TypeScript checks. |
+| Runtime used for checks | Node `v24.22.1`, matching the repository and container pin. |
 | `npm run test:fast` | Passed: 143 test files, 470 tests. |
 | `npm run test:regression` | Passed: 3 files, 8 regression tests. |
 | `npm run build` | Passed. Vite reports the existing large main-chunk warning; generated JS is approximately 858 kB. |
@@ -44,7 +49,7 @@ All commands below ran in the repository on 10 November 2026 unless noted.
 | `npm run audit:verify -- docs/evaluation/examples/mock-one-month.bundle.json.gz` | Passed: bundle integrity verified, 40 transcript records, two state checkpoints, two replayed steps and no divergence. |
 | `git diff --check` | Passed. |
 | Focused rendered GUI/report and HTTP parity suites | Passed, including action choice parity, capital report rendering, Three-Year Plan states, queue lifecycle, report query availability and seeded GUI/API state matching. |
-| `npm run test:browser` | Could not run: all 18 cases failed before assertions because Playwright's configured `chromium_headless_shell-1243` binary is absent. Installing it with `npx playwright install chromium` also failed: the CDN repeatedly returned an invalid empty/corrupt archive. This is an environment setup failure, not a passing browser check. |
+| `npm run test:browser` | Could not reach assertions. The configured Playwright browser download returned invalid empty archives; system Chromium also failed before tests because the process-singleton socket and crashpad operations are blocked in this environment. This is an environment setup failure, not a passing browser check. |
 | Docker image/Compose checks | Not run: Docker executable unavailable. |
 | VPS/reverse-proxy/backup-restore checks | Not run: no VPS access or deployment configuration was provided. |
 | Real model-provider smoke test | Not run: provider credentials and an inference budget were not supplied. The mock-provider path is verified. |
@@ -56,13 +61,28 @@ The Vite bundle-size warning is recorded for follow-up; it did not fail the buil
 1. **External installation checks:** build and start the container with Docker, perform a fresh Compose install and restore drill, and verify HTTPS, private admin access, persistent volume permissions, log rotation and recovery on the owner's VPS. Required owner inputs are the VPS's existing reverse-proxy/network details, domain or private access route, and the chosen secret-delivery method. No production change is authorized by this implementation work.
 2. **Browser automation:** install the Playwright browser version pinned by the repository and rerun `npm run test:browser`. Rendered component parity tests pass, but the configured full browser suite has not executed in this environment.
 3. **Provider verification:** confirm the owner's selected provider endpoint/model supports the adapter's tool-call fields, then run a budget-authorized real-provider smoke test. Provider-specific behavior remains unverified.
-4. **Scenario privacy:** the current GitHub Pages application imports the public scenario catalogue. The current catalogue is therefore public browser data; private future scenario definitions require moving them to server-only configuration before they are treated as confidential.
+4. **Private scenario configuration:** the Vite bundle continues to contain the public catalogue; mounted private definitions are server-only and per-run snapshots are covered by privacy and replay tests. Config overrides are runtime-validated against `baseConfig` plus shipped scenario override examples. Adding a new optional configuration path requires extending the validation shape alongside the engine type. The owner still needs to install and protect the actual private scenario file on the VPS.
 5. **Presentation coverage:** API reports expose all GUI-visible loan portfolio rows, while GUI table sorting/filtering remains a presentation interaction without corresponding query operations. Browser-local Past games also has a broader local-browser history view; the remote API intentionally returns only the assigned run's player-accessible history. These limits are described in [the parity inventory](./gui-parity.md).
 6. **Ongoing parity process:** the registry coverage test verifies registered controls and reports; it cannot discover a future React screen that has not been registered. New gameplay or information surfaces must receive a parity inventory row and a shared-builder/GUI consumption review.
 7. **Evidence boundary:** the server records API interactions and authoritative state. Model identity, prompts, transcript, usage and latency submitted by the local harness are provenance from that client, not cryptographic proof against a malicious harness. The system records available data and transcript gaps without inventing missing material.
 
 No benchmark-wide reward has been added. Existing scenario scoring remains versioned as `banksim-scenario-score-v1`; the owner's benchmark objectives remain a separate decision.
 
+## Verification added on 17 November 2026
+
+| Command/check | Result |
+|---|---|
+| `npm run typecheck` | Passed: browser and server TypeScript checks. |
+| `npm run test:fast` | Passed: 144 files, 474 tests. |
+| `npm run test:regression` | Passed: 3 files, 8 tests. |
+| Focused private-scenario/API/session-codec tests | Passed: 3 files, 17 tests. |
+| `npm run build` | Passed; existing large-chunk warning remains. |
+| `npm run server:build` | Passed. |
+| `npm run test:client:smoke` | Passed from a clean directory; mock reached the one-month horizon, joined export verified, replay matched, and lost response recovered once. |
+| `npm run audit:verify -- docs/evaluation/examples/mock-one-month.bundle.json.gz` | Passed: integrity and replay verified, 40 transcript records, no divergence. |
+| Private marker scan `rg -F '876543.210987' dist/assets` | No matches in Vite browser assets. |
+| `git diff --check` | Passed. |
+
 ## Next concrete task
 
-Run the browser suite in an environment that can download the pinned Playwright browser, then perform the container/Compose checks on a Docker-capable machine. After those local checks, collect the owner's VPS and provider details to schedule explicitly authorized external smoke checks. Until then, treat Phase G as locally reviewed with deployment and external-provider gates open, not as production-ready.
+Run the browser suite in an environment that can download and launch the pinned Playwright browser, then perform the container/Compose checks on a Docker-capable machine. After those local checks, collect the owner's VPS and provider details to schedule explicitly authorized external smoke checks. Until then, treat Phase G as locally reviewed with deployment and external-provider gates open, not as production-ready.

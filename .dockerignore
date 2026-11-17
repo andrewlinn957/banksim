@@ -9,3 +9,5 @@ evaluation-client
 *.log
 .env
 .env.*
+/deploy/private-scenarios/*.json
+.env.*

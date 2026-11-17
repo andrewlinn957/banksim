@@ -11,7 +11,7 @@ export type PlayerForecastResult =
   | { accepted: true; baseline: import('../domain/bankState').BankState; stressed: import('../domain/bankState').BankState; breachProbability: number; pathCount: number; deltas: { cet1Ratio: number; lcr: number; nsfr: number; nim: number } };
 
 export type PlayerForecastSession = Pick<PlayerSessionState,
-  'actionForm' | 'capitalMarketsDraftArea' | 'queuedTransactions' | 'pendingRiskAppetite' | 'scenarioId' | 'bankState' | 'stateHistory'>;
+  'actionForm' | 'capitalMarketsDraftArea' | 'queuedTransactions' | 'pendingRiskAppetite' | 'scenarioId' | 'scenarioDefinition' | 'bankState' | 'stateHistory'>;
 
 /** Shared GUI/API forecast calculation; the HTTP boundary must project before serialization. */
 export const calculatePlayerNextCloseForecast = (
@@ -38,6 +38,7 @@ export const calculatePlayerNextCloseForecast = (
   if (session.pendingRiskAppetite !== undefined) actions.push({ type: 'setRiskAppetite', targets: session.pendingRiskAppetite });
   const scenario = getScenarioStepPayload({
     scenarioId: session.scenarioId,
+    scenario: session.scenarioDefinition,
     stepNumber: session.bankState.time.step,
     state: session.bankState,
     actions,

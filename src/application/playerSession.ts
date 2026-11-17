@@ -9,6 +9,7 @@ import type { StepExecutionResult } from '../domain/execution';
 import type { QueuedPlayerTransaction } from './playerTransactions';
 import { cloneBankState } from '../engine/clone';
 import { getScenarioStepPayload } from '../config/scenarios';
+import type { Scenario } from '../config/scenarios';
 import { attentionReason } from '../game/management';
 import { clearOneOffTransactions } from './actionFormState';
 import { applySafetyPauseToggle } from './playerTime';
@@ -34,6 +35,8 @@ export interface PlayerSessionState {
   seed: number;
   seedSchemeVersion: string;
   scenarioId: string | null;
+  /** Immutable scenario snapshot for private-run resume, reports, preview and audit. */
+  scenarioDefinition?: Scenario | null;
   config: SimulationConfig;
   openingState: BankState;
   bankState: BankState;
@@ -87,6 +90,7 @@ export const createPlayerSessionState = (args: {
     seed: args.prepared.seed,
     seedSchemeVersion: args.prepared.seedSchemeVersion ?? SEED_SCHEME_VERSION,
     scenarioId: args.scenarioId,
+    scenarioDefinition: args.prepared.scenarioDefinition ? structuredClone(args.prepared.scenarioDefinition) : null,
     config: args.prepared.config,
     openingState,
     bankState: cloneBankState(openingState),
@@ -195,6 +199,7 @@ export const closePlayerSessionMonth = (
   }
   const scenarioStep = getScenarioStepPayload({
     scenarioId: current.scenarioId,
+    scenario: current.scenarioDefinition,
     stepNumber: current.bankState.time.step,
     state: current.bankState,
     actions,

@@ -5,7 +5,7 @@ import { AssetProductType } from '../domain/enums';
 import { getCapitalMarketsInstrument } from '../capitalMarkets/catalogue';
 
 const SESSION_CODEC_ID = 'banksim-player-session';
-export const PLAYER_SESSION_CODEC_VERSION = 2;
+export const PLAYER_SESSION_CODEC_VERSION = 3;
 
 type EncodedNode = ['null']
   | ['undefined']
@@ -111,6 +111,44 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date);
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const assertScenarioJson: (value: unknown, depth?: number) => void = (value, depth = 0) => {
+  if (depth > 128) throw new Error('Scenario definition exceeds the supported nesting depth');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('Scenario definition contains a non-finite number');
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => assertScenarioJson(entry, depth + 1));
+    return;
+  }
+  if (!isRecord(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error('Scenario definition contains a non-JSON value');
+  }
+  Object.values(value).forEach((entry) => assertScenarioJson(entry, depth + 1));
+};
+
+const assertScenarioDefinition = (value: unknown): void => {
+  if (value === null) return;
+  if (!isRecord(value) || typeof value.id !== 'string' || value.id.length === 0 ||
+      typeof value.name !== 'string' || typeof value.description !== 'string' ||
+      !Array.isArray(value.scheduledShocks)) {
+    throw new Error('Invalid scenario definition in player session');
+  }
+  assertScenarioJson(value);
+  for (const entry of value.scheduledShocks) {
+    if (!isRecord(entry) || !Number.isSafeInteger(entry.stepNumber) || Number(entry.stepNumber) < 0 ||
+        !isRecord(entry.shock) || typeof entry.shock.type !== 'string') {
+      throw new Error('Invalid scheduled scenario shock in player session');
+    }
+  }
+  if (value.arcStages !== undefined && (!Array.isArray(value.arcStages) || value.arcStages.some((stage) =>
+      !isRecord(stage) || typeof stage.id !== 'string' || !Number.isSafeInteger(stage.stepNumber) ||
+      !Array.isArray(stage.shocks) || stage.shocks.some((shock) => !isRecord(shock) || typeof shock.type !== 'string')))) {
+    throw new Error('Invalid scenario arc stage in player session');
+  }
+};
 
 const assertSimulationConfig: (value: unknown) => void = (value) => {
   if (!isRecord(value) || typeof value.version !== 'string' || value.version.length === 0 ||
@@ -294,6 +332,12 @@ const assertPlayerSession: (value: unknown) => asserts value is PlayerSessionSta
       !['active', 'bank_failure', 'horizon_reached', 'owner_stopped', 'server_error', 'interrupted'].includes(String(value.status))) {
     throw new Error('Invalid player session envelope');
   }
+  if (Object.hasOwn(value, 'scenarioDefinition')) {
+    assertScenarioDefinition(value.scenarioDefinition);
+    if (value.scenarioDefinition !== null && (!isRecord(value.scenarioDefinition) || value.scenarioDefinition.id !== value.scenarioId)) {
+      throw new Error('Player session scenario ID does not match its definition');
+    }
+  }
   if (value.horizonMonths !== undefined && (!Number.isSafeInteger(value.horizonMonths) || Number(value.horizonMonths) < 0)) {
     throw new Error('Invalid player session horizon');
   }
@@ -339,7 +383,7 @@ export const decodePlayerSessionState = (encoded: string): PlayerSessionState =>
   } catch {
     throw new Error('Player session is not valid JSON');
   }
-  if (!isRecord(envelope) || envelope.codec !== SESSION_CODEC_ID || envelope.version !== PLAYER_SESSION_CODEC_VERSION ||
+  if (!isRecord(envelope) || envelope.codec !== SESSION_CODEC_ID || ![2, PLAYER_SESSION_CODEC_VERSION].includes(Number(envelope.version)) ||
       !Array.isArray(envelope.payload)) {
     throw new Error('Unsupported player session codec or version');
   }

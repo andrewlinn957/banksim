@@ -13,11 +13,12 @@ services:
       BANKSIM_PORT: 3000
       BANKSIM_DATABASE_PATH: /data/banksim.sqlite3
       BANKSIM_ENGINE_VERSION: ${BANKSIM_ENGINE_VERSION:?Set BANKSIM_ENGINE_VERSION in deploy/.env}
-      BANKSIM_SCENARIO_VERSION: ${BANKSIM_SCENARIO_VERSION:-public-catalogue-v1}
+      BANKSIM_SCENARIO_VERSION: ${BANKSIM_SCENARIO_VERSION:-}
     ports:
       - 127.0.0.1:${BANKSIM_PORT:-3000}:3000
     volumes:
       - banksim-data:/data
+      - ./private-scenarios:/private-scenarios:ro
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
