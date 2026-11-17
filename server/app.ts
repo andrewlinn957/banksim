@@ -270,8 +270,12 @@ export const createBankSimServer = async (options: BankSimServerOptions): Promis
   const buildInfo = serverBuildInfo();
   const buildDigest = options.buildDigest ?? process.env.BANKSIM_BUILD_DIGEST ?? buildInfo.buildDigest;
   const dependencyLockHash = options.dependencyLockHash ?? process.env.BANKSIM_LOCKFILE_HASH ?? buildInfo.lockfileHash;
-  const scenarioVersion = options.scenarioVersion ?? process.env.BANKSIM_SCENARIO_VERSION ?? 'public-catalogue-v1';
   const scenarioCatalogHash = options.scenarioCatalogHash ?? hashJson(scenarioDefinitions);
+  const configuredScenarioVersion = options.scenarioVersion ?? process.env.BANKSIM_SCENARIO_VERSION?.trim();
+  const hasPrivateScenarios = scenarioDefinitions.some((scenario) => !scenarios.some((publicScenario) => publicScenario.id === scenario.id));
+  const scenarioVersion = configuredScenarioVersion || (hasPrivateScenarios
+    ? `private-catalogue-${scenarioCatalogHash.slice(0, 16)}`
+    : 'public-catalogue-v1');
   if (options.store.hasActiveRunsOnOtherBuild(options.engineVersion, buildDigest, dependencyLockHash, process.version)) {
     throw new Error('The database contains active runs pinned to another engine release, build digest, dependency lock, or Node runtime; stop or finish them before starting this build');
   }

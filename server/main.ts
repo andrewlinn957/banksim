@@ -17,11 +17,6 @@ const engineVersion = required('BANKSIM_ENGINE_VERSION');
 const build = serverBuildInfo();
 const store = new EvaluationStore(databasePath);
 const scenarioRegistry = loadPrivateScenarioRegistry(process.env.BANKSIM_PRIVATE_SCENARIOS_FILE?.trim() || undefined);
-const scenarioVersion = process.env.BANKSIM_SCENARIO_VERSION?.trim() || (
-  scenarioRegistry.privateScenarioIds.length > 0
-    ? `private-catalogue-${scenarioRegistry.contentHash.slice(0, 16)}`
-    : 'public-catalogue-v1'
-);
 
 const app = await createBankSimServer({
   store,
@@ -29,7 +24,7 @@ const app = await createBankSimServer({
   engineVersion,
   buildDigest: process.env.BANKSIM_BUILD_DIGEST?.trim() || build.buildDigest,
   dependencyLockHash: build.lockfileHash,
-  scenarioVersion,
+  scenarioVersion: process.env.BANKSIM_SCENARIO_VERSION?.trim() || undefined,
   scenarioDefinitions: scenarioRegistry.definitions,
   scenarioCatalogHash: scenarioRegistry.contentHash,
   maxAdvanceMonths: Number(process.env.BANKSIM_MAX_ADVANCE_MONTHS || 12),

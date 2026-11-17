@@ -30,6 +30,7 @@ const fixture = async (options: {
   dbPath?: string;
   scenarioDefinitions?: readonly Scenario[];
   scenarioCatalogHash?: string;
+  scenarioVersion?: string;
 } = {}): Promise<Fixture> => {
   const dir = options.dbPath ? dirname(options.dbPath) : mkdtempSync(join(tmpdir(), 'banksim-api-'));
   const dbPath = options.dbPath ?? join(dir, 'evaluation.sqlite3');
@@ -41,6 +42,7 @@ const fixture = async (options: {
     logger: false,
     scenarioDefinitions: options.scenarioDefinitions,
     scenarioCatalogHash: options.scenarioCatalogHash,
+    scenarioVersion: options.scenarioVersion,
     testHooks: options.afterAdvanceMonthCommit ? { afterAdvanceMonthCommit: options.afterAdvanceMonthCommit } : undefined,
   });
   let closed = false;
@@ -102,6 +104,7 @@ describe('persistent BankSim API service', () => {
     const f = await fixture({
       scenarioDefinitions: [...scenarios, privateScenario],
       scenarioCatalogHash: catalogHash,
+      scenarioVersion: '',
     });
 
     const unauthenticatedList = await f.app.inject({ method: 'GET', url: '/admin/v1/scenarios' });
@@ -109,6 +112,7 @@ describe('persistent BankSim API service', () => {
     const list = await f.app.inject({ method: 'GET', url: '/admin/v1/scenarios', headers: auth() });
     expect(list.statusCode).toBe(200);
     expect(list.json().scenarioCatalogHash).toBe(catalogHash);
+    expect(list.json().scenarioVersion).toBe(`private-catalogue-${catalogHash.slice(0, 16)}`);
     expect(list.json().scenarios).toContainEqual(expect.objectContaining({ id: 'private-liquidity-review', source: 'private' }));
     expect(list.body).not.toContain(String(marker));
 
