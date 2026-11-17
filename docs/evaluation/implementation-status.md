@@ -2,6 +2,7 @@
 
 Updated: 17 November 2026
 Phase G follow-up base revision: `0252a63870fb09864649d840ca21aebe3b96842b`
+Private scenario implementation saved on GitHub: `31f27da03cc4d7448fba546432dfa7768817962e`
 Branch: `feature/evaluation-functionality`
 Audit baseline: `main` revision `2e51380cd11e0f95a4d5143d42dfcb08cbca6729`
 Evaluation merge: local revision `74cf7872d8f39f63549026f8a6a675df9388d51f`; GitHub branch contains the same tree at merge checkpoint `cf54a316f336bc655eb69debaabe2ef8821cad46`.
